@@ -69,10 +69,38 @@ Pick one depending on how hands-on you want to be:
 | **Your own always-on PC / home server + Tailscale** | Medium | No public exposure at all — only devices you've added to your Tailscale network can reach it, from anywhere in the world, without opening any ports. Very private, but requires that machine to stay on. |
 | **A cheap VPS (e.g. DigitalOcean, Hetzner) + Caddy for HTTPS** | Medium-High | More control, but you're responsible for OS updates/security patches yourself. |
 
-I did **not** deploy this anywhere myself — deploying means creating accounts/handing out a public-ish URL, which you should drive directly. Once you pick a platform, I'm happy to walk through the exact steps (e.g. writing a `render.yaml`, or a Tailscale setup script) — just tell me which one you'd like.
+I did **not** create any accounts or push anything on your behalf — that's your call to make. Below are the concrete steps for the Render path (what I'd pick), which this repo is already set up for via `render.yaml`.
 
 ### A note on the SQLite database + hosting platforms
-This app uses Node's built-in SQLite (a single file at `webapp/data/app.db`) — no separate database server to manage. The one thing to get right on any host: **make sure `webapp/data` is a persistent volume/disk**, not the platform's ephemeral filesystem, or your HPP entries and accounts will vanish on every redeploy/restart. Render, Fly.io, and Railway all support attaching a small persistent volume for this.
+This app uses Node's built-in SQLite (a single file at `webapp/data/app.db`) — no separate database server to manage. The one thing to get right on any host: **make sure the data folder is a persistent volume/disk**, not the platform's ephemeral filesystem, or your HPP entries and accounts will vanish on every redeploy/restart. The `DATA_DIR` env var (see `db.js`) lets you point the database at wherever that platform's persistent disk is mounted — `render.yaml` already wires this up for Render.
+
+### Step-by-step: GitHub + Render
+
+GitHub only stores your code — it can't run this app by itself (GitHub Pages is static-only). Render is what actually runs the server, and it deploys straight from your GitHub repo.
+
+1. **Push to GitHub** (from inside `webapp/`):
+   ```bash
+   git init
+   git add -A
+   git commit -m "Initial commit"
+   ```
+   Create a new **private** repo on github.com (no README/license — you already have files), then:
+   ```bash
+   git remote add origin https://github.com/<youruser>/<yourrepo>.git
+   git branch -M main
+   git push -u origin main
+   ```
+2. **Create a Render account** at render.com (free to sign up), connect your GitHub account.
+3. **New → Blueprint**, pick your repo. Render reads `render.yaml` automatically and sets up the web service, the persistent disk, and a random `SESSION_SECRET` for you.
+4. Render will ask you to fill in `ADMIN_ACCOUNTS` (the one variable marked "sync: false" in `render.yaml`) — enter your login accounts right there, formatted as:
+   ```
+   aaron:SomeStrongPassword1,ibu:AnotherStrongPassword2
+   ```
+   Every account listed here is created automatically the first time the server starts — no shell/SSH access needed. (You can add more people later the same way: edit this env var and trigger a redeploy — accounts that already exist are left untouched.)
+5. Deploy. Render gives you an HTTPS URL (`https://your-app.onrender.com`) — that's what you and your trusted people use to log in.
+6. **Cost note:** persistent disks require Render's paid **Starter** plan (roughly $7/month at time of writing) — their free tier doesn't support attached disks, and without one your HPP data would be wiped on every redeploy.
+
+From then on, `git push` to your repo auto-deploys the new version — no manual redeploy step.
 
 ---
 

@@ -1,0 +1,319 @@
+:root {
+  --oranye: #ee4d2d;
+  --oranye-gelap: #d8401f;
+  --hijau: #1a9c4b;
+  --merah: #d92d20;
+  --abu-teks: #4b5563;
+  --abu-terang: #f5f6f8;
+  --border: #e2e4e8;
+  --bg: #f5f6f8;
+  font-size: 17px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: #1f2430;
+  line-height: 1.5;
+}
+
+.tersembunyi { display: none !important; }
+
+input[type="text"],
+input[type="password"],
+input[type="number"] {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 1rem;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  outline: none;
+  background: #fff;
+}
+input:focus { border-color: var(--oranye); }
+
+/* ---------- Tombol ---------- */
+.tombol {
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 12px 20px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+.tombol-utama { background: var(--oranye); color: #fff; }
+.tombol-utama:hover:not(:disabled) { background: var(--oranye-gelap); }
+.tombol-utama:disabled { background: #f3b8ab; cursor: not-allowed; }
+.tombol-lebar { width: 100%; margin-top: 22px; }
+.tombol-kecil { padding: 8px 14px; font-size: 0.9rem; background: #fff; border: 2px solid var(--border); }
+.tombol-kecil:hover:not(:disabled) { background: var(--abu-terang); }
+.tombol-kecil:disabled { opacity: 0.5; cursor: not-allowed; }
+.tombol-mini { padding: 6px 12px; font-size: 0.85rem; background: var(--hijau); color: #fff; white-space: nowrap; }
+.tombol-mini:hover { opacity: 0.88; }
+.tombol-hapus { background: #fff; border: 2px solid var(--merah); color: var(--merah); padding: 6px 12px; font-size: 0.85rem; }
+.tombol-hapus:hover { background: #fdeeed; }
+
+.pesan-error {
+  color: var(--merah);
+  background: #fdecea;
+  border: 1px solid #f6c2bd;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 14px;
+  font-size: 0.92rem;
+}
+.pesan-loading { color: var(--abu-teks); margin-top: 14px; font-weight: 600; }
+
+/* Banner "belum diunduh" — muncul lengket di atas begitu ada perubahan HPP yang
+   belum disimpan ke file CSV, supaya tidak lupa sebelum menutup halaman. */
+.pesan-belum-diunduh {
+  background: #fff3cd;
+  border-bottom: 2px solid #f6c453;
+  color: #6b4a05;
+  padding: 10px 24px;
+  font-size: 0.92rem;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.pesan-belum-diunduh .tombol-mini { background: #92620a; }
+
+/* ---------- Layout Utama ---------- */
+.header-app {
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.header-app h1 { margin: 0; font-size: 1.25rem; }
+.info-user { display: flex; align-items: center; gap: 12px; color: var(--abu-teks); font-size: 0.85rem; max-width: 360px; text-align: right; }
+
+.tab-nav {
+  display: flex;
+  gap: 4px;
+  padding: 12px 24px 0;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+}
+.tab-tombol {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--abu-teks);
+  padding: 12px 18px;
+  border-radius: 10px 10px 0 0;
+  cursor: pointer;
+}
+.tab-tombol.aktif {
+  color: var(--oranye);
+  background: var(--abu-terang);
+  border-bottom: 3px solid var(--oranye);
+}
+
+.tab-isi { display: none; padding: 20px 24px 60px; max-width: 1200px; margin: 0 auto; }
+.tab-isi.aktif { display: block; }
+
+.kartu {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 22px;
+  margin-bottom: 20px;
+}
+.kartu h2 { margin-top: 0; font-size: 1.1rem; }
+.keterangan { color: var(--abu-teks); font-size: 0.95rem; }
+
+.baris-unggah { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.baris-unggah input[type="file"] { flex: 1; min-width: 220px; }
+
+/* ---------- Ringkasan ---------- */
+.grid-ringkasan {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.kartu-ringkasan {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+.label-ringkasan { color: var(--abu-teks); font-size: 0.88rem; font-weight: 600; margin-bottom: 6px; }
+.angka-ringkasan { font-size: 1.5rem; font-weight: 800; }
+.kartu-peringatan { border-color: #f6c453; background: #fffbeb; }
+.kartu-peringatan .angka-ringkasan { color: #92620a; }
+.kartu-netral { border-color: var(--border); background: #f4f5f7; }
+.kartu-netral .angka-ringkasan { color: var(--abu-teks); }
+
+/* ---------- Tabel ---------- */
+.baris-filter { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.baris-filter input[type="text"] { max-width: 340px; }
+
+.tabel-scroll { overflow-x: auto; }
+/* table-layout: fixed + lebar kolom (lihat colgroup di HTML) supaya total lebar tabel
+   selalu pas dengan lebar kartu — tidak perlu geser kiri-kanan untuk lihat semua data. */
+table { width: 100%; border-collapse: collapse; font-size: 0.8rem; table-layout: fixed; }
+thead th {
+  text-align: left;
+  background: var(--abu-terang);
+  padding: 9px 10px;
+  border-bottom: 2px solid var(--border);
+  position: sticky;
+  top: 0;
+  white-space: normal;
+}
+tbody td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Nama Produk: nama Shopee bisa sangat panjang (100+ karakter). Teksnya sendiri
+   sudah dipotong + "..." dari JavaScript (lihat app.js) supaya tidak membuat
+   tabel melebar — nama lengkapnya tetap muncul lewat tooltip saat mouse diarahkan
+   ke situ, dan ID Produk di sebelahnya selalu jadi acuan yang pasti/tidak terpotong. */
+.kolom-nama {
+  white-space: normal;
+  word-break: break-word;
+  cursor: help;
+  line-height: 1.35;
+}
+
+tbody tr:hover { background: #fffaf7; }
+tbody tr.baris-peringatan { background: #fffbeb; }
+tbody tr.baris-peringatan:hover { background: #fef3c7; }
+tbody tr.baris-dikembalikan { background: #f4f5f7; }
+tbody tr.baris-dikembalikan:hover { background: #ebedf0; }
+
+.kolom-total { white-space: normal; overflow: visible; }
+.tag-refund {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #92620a;
+  background: #fff3cd;
+  border: 1px solid #f6c453;
+  border-radius: 6px;
+  padding: 1px 6px;
+  width: fit-content;
+  max-width: 100%;
+  white-space: normal;
+  cursor: help;
+}
+
+.untung-positif { color: var(--hijau); font-weight: 700; }
+.untung-negatif { color: var(--merah); font-weight: 700; }
+.teks-redup { color: #9aa2b1; font-style: italic; }
+
+.kolom-hpp { white-space: normal; overflow: visible; }
+.sel-hpp-cepat { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+
+.input-hpp-cepat,
+.input-hpp-tabel-baru {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 0.9rem;
+  border: 2px solid #f6c453;
+  border-radius: 8px;
+}
+
+.simpan-hpp-cepat,
+.simpan-hpp-tabel-baru {
+  width: 100%;
+}
+
+.form-tambah-produk {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.form-tambah-produk input[type="text"] { flex: 2; min-width: 160px; }
+.form-tambah-produk input[type="number"] { flex: 1; min-width: 140px; }
+
+.input-hpp-tabel {
+  width: 100%;
+  max-width: 160px;
+  padding: 6px 8px;
+  font-size: 0.9rem;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+}
+
+@media (max-width: 640px) {
+  :root { font-size: 15.5px; }
+  .header-app, .tab-nav, .tab-isi { padding-left: 14px; padding-right: 14px; }
+  .info-user { text-align: left; max-width: none; }
+}
+
+/* Layar sempit (HP): setiap BARIS diubah jadi satu "kartu" — field-nya ditumpuk ke
+   bawah dengan label di depan masing-masing (dari atribut data-label di app.js). */
+@media (max-width: 700px) {
+  .tabel-scroll { overflow-x: visible; }
+  #tabelData, #tabelHpp { table-layout: auto; font-size: 0.88rem; }
+  #tabelData colgroup, #tabelHpp colgroup { display: none; }
+  #tabelData thead, #tabelHpp thead { display: none; }
+  #tabelData tr, #tabelHpp tr { display: block; width: 100% !important; }
+  #tabelData tbody, #tabelHpp tbody { display: block; }
+
+  #tabelData tbody tr, #tabelHpp tbody tr {
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    background: #fff;
+  }
+  #tabelData tbody tr.baris-peringatan, #tabelHpp tbody tr.baris-peringatan { background: #fffbeb; }
+  #tabelData tbody tr.baris-dikembalikan { background: #f4f5f7; }
+
+  #tabelData td, #tabelHpp td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    width: 100% !important;
+    max-width: none;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--border);
+    white-space: normal;
+  }
+  #tabelData tr td:last-child, #tabelHpp tr td:last-child { border-bottom: none; }
+
+  #tabelData td::before, #tabelHpp td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    color: var(--abu-teks);
+    font-size: 0.78rem;
+    flex: 0 0 auto;
+    padding-right: 8px;
+  }
+  #tabelData td[data-label=""]::before, #tabelHpp td[data-label=""]::before { content: none; }
+
+  #tabelData td.kolom-nama, #tabelHpp td.kolom-nama,
+  #tabelData td.kolom-hpp, #tabelHpp td.kolom-hpp,
+  #tabelData td.kolom-total {
+    display: block;
+    max-width: none;
+  }
+  #tabelData td.kolom-nama::before, #tabelHpp td.kolom-nama::before,
+  #tabelData td.kolom-hpp::before, #tabelHpp td.kolom-hpp::before,
+  #tabelData td.kolom-total::before {
+    display: block;
+    margin-bottom: 4px;
+  }
+}

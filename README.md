@@ -1,5 +1,21 @@
 # Kalkulator Margin Shopee (Shopee Margin Calc)
 
+This repo has **two versions** of the same calculator — pick whichever matches how you want to use it:
+
+| | [`docs/`](docs/) — static version | [webapp root](.) — server version |
+|---|---|---|
+| **Hosting** | GitHub Pages, free forever, no signup | Render (or similar), ~$7/month |
+| **HPP data stored as** | A CSV file you download/upload yourself | Server-side SQLite database |
+| **Shared live data across people/devices?** | No — CSV is the sync mechanism | Yes — everyone sees the same data instantly |
+| **Login required?** | No | Yes |
+| **Data ever leaves your browser?** | No — 100% client-side, nothing to trust a server with | The HPP + accounts live server-side (uploaded sales data still never persists — see below) |
+
+If you're the only one using it, or a couple of you but don't need everyone to see the exact same numbers at the same instant, **use `docs/`** — it's simpler, free, and more private by construction. If you need several people genuinely sharing one live, always-in-sync price list, use the server version.
+
+Everything below this point describes the **server version**. The static version is covered in its own section [near the end of this file](#the-static-docs-version--github-pages).
+
+---
+
 A small private web app that:
 
 - Accepts the **Income Excel file exported from Shopee Seller Center** (it reads the `Penghasilan` sheet).
@@ -124,4 +140,35 @@ webapp/
   public/           Frontend (Bahasa Indonesia UI): index.html, style.css, app.js
   data/app.db       SQLite database (gitignored — back this up, don't commit it)
   Dockerfile        For deploying to any container host
+  docs/             The static version — see below
 ```
+
+---
+
+## The static (`docs/`) version — GitHub Pages
+
+A completely self-contained rewrite with **no server, no database, no login**. Everything —
+reading the Shopee Excel file, computing margins, storing HPP — happens in your browser.
+Nothing is ever sent anywhere.
+
+**How HPP data works here:** instead of a database, your cost list lives in a CSV file you
+download and re-upload yourself (via the buttons in the "Atur Harga Modal" tab), plus an
+automatic copy in that browser's local storage as a convenience so it survives a normal
+refresh. If you edit HPP data and try to close the tab without downloading the updated CSV,
+a banner (and the browser's own "leave site?" prompt) reminds you first — but browsers don't
+allow a fully custom message there, and it won't catch a crash or force-quit, so make a habit
+of clicking "Unduh CSV" after making changes you care about.
+
+**Deploying it (free, forever):**
+
+1. Push this repo to GitHub (see steps above if you haven't already).
+2. On GitHub: **Settings → Pages** (left sidebar) → under "Build and deployment", set
+   **Source: Deploy from a branch** → **Branch: `main`, folder: `/docs`** → Save.
+3. GitHub gives you a URL like `https://<youruser>.github.io/<yourrepo>/` within a minute or two.
+   That's it — no build step, no account, no ongoing cost.
+
+**Keeping it updated:** any time you `git push` a change to `main`, GitHub Pages redeploys
+automatically (takes a minute or so).
+
+**Using it on multiple devices:** open the page on each device, and use "Unduh CSV" on one /
+"Unggah CSV" on the other to carry your price list between them — there's no live sync.

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kalkulator Untung Toko Shopee</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="aplikasiUtama">
+  <header class="header-app">
+    <h1>🛍️ Kalkulator Untung Toko Shopee</h1>
+    <div class="info-user">
+      <span class="teks-redup">Semua data diproses di browser Anda sendiri — tidak dikirim ke server manapun.</span>
+    </div>
+  </header>
+
+  <div id="pesanBelumDiunduh" class="pesan-belum-diunduh tersembunyi">
+    ⚠️ Ada perubahan Harga Modal (HPP) yang <strong>belum diunduh</strong>. Kalau halaman ini
+    ditutup sekarang, perubahan itu bisa hilang di perangkat/browser lain.
+    <button id="tombolUnduhDariBanner" class="tombol tombol-mini">Unduh CSV Sekarang</button>
+  </div>
+
+  <nav class="tab-nav">
+    <button class="tab-tombol aktif" data-tab="tabUpload">📄 Unggah &amp; Lihat Data</button>
+    <button class="tab-tombol" data-tab="tabHpp">💰 Atur Harga Modal (HPP)</button>
+  </nav>
+
+  <!-- ---------- TAB 1: UPLOAD & LIHAT DATA ---------- -->
+  <section id="tabUpload" class="tab-isi aktif">
+    <div class="kartu">
+      <h2>1. Unggah File Excel dari Shopee</h2>
+      <p class="keterangan">
+        Pilih file Excel "Income" yang diunduh dari Shopee (contoh nama file:
+        <em>Income.sudah dilepas.id...xlsx</em>). File ini dibaca langsung di browser Anda —
+        tidak pernah diunggah ke internet.
+      </p>
+      <div class="baris-unggah">
+        <input type="file" id="inputFile" accept=".xlsx,.xls">
+        <button id="tombolProses" class="tombol tombol-utama" disabled>Proses File</button>
+      </div>
+      <p id="pesanErrorUpload" class="pesan-error tersembunyi"></p>
+      <p id="pesanLoading" class="pesan-loading tersembunyi">⏳ Sedang memproses file...</p>
+    </div>
+
+    <div id="areaRingkasan" class="tersembunyi">
+      <div class="grid-ringkasan">
+        <div class="kartu-ringkasan">
+          <div class="label-ringkasan">Total Pendapatan</div>
+          <div class="angka-ringkasan" id="ringkasanPendapatan">Rp 0</div>
+        </div>
+        <div class="kartu-ringkasan">
+          <div class="label-ringkasan">Total Untung</div>
+          <div class="angka-ringkasan" id="ringkasanUntung">Rp 0</div>
+        </div>
+        <div class="kartu-ringkasan">
+          <div class="label-ringkasan">Rata-rata Margin</div>
+          <div class="angka-ringkasan" id="ringkasanMargin">-</div>
+        </div>
+        <div class="kartu-ringkasan kartu-peringatan" id="kartuBelumHpp">
+          <div class="label-ringkasan">Belum Ada Harga Modal</div>
+          <div class="angka-ringkasan" id="ringkasanBelumHpp">0 produk</div>
+        </div>
+        <div class="kartu-ringkasan kartu-netral tersembunyi" id="kartuDikembalikan">
+          <div class="label-ringkasan">Pesanan Dikembalikan</div>
+          <div class="angka-ringkasan" id="ringkasanDikembalikan">0 pesanan</div>
+        </div>
+      </div>
+
+      <div class="kartu">
+        <div class="baris-filter">
+          <h2>2. Rincian Per Produk Terjual</h2>
+          <input type="text" id="inputCari" placeholder="🔍 Cari nama produk / No. Pesanan / ID Produk...">
+        </div>
+        <div class="tabel-scroll">
+          <table id="tabelData">
+            <colgroup>
+              <col style="width:14%"><col style="width:9%"><col style="width:9%">
+              <col style="width:20%"><col style="width:9%"><col style="width:10%">
+              <col style="width:10%"><col style="width:9%"><col style="width:6%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>No. Pesanan</th>
+                <th>Tanggal Pesanan</th>
+                <th>Tanggal Dana Cair</th>
+                <th>Nama Produk</th>
+                <th>ID Produk</th>
+                <th>Total Penghasilan</th>
+                <th>Harga Modal (HPP)</th>
+                <th>Untung</th>
+                <th>Margin %</th>
+              </tr>
+            </thead>
+            <tbody id="isiTabelData"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------- TAB 2: ATUR HPP ---------- -->
+  <section id="tabHpp" class="tab-isi">
+    <div class="kartu">
+      <h2>💰 Apa itu Harga Modal (HPP)?</h2>
+      <p class="keterangan">
+        <strong>HPP (Harga Pokok Penjualan)</strong> adalah harga modal / biaya untuk membuat atau
+        membeli <strong>1 pcs</strong> produk tersebut (belum termasuk ongkir/iklan/biaya Shopee — itu
+        semua sudah otomatis dihitung Shopee di "Total Penghasilan").<br>
+        Untung dihitung dengan rumus: <strong>Untung = Total Penghasilan − HPP</strong>.
+      </p>
+    </div>
+
+    <div class="kartu">
+      <h2>💾 Simpan / Buka Daftar Harga Modal (file CSV)</h2>
+      <p class="keterangan">
+        Daftar HPP Anda tersimpan sebagai file <strong>CSV</strong> yang Anda simpan sendiri (di
+        laptop, Google Drive, dll) — bukan di server manapun. Buka file itu lagi lain kali dengan
+        tombol "Unggah CSV" di bawah supaya harga-harga lama Anda muncul lagi.
+      </p>
+      <div class="baris-unggah">
+        <button id="tombolUnduhCsv" class="tombol tombol-utama">⬇️ Unduh CSV</button>
+        <input type="file" id="inputCsv" accept=".csv">
+        <button id="tombolUnggahCsv" class="tombol tombol-kecil" disabled>⬆️ Unggah CSV Ini</button>
+      </div>
+      <p class="keterangan teks-redup" style="margin-top:10px;">
+        Catatan: "Unggah CSV" akan <strong>mengganti</strong> seluruh daftar HPP yang sedang tampil
+        dengan isi file tersebut.
+      </p>
+      <p id="pesanCsv" class="pesan-error tersembunyi"></p>
+    </div>
+
+    <div class="kartu">
+      <h2>Tambah / Cari Produk</h2>
+      <div class="baris-filter">
+        <input type="text" id="inputCariHpp" placeholder="🔍 Cari nama produk / ID Produk...">
+      </div>
+      <div class="form-tambah-produk">
+        <input type="text" id="hppBaruId" placeholder="ID Produk">
+        <input type="text" id="hppBaruNama" placeholder="Nama Produk (opsional)">
+        <input type="number" id="hppBaruNilai" placeholder="Harga Modal (Rp)" min="0" step="1">
+        <button id="tombolTambahHpp" class="tombol tombol-utama">+ Simpan</button>
+      </div>
+      <p id="pesanErrorHpp" class="pesan-error tersembunyi"></p>
+    </div>
+
+    <div class="kartu">
+      <h2>Daftar Harga Modal Produk</h2>
+      <div class="tabel-scroll">
+        <table id="tabelHpp">
+          <colgroup>
+            <col style="width:15%"><col style="width:40%"><col style="width:20%">
+            <col style="width:17%"><col style="width:8%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>ID Produk</th>
+              <th>Nama Produk</th>
+              <th>Harga Modal (HPP)</th>
+              <th>Terakhir Diubah</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="isiTabelHpp"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

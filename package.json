@@ -1,0 +1,21 @@
+{
+  "name": "shopee-margin-calc",
+  "version": "1.0.0",
+  "description": "Kalkulator margin keuntungan penjualan Shopee (privat, login diperlukan)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "adduser": "node scripts/add-user.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "multer": "^2.0.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  }
+}

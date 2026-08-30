@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: shopee-margin-calc
+    env: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: node server.js
+    disk:
+      name: shopee-margin-calc-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /var/data
+      - key: SESSION_SECRET
+        generateValue: true
+      # Isi di dashboard Render setelah connect repo (tab Environment) — dipakai
+      # sekali untuk membuat akun-akun login pertama secara otomatis saat start.
+      # Format: "username1:password1,username2:password2" (boleh 1 orang atau lebih).
+      - key: ADMIN_ACCOUNTS
+        sync: false

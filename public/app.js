@@ -7,6 +7,13 @@ const formatPersen = (angka) => {
   if (angka === null || angka === undefined || isNaN(angka)) return '-';
   return angka.toFixed(1).replace('.', ',') + '%';
 };
+// Margin % ditampilkan sebagai pill berwarna supaya langsung terbaca sekilas:
+// hijau ≥ 25%, kuning 10–25%, merah < 10% (termasuk minus).
+const pillMargin = (persen) => {
+  if (persen === null || persen === undefined || isNaN(persen)) return '-';
+  const warna = persen >= 25 ? 'pill-hijau' : persen >= 10 ? 'pill-kuning' : 'pill-merah';
+  return `<span class="pill pill-margin ${warna}">${formatPersen(persen)}</span>`;
+};
 const escapeHtml = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -89,6 +96,7 @@ function tampilkanAplikasi(username) {
   halamanLogin.classList.add('tersembunyi');
   aplikasiUtama.classList.remove('tersembunyi');
   labelUsername.textContent = username;
+  document.getElementById('avatarUser').textContent = String(username || '?').slice(0, 1);
   muatDaftarHpp();
 }
 
@@ -112,19 +120,50 @@ tombolLogout.addEventListener('click', async () => {
   tampilkanLogin();
 });
 
-// ====== Tab ======
-document.querySelectorAll('.tab-tombol').forEach((btn) => {
+// ====== Navigasi halaman (nav bar horizontal di atas) ======
+function bukaHalaman(idHalaman) {
+  document.querySelectorAll('.nav-item[data-page]').forEach((b) => b.classList.toggle('aktif', b.dataset.page === idHalaman));
+  document.querySelectorAll('.halaman').forEach((s) => s.classList.toggle('aktif', s.id === idHalaman));
+}
+
+document.querySelectorAll('.nav-item[data-page]').forEach((btn) => {
+  btn.addEventListener('click', () => bukaHalaman(btn.dataset.page));
+});
+
+// Tombol "Buka Kalkulator" dsb. di dalam widget Dashboard pindah halaman juga
+document.querySelectorAll('[data-buka-halaman]').forEach((btn) => {
+  btn.addEventListener('click', () => bukaHalaman(btn.dataset.bukaHalaman));
+});
+
+// Sub-tab di dalam halaman Kalkulator Margin: "Unggah & Lihat Data" vs "Atur Harga Modal (HPP)"
+document.querySelectorAll('.pill-filter[data-subtab]').forEach((btn) => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-tombol').forEach((b) => b.classList.remove('aktif'));
-    document.querySelectorAll('.tab-isi').forEach((s) => s.classList.remove('aktif'));
+    document.querySelectorAll('.pill-filter[data-subtab]').forEach((b) => b.classList.remove('aktif'));
+    document.querySelectorAll('.subtab-isi').forEach((s) => s.classList.remove('aktif'));
     btn.classList.add('aktif');
-    document.getElementById(btn.dataset.tab).classList.add('aktif');
+    document.getElementById(btn.dataset.subtab).classList.add('aktif');
   });
 });
 
 // ====== Upload & Hitung ======
-inputFile.addEventListener('change', () => {
-  tombolProses.disabled = !inputFile.files.length;
+const dropzoneFile = document.getElementById('dropzoneFile');
+const namaFile = document.getElementById('namaFile');
+function perbaruiNamaFile() {
+  const ada = inputFile.files.length > 0;
+  tombolProses.disabled = !ada;
+  namaFile.textContent = ada ? inputFile.files[0].name : 'Pilih file Income (.xlsx) dari Shopee';
+  dropzoneFile.classList.toggle('terisi', ada);
+}
+inputFile.addEventListener('change', perbaruiNamaFile);
+// Seret & lepas file ke area unggah (selain klik) — file yang dilepas dimasukkan ke
+// input yang sama, jadi alur "Proses File" di bawah tidak berubah.
+['dragenter', 'dragover'].forEach((ev) => dropzoneFile.addEventListener(ev, (e) => { e.preventDefault(); dropzoneFile.classList.add('seret'); }));
+['dragleave', 'drop'].forEach((ev) => dropzoneFile.addEventListener(ev, (e) => { e.preventDefault(); dropzoneFile.classList.remove('seret'); }));
+dropzoneFile.addEventListener('drop', (e) => {
+  if (e.dataTransfer && e.dataTransfer.files.length) {
+    inputFile.files = e.dataTransfer.files;
+    perbaruiNamaFile();
+  }
 });
 
 tombolProses.addEventListener('click', async () => {
@@ -163,6 +202,12 @@ function renderRingkasan(r) {
   document.getElementById('kartuBelumHpp').classList.toggle('tersembunyi', r.jumlahBelumAdaHpp === 0);
   document.getElementById('ringkasanDikembalikan').textContent = `${r.jumlahDikembalikan || 0} pesanan`;
   document.getElementById('kartuDikembalikan').classList.toggle('tersembunyi', !r.jumlahDikembalikan);
+
+  // Widget "Kalkulator Margin" di Dashboard ikut diperbarui dengan angka yang sama
+  document.getElementById('widgetUntung').textContent = formatRupiah(r.totalUntung);
+  document.getElementById('widgetMargin').textContent = formatPersen(r.marginRataRataPersen);
+  document.getElementById('widgetKalkulatorKosong').classList.add('tersembunyi');
+  document.getElementById('widgetKalkulatorIsi').classList.remove('tersembunyi');
 }
 
 // Nilai satu baris untuk kolom tertentu, dipakai buat urutkan tabel Data.
@@ -200,10 +245,16 @@ function perbaruiIndikatorUrutHeader() {
     th.classList.toggle('urut-aktif', aktif);
     const panahLama = th.querySelector('.panah-urut');
     if (panahLama) panahLama.remove();
-    const panah = document.createElement('span');
-    panah.className = 'panah-urut';
-    panah.textContent = aktif ? (sortArah === 1 ? '▲' : '▼') : '▲▼';
-    th.appendChild(panah);
+    const naik = '<path d="m6 15 6-6 6 6"/>';
+    const turun = '<path d="m6 9 6 6 6-6"/>';
+    const isi = aktif ? (sortArah === 1 ? naik : turun) : '<path d="m8 9 4-4 4 4"/><path d="m8 15 4 4 4-4"/>';
+    const panah = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    panah.setAttribute('class', 'ikon panah-urut');
+    panah.setAttribute('viewBox', '0 0 24 24');
+    panah.innerHTML = isi;
+    // Di kolom angka (rata kanan) chevron ditaruh di depan judul supaya angka di bawahnya
+    // tetap sejajar dengan ujung kanan judul.
+    if (th.classList.contains('kolom-angka')) th.prepend(panah); else th.appendChild(panah);
   });
 }
 
@@ -275,7 +326,7 @@ function renderTabelData(items) {
       const untungTampil = it.dikembalikan
         ? '<span title="Barang dikembalikan ke Anda, jadi tidak dihitung untung maupun rugi.">Rp 0</span>'
         : punyaHpp ? formatRupiah(it.untung) : 'Belum diisi';
-      const marginTampil = it.dikembalikan ? '-' : punyaHpp ? formatPersen(it.marginPersen) : '-';
+      const marginTampil = it.dikembalikan ? '-' : punyaHpp ? pillMargin(it.marginPersen) : '-';
 
       return `
         <tr class="${kelasBaris}">
@@ -283,12 +334,12 @@ function renderTabelData(items) {
           <td data-label="Tanggal Pesanan">${escapeHtml(it.waktuPesanan)}</td>
           <td data-label="Tanggal Dana Cair">${escapeHtml(it.tanggalDilepaskan)}</td>
           <td class="kolom-nama" data-label="Nama Produk" title="${escapeHtml(it.namaProduk)}">${escapeHtml(potongNama(it.namaProduk))}</td>
-          <td data-label="ID Produk">${escapeHtml(it.idProduk)}</td>
-          <td class="kolom-jumlah" data-label="Jumlah">${selJumlah}</td>
-          <td class="kolom-total" data-label="Total Penghasilan">${totalPenghasilanTampil}</td>
-          <td class="kolom-hpp" data-label="Harga Modal (HPP)">${selHpp}</td>
-          <td class="${kelasUntung}" data-label="Untung">${untungTampil}</td>
-          <td class="${kelasUntung}" data-label="Margin %">${marginTampil}</td>
+          <td class="kolom-id" data-label="ID Produk">${escapeHtml(it.idProduk)}</td>
+          <td class="kolom-jumlah kolom-tengah" data-label="Jumlah">${selJumlah}</td>
+          <td class="kolom-total kolom-angka" data-label="Total Penghasilan">${totalPenghasilanTampil}</td>
+          <td class="kolom-hpp kolom-angka" data-label="Harga Modal (HPP)">${selHpp}</td>
+          <td class="${kelasUntung} kolom-angka" data-label="Untung">${untungTampil}</td>
+          <td class="${kelasUntung} kolom-angka" data-label="Margin %">${marginTampil}</td>
         </tr>`;
     })
     .join('');
@@ -514,9 +565,9 @@ function renderTabelHpp() {
 
       return `
         <tr class="${punyaHpp ? '' : 'baris-peringatan'}">
-          <td data-label="ID Produk">${escapeHtml(r.id_produk)}</td>
+          <td class="kolom-id" data-label="ID Produk">${escapeHtml(r.id_produk)}</td>
           <td class="kolom-nama" data-label="Nama Produk" title="${escapeHtml(r.nama_produk || '')}">${r.nama_produk ? escapeHtml(potongNama(r.nama_produk)) : '-'}</td>
-          <td class="kolom-hpp" data-label="Harga Modal (HPP)">${selHpp}</td>
+          <td class="kolom-hpp kolom-angka" data-label="Harga Modal (HPP)">${selHpp}</td>
           <td data-label="Terakhir Diubah">${r.updated_at ? escapeHtml(r.updated_at) : '<span class="teks-redup">Belum diisi</span>'}</td>
           <td data-label="Oleh">${escapeHtml(r.updated_by || '-')}</td>
           <td data-label="">${punyaHpp ? `<button class="tombol tombol-hapus" data-hapus="${escapeHtml(r.id_produk)}">Hapus</button>` : ''}</td>
@@ -591,9 +642,14 @@ tombolTambahHpp.addEventListener('click', async () => {
 });
 
 // ====== Impor CSV ======
-inputCsvHpp.addEventListener('change', () => {
-  tombolImporCsv.disabled = !inputCsvHpp.files.length;
-});
+const namaFileCsv = document.getElementById('namaFileCsv');
+function perbaruiNamaFileCsv() {
+  const ada = inputCsvHpp.files.length > 0;
+  tombolImporCsv.disabled = !ada;
+  namaFileCsv.textContent = ada ? inputCsvHpp.files[0].name : 'Belum ada file';
+  namaFileCsv.classList.toggle('terisi', ada);
+}
+inputCsvHpp.addEventListener('change', perbaruiNamaFileCsv);
 
 tombolImporCsv.addEventListener('click', async () => {
   if (!inputCsvHpp.files.length) return;
@@ -615,6 +671,7 @@ tombolImporCsv.addEventListener('click', async () => {
       (body.dilewati ? `, ${body.dilewati} baris dilewati (data tidak valid).` : '.');
     pesanSuksesCsv.classList.remove('tersembunyi');
     inputCsvHpp.value = '';
+    perbaruiNamaFileCsv();
     await muatDaftarHpp();
     hitungUlangDanTampilkanUlang();
   } catch (err) {

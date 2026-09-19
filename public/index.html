@@ -32,33 +32,99 @@
 <!-- ====== APLIKASI UTAMA ====== -->
 <div id="aplikasiUtama" class="tersembunyi">
   <header class="header-app">
-    <h1>
-      <svg class="ikon" viewBox="0 0 24 24"><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24L4 3a1 1 0 0 0-1 1l.24 5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.82Z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>
-      Kalkulator Untung Toko Shopee
-    </h1>
-    <div class="info-user">
-      <span id="labelUsername"></span>
-      <button id="tombolLogout" class="tombol tombol-kecil">Keluar</button>
+    <div class="header-isi">
+      <h1>
+        <span class="logo-kotak"><svg class="ikon" viewBox="0 0 24 24"><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24L4 3a1 1 0 0 0-1 1l.24 5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.82Z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg></span>
+        HAPPY SHOP
+      </h1>
+      <nav class="nav-atas">
+        <button class="nav-item aktif" data-page="halamanDashboard">
+          <svg class="ikon" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+          Dashboard
+        </button>
+        <button class="nav-item" data-page="halamanKalkulator">
+          <svg class="ikon" viewBox="0 0 24 24"><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24L4 3a1 1 0 0 0-1 1l.24 5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.82Z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>
+          Kalkulator Margin
+        </button>
+        <button class="nav-item" disabled title="Segera hadir.">
+          <svg class="ikon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Segera Hadir
+        </button>
+      </nav>
+      <div class="info-user">
+        <span class="avatar" id="avatarUser"></span>
+        <span id="labelUsername"></span>
+        <button id="tombolLogout" class="tombol tombol-kecil">Keluar</button>
+      </div>
     </div>
   </header>
 
-  <nav class="tab-nav">
-    <button class="tab-tombol aktif" data-tab="tabUpload">
-      <svg class="ikon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
-      Unggah &amp; Lihat Data
-    </button>
-    <button class="tab-tombol" data-tab="tabHpp">
-      <svg class="ikon" viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
-      Atur Harga Modal (HPP)
-    </button>
-  </nav>
+  <div class="app-shell">
 
-  <!-- ---------- TAB 1: UPLOAD & LIHAT DATA ---------- -->
-  <section id="tabUpload" class="tab-isi aktif">
+    <main class="konten-utama">
+
+      <!-- ---------- DASHBOARD ---------- -->
+      <section id="halamanDashboard" class="halaman aktif">
+        <div class="judul-halaman">
+          <h1>Dashboard</h1>
+          <p class="keterangan">Ringkasan cepat toko HAPPY SHOP.</p>
+        </div>
+        <div class="grid-widget">
+          <div class="widget-kartu widget-aktif">
+            <div class="widget-kartu-atas">
+              <span class="widget-ikon">
+                <svg class="ikon" viewBox="0 0 24 24"><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24L4 3a1 1 0 0 0-1 1l.24 5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.82Z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>
+              </span>
+              <h3>Kalkulator Margin</h3>
+            </div>
+            <div id="widgetKalkulatorKosong">
+              <p class="keterangan">Belum ada file yang diunggah. Unggah file Income dari Shopee untuk melihat untung bersih di sini.</p>
+            </div>
+            <div id="widgetKalkulatorIsi" class="tersembunyi widget-statistik-baris">
+              <div>
+                <div class="label-ringkasan">Total Untung</div>
+                <div class="angka-ringkasan" id="widgetUntung">Rp 0</div>
+              </div>
+              <div>
+                <div class="label-ringkasan">Margin Rata-rata</div>
+                <div class="angka-ringkasan" id="widgetMargin">-</div>
+              </div>
+            </div>
+            <button type="button" class="tombol tombol-utama tombol-lebar" data-buka-halaman="halamanKalkulator">Buka Kalkulator</button>
+          </div>
+
+          <div class="widget-kartu widget-segera">
+            <div class="widget-kartu-atas">
+              <span class="widget-ikon">
+                <svg class="ikon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </span>
+              <h3>Segera Hadir</h3>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- KALKULATOR MARGIN (Unggah & Lihat Data + Harga Modal (HPP) sebagai sub-tab) ---------- -->
+      <section id="halamanKalkulator" class="halaman">
+    <nav class="pill-filter-row subtab-row">
+      <button class="pill-filter aktif" data-subtab="subUpload">Unggah &amp; Lihat Data</button>
+      <button class="pill-filter" data-subtab="subHpp">Atur Harga Modal (HPP)</button>
+    </nav>
+
+    <div id="subUpload" class="subtab-isi aktif">
     <div class="kartu">
-      <h2>1. Unggah File Excel dari Shopee</h2>
+      <h2><span class="langkah">1</span> Unggah File Excel dari Shopee</h2>
       <div class="baris-unggah">
-        <input type="file" id="inputFile" accept=".xlsx,.xls">
+        <label class="dropzone" id="dropzoneFile" for="inputFile">
+          <span class="widget-ikon">
+            <svg class="ikon" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="m9 15 3-3 3 3"/></svg>
+          </span>
+          <span class="dropzone-teks">
+            <span class="dropzone-judul" id="namaFile">Pilih file Income (.xlsx) dari Shopee</span>
+            <span class="dropzone-sub">Klik di sini, atau seret file ke area ini</span>
+          </span>
+          <input type="file" id="inputFile" accept=".xlsx,.xls">
+        </label>
         <button id="tombolProses" class="tombol tombol-utama" disabled>Proses File</button>
       </div>
       <p id="pesanErrorUpload" class="pesan-error tersembunyi"></p>
@@ -70,29 +136,34 @@
         <div class="kartu-ringkasan">
           <div class="label-ringkasan">Total Pendapatan</div>
           <div class="angka-ringkasan" id="ringkasanPendapatan">Rp 0</div>
+          <div class="keterangan-ringkasan">Penghasilan bersih dari Shopee</div>
         </div>
         <div class="kartu-ringkasan kartu-utama">
           <div class="label-ringkasan">Total Untung</div>
           <div class="angka-ringkasan" id="ringkasanUntung">Rp 0</div>
+          <div class="keterangan-ringkasan">Setelah dikurangi harga modal</div>
         </div>
         <div class="kartu-ringkasan">
           <div class="label-ringkasan">Rata-rata Margin</div>
           <div class="angka-ringkasan" id="ringkasanMargin">-</div>
+          <div class="keterangan-ringkasan">Untung &divide; pendapatan</div>
         </div>
         <div class="kartu-ringkasan kartu-peringatan" id="kartuBelumHpp">
           <div class="label-ringkasan">Belum Ada Harga Modal</div>
           <div class="angka-ringkasan" id="ringkasanBelumHpp">0 produk</div>
+          <div class="keterangan-ringkasan"><span class="titik titik-kuning"></span>Isi di baris kuning pada tabel</div>
         </div>
         <div class="kartu-ringkasan kartu-netral tersembunyi" id="kartuDikembalikan">
           <div class="label-ringkasan">Pesanan Dikembalikan</div>
           <div class="angka-ringkasan" id="ringkasanDikembalikan">0 pesanan</div>
+          <div class="keterangan-ringkasan">Tidak dihitung untung/rugi</div>
         </div>
       </div>
 
       <div class="kartu">
         <div class="baris-filter">
           <div class="baris-filter-judul">
-            <h2>2. Rincian Per Produk Terjual</h2>
+            <h2><span class="langkah">2</span> Rincian Per Produk Terjual</h2>
             <span id="infoJumlahData" class="info-jumlah-data"></span>
           </div>
           <div class="input-ikon">
@@ -103,22 +174,22 @@
         <div class="tabel-scroll">
           <table id="tabelData">
             <colgroup>
-              <col style="width:11%"><col style="width:8%"><col style="width:8%">
-              <col style="width:21%"><col style="width:8%"><col style="width:6%">
-              <col style="width:9%"><col style="width:11%"><col style="width:9%"><col style="width:6%">
+              <col style="width:13%"><col style="width:8%"><col style="width:8%">
+              <col style="width:18%"><col style="width:9%"><col style="width:6%">
+              <col style="width:10%"><col style="width:12%"><col style="width:9%"><col style="width:7%">
             </colgroup>
             <thead>
               <tr>
                 <th class="th-urut" data-urut="noPesanan">No. Pesanan</th>
-                <th class="th-urut" data-urut="waktuPesanan">Tanggal Pesanan</th>
-                <th class="th-urut" data-urut="tanggalDilepaskan">Tanggal Dana Cair</th>
+                <th class="th-urut" data-urut="waktuPesanan">Tgl Pesanan</th>
+                <th class="th-urut" data-urut="tanggalDilepaskan">Dana Cair</th>
                 <th class="th-urut" data-urut="namaProduk">Nama Produk</th>
                 <th class="th-urut" data-urut="idProduk">ID Produk</th>
-                <th class="th-urut" data-urut="jumlah">Jumlah</th>
-                <th class="th-urut" data-urut="totalPenghasilan">Total Penghasilan</th>
-                <th class="th-urut" data-urut="hpp">Harga Modal (HPP)</th>
-                <th class="th-urut" data-urut="untung">Untung</th>
-                <th class="th-urut" data-urut="marginPersen">Margin %</th>
+                <th class="th-urut kolom-tengah" data-urut="jumlah" title="Jumlah pcs">Jumlah</th>
+                <th class="th-urut kolom-angka" data-urut="totalPenghasilan" title="Total Penghasilan">Penghasilan</th>
+                <th class="th-urut kolom-angka" data-urut="hpp" title="Harga Modal (HPP)">HPP</th>
+                <th class="th-urut kolom-angka" data-urut="untung">Untung</th>
+                <th class="th-urut kolom-angka" data-urut="marginPersen">Margin %</th>
               </tr>
             </thead>
             <tbody id="isiTabelData"></tbody>
@@ -126,10 +197,9 @@
         </div>
       </div>
     </div>
-  </section>
+    </div>
 
-  <!-- ---------- TAB 2: ATUR HPP ---------- -->
-  <section id="tabHpp" class="tab-isi">
+    <div id="subHpp" class="subtab-isi">
     <div class="kartu">
       <h2>Impor / Ekspor CSV</h2>
       <div class="grid-impor-ekspor">
@@ -139,7 +209,14 @@
             Impor
           </h3>
           <div class="baris-filter">
-            <input type="file" id="inputCsvHpp" accept=".csv">
+            <label class="pilih-file" for="inputCsvHpp">
+              <span class="tombol tombol-kecil">
+                <svg class="ikon" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Pilih File CSV
+              </span>
+              <span class="nama-file" id="namaFileCsv">Belum ada file</span>
+              <input type="file" id="inputCsvHpp" accept=".csv">
+            </label>
             <button id="tombolImporCsv" class="tombol tombol-utama" disabled>Impor CSV</button>
           </div>
           <p id="pesanLoadingCsv" class="pesan-loading tersembunyi"><span class="spinner"></span> Sedang mengimpor...</p>
@@ -186,14 +263,14 @@
       <div class="tabel-scroll">
         <table id="tabelHpp">
           <colgroup>
-            <col style="width:13%"><col style="width:37%"><col style="width:13%">
-            <col style="width:17%"><col style="width:10%"><col style="width:10%">
+            <col style="width:13%"><col style="width:39%"><col style="width:14%">
+            <col style="width:16%"><col style="width:9%"><col style="width:9%">
           </colgroup>
           <thead>
             <tr>
               <th>ID Produk</th>
               <th>Nama Produk</th>
-              <th>Harga Modal (HPP)</th>
+              <th class="kolom-angka">Harga Modal (HPP)</th>
               <th>Terakhir Diubah</th>
               <th>Oleh</th>
               <th></th>
@@ -203,7 +280,11 @@
         </table>
       </div>
     </div>
-  </section>
+    </div>
+      </section>
+
+    </main>
+  </div>
 </div>
 
 <script src="app.js"></script>

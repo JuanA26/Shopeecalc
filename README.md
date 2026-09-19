@@ -1,5 +1,7 @@
 # Kalkulator Margin Shopee (Shopee Margin Calc)
 
+**Live (server version):** https://shopee-margin-calc.onrender.com — this is the version actively used and developed; see below.
+
 This repo has **two versions** of the same calculator — pick whichever matches how you want to use it:
 
 | | [`docs/`](docs/) — static version | [webapp root](.) — server version |
@@ -122,10 +124,13 @@ From then on, `git push` to your repo auto-deploys the new version — no manual
 
 ## 3. Day-to-day usage (for the person using the site)
 
-1. Log in.
-2. Tab **"Unggah & Lihat Data"**: choose the Excel file downloaded from Shopee, click **"Proses File"**. A table appears with every sold item and its margin.
+1. Log in. You land on a **Dashboard** — a row of cards, one of which is "Kalkulator Margin". Everything else there is placeholder ("Segera Hadir") for features not built yet (statistics, automatic order sync, settings).
+2. Click **"Buka Kalkulator"** on that card (or "Kalkulator Margin" in the nav bar at the top) to get to the calculator itself, which has two tabs:
+   - **"Unggah & Lihat Data"**: choose the Excel file downloaded from Shopee, click **"Proses File"**. A table appears with every sold item and its margin.
+   - **"Atur Harga Modal (HPP)"**: view/edit/add the cost price for any product by its Product ID. This list is permanent and shared by everyone who logs in. You can also **bulk import/export the whole HPP list as a CSV file** (e.g. to migrate from the static version, or keep a backup) — buttons for both are in that tab.
 3. Rows highlighted in yellow mean that product doesn't have a HPP yet — you can type it right into that row (press Enter to save), or go to the HPP tab.
-4. Tab **"Atur Harga Modal (HPP)"**: view/edit/add the cost price for any product by its Product ID. This list is permanent and shared by everyone who logs in.
+4. Click any column header (No. Pesanan, Jumlah, Untung, Margin %, etc.) to sort the table by that column — click again to reverse the order.
+5. **Jumlah (pcs) column:** Shopee's export doesn't always tell you how many units a row represents — when someone buys several of the same product in one order, Shopee sometimes bundles them into a single row. The app auto-detects this from price patterns in the file and multiplies HPP accordingly, but you can always correct the number yourself by typing directly into the "Jumlah" box — a "Reset" link appears if you want to go back to the auto-detected value.
 
 ---
 
@@ -133,9 +138,12 @@ From then on, `git push` to your repo auto-deploys the new version — no manual
 
 ```
 webapp/
-  server.js         Express server: auth, HPP API, upload/parse endpoint
-  db.js             SQLite setup (users + product_hpp tables)
-  parseExcel.js     Reads the Shopee "Penghasilan" sheet into clean rows
+  server.js         Express server: auth, HPP API (incl. CSV import/export), upload/parse endpoint,
+                     manual "Jumlah" (pcs) override API
+  db.js             SQLite setup (users, product_hpp, order_item_jumlah tables)
+  parseExcel.js     Reads the Shopee "Penghasilan" sheet into clean rows, incl. auto-detecting
+                     when a row represents more than 1 pcs of the same product (no explicit
+                     quantity column exists in Shopee's export — see code comments for the method)
   scripts/add-user.js   CLI to create/update login accounts
   public/           Frontend (Bahasa Indonesia UI): index.html, style.css, app.js
   data/app.db       SQLite database (gitignored — back this up, don't commit it)

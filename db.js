@@ -26,6 +26,27 @@ db.exec(`
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_by TEXT
   );
+
+  -- Koreksi manual jumlah pcs per baris pesanan, dipakai untuk menimpa tebakan
+  -- otomatis dari hitungJumlahPcsPerBaris() di parseExcel.js kalau ternyata salah.
+  -- Beda dengan product_hpp (berlaku untuk SEMUA pesanan produk itu), ini spesifik
+  -- per baris karena jumlah pcs memang beda-beda tiap transaksi, bukan sifat tetap
+  -- dari produknya.
+  --
+  -- Kuncinya HARUS 3 kolom (order_sn + id_produk + harga_produk), bukan cuma 2:
+  -- satu pesanan bisa punya lebih dari satu baris Sku untuk produk yang SAMA
+  -- (persis kasus yang sedang dikoreksi fitur ini) — order_sn+id_produk saja tidak
+  -- cukup unik untuk baris seperti itu, tapi harga_produk baris tsb (Rupiah, dari
+  -- kolom "Harga Produk" Shopee) selalu beda antar baris dalam kasus ini.
+  CREATE TABLE IF NOT EXISTS order_item_jumlah (
+    order_sn TEXT NOT NULL,
+    id_produk TEXT NOT NULL,
+    harga_produk REAL NOT NULL,
+    jumlah INTEGER NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_by TEXT,
+    PRIMARY KEY (order_sn, id_produk, harga_produk)
+  );
 `);
 
 module.exports = db;

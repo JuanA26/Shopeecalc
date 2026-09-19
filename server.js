@@ -163,6 +163,155 @@ app.delete('/api/hpp/:idProduk', requireLogin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- Rute koreksi manual "Jumlah" (pcs) per baris pesanan ----------
+// Menimpa tebakan otomatis dari hitungJumlahPcsPerBaris() (lihat parseExcel.js)
+// untuk satu baris tertentu. Kuncinya order_sn + id_produk + hargaProduk (bukan
+// cuma order_sn + id_produk) karena satu pesanan bisa punya lebih dari satu baris
+// Sku untuk produk yang SAMA — hargaProduk baris itulah yang membedakannya.
+app.put('/api/jumlah/:orderSn/:idProduk/:hargaProduk', requireLogin, (req, res) => {
+  const orderSn = String(req.params.orderSn || '').trim();
+  const idProduk = String(req.params.idProduk || '').trim();
+  const hargaProduk = Number(req.params.hargaProduk);
+  const jumlahNum = Number(req.body && req.body.jumlah);
+
+  if (!orderSn || !idProduk) return res.status(400).json({ error: 'No. Pesanan dan ID Produk wajib diisi.' });
+  if (!Number.isInteger(jumlahNum) || jumlahNum < 1) {
+    return res.status(400).json({ error: 'Jumlah harus berupa bilangan bulat, minimal 1.' });
+  }
+
+  db.prepare(
+    `INSERT INTO order_item_jumlah (order_sn, id_produk, harga_produk, jumlah, updated_at, updated_by)
+     VALUES (?, ?, ?, ?, datetime('now'), ?)
+     ON CONFLICT(order_sn, id_produk, harga_produk) DO UPDATE SET
+       jumlah = excluded.jumlah,
+       updated_at = excluded.updated_at,
+       updated_by = excluded.updated_by`
+  ).run(orderSn, idProduk, hargaProduk, jumlahNum, req.session.username);
+
+  res.json({ ok: true, orderSn, idProduk, hargaProduk, jumlah: jumlahNum });
+});
+
+// Hapus koreksi manual — baris ini kembali memakai tebakan otomatis lagi.
+app.delete('/api/jumlah/:orderSn/:idProduk/:hargaProduk', requireLogin, (req, res) => {
+  const orderSn = String(req.params.orderSn || '').trim();
+  const idProduk = String(req.params.idProduk || '').trim();
+  const hargaProduk = Number(req.params.hargaProduk);
+  db.prepare(
+    'DELETE FROM order_item_jumlah WHERE order_sn = ? AND id_produk = ? AND harga_produk = ?'
+  ).run(orderSn, idProduk, hargaProduk);
+  res.json({ ok: true });
+});
+
+// Bungkus satu nilai jadi field CSV yang aman (tanda kutip kalau perlu, sesuai
+// format CSV standar) — dipakai saat mengekspor.
+function csvField(nilai) {
+  const teks = String(nilai ?? '');
+  if (/[",\n\r]/.test(teks)) {
+    return '"' + teks.replace(/"/g, '""') + '"';
+  }
+  return teks;
+}
+
+// Ekspor semua data HPP jadi file CSV — untuk cadangan/backup atau kalau perlu
+// dipindah/diperiksa di luar aplikasi (mis. dibuka di Excel).
+app.get('/api/hpp/export-csv', requireLogin, (req, res) => {
+  const rows = db.prepare('SELECT * FROM product_hpp ORDER BY id_produk').all();
+
+  const header = ['ID Produk', 'Nama Produk', 'Harga Modal (HPP)', 'Terakhir Diubah'];
+  const baris = rows.map((r) =>
+    [r.id_produk, r.nama_produk || '', r.hpp, r.updated_at].map(csvField).join(',')
+  );
+  const csv = '﻿' + [header.join(','), ...baris].join('\r\n') + '\r\n';
+
+  const tanggal = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="harga-modal-shopee-${tanggal}.csv"`);
+  res.send(csv);
+});
+
+// Baca satu baris CSV yang mungkin berisi field bertanda kutip (mendukung koma
+// di dalam nama produk yang dibungkus tanda kutip, sesuai format CSV standar).
+function parseCsvLine(line) {
+  const hasil = [];
+  let field = '';
+  let dalamKutip = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (dalamKutip) {
+      if (c === '"' && line[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') { dalamKutip = false; }
+      else { field += c; }
+    } else if (c === '"') {
+      dalamKutip = true;
+    } else if (c === ',') {
+      hasil.push(field);
+      field = '';
+    } else {
+      field += c;
+    }
+  }
+  hasil.push(field);
+  return hasil;
+}
+
+// Impor massal dari file CSV dengan format yang sama dengan yang diunduh dari
+// versi statis (kolom: ID Produk, Nama Produk, Harga Modal (HPP), ...).
+// Berguna untuk memindahkan data HPP yang sudah ada ke versi server ini.
+app.post('/api/hpp/import-csv', requireLogin, upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'Tidak ada file yang diunggah.' });
+  }
+
+  const teks = req.file.buffer.toString('utf8').replace(/^﻿/, '');
+  const baris = teks.split(/\r\n|\r|\n/).filter((b) => b.trim() !== '');
+  if (baris.length < 2) {
+    return res.status(400).json({ error: 'File CSV kosong atau tidak punya baris data.' });
+  }
+
+  const header = parseCsvLine(baris[0]).map((h) => h.trim().toLowerCase());
+  const idxId = header.findIndex((h) => h.includes('id produk'));
+  const idxNama = header.findIndex((h) => h.includes('nama produk'));
+  const idxHpp = header.findIndex((h) => h.includes('harga modal'));
+
+  if (idxId === -1 || idxHpp === -1) {
+    return res.status(400).json({
+      error: 'Format CSV tidak dikenali. Pastikan ada kolom "ID Produk" dan "Harga Modal (HPP)".',
+    });
+  }
+
+  const upsert = db.prepare(
+    `INSERT INTO product_hpp (id_produk, nama_produk, hpp, updated_at, updated_by)
+     VALUES (?, ?, ?, datetime('now'), ?)
+     ON CONFLICT(id_produk) DO UPDATE SET
+       hpp = excluded.hpp,
+       nama_produk = COALESCE(NULLIF(excluded.nama_produk, ''), product_hpp.nama_produk),
+       updated_at = excluded.updated_at,
+       updated_by = excluded.updated_by`
+  );
+
+  let ditambahkan = 0;
+  let diperbarui = 0;
+  let dilewati = 0;
+
+  for (let i = 1; i < baris.length; i++) {
+    const kolom = parseCsvLine(baris[i]);
+    const idProduk = String(kolom[idxId] || '').trim();
+    const namaProduk = idxNama !== -1 ? String(kolom[idxNama] || '').trim() : '';
+    const hppNum = Number(kolom[idxHpp]);
+
+    if (!idProduk || !Number.isFinite(hppNum) || hppNum < 0) {
+      dilewati += 1;
+      continue;
+    }
+
+    const sudahAda = db.prepare('SELECT 1 FROM product_hpp WHERE id_produk = ?').get(idProduk);
+    upsert.run(idProduk, namaProduk, hppNum, req.session.username);
+    if (sudahAda) diperbarui += 1; else ditambahkan += 1;
+  }
+
+  res.json({ ok: true, ditambahkan, diperbarui, dilewati });
+});
+
 // ---------- Rute Upload & Hitung Margin ----------
 app.post('/api/upload', requireLogin, upload.single('file'), (req, res) => {
   if (!req.file) {
@@ -184,6 +333,15 @@ app.post('/api/upload', requireLogin, upload.single('file'), (req, res) => {
   const hppRows = db.prepare('SELECT id_produk, hpp FROM product_hpp').all();
   const hppMap = new Map(hppRows.map((r) => [r.id_produk, r.hpp]));
 
+  // Ambil semua koreksi manual "Jumlah" (pcs) yang pernah disimpan, kunci per baris
+  // (No. Pesanan + ID Produk + Harga Produk baris itu — lihat catatan skema di
+  // db.js soal kenapa perlu 3 kolom) — kalau ada, ini menimpa tebakan otomatis
+  // dari parseExcel.js untuk baris itu saja.
+  const jumlahRows = db.prepare('SELECT order_sn, id_produk, harga_produk, jumlah FROM order_item_jumlah').all();
+  const jumlahOverrideMap = new Map(
+    jumlahRows.map((r) => [`${r.order_sn}|${r.id_produk}|${r.harga_produk}`, r.jumlah])
+  );
+
   let totalPenghasilan = 0;
   let totalHpp = 0;
   let totalUntung = 0;
@@ -194,6 +352,14 @@ app.post('/api/upload', requireLogin, upload.single('file'), (req, res) => {
     const hpp = hppMap.has(item.idProduk) ? hppMap.get(item.idProduk) : null;
     const punyaHpp = hpp !== null;
 
+    // Jumlah pcs baris ini: pakai koreksi manual kalau pernah disimpan untuk
+    // pesanan+produk ini, kalau tidak pakai tebakan otomatis dari parseExcel.js.
+    // jumlahOtomatis tetap disertakan di respons supaya UI bisa menunjukkan kalau
+    // suatu baris sedang dikoreksi manual (beda dari tebakan aslinya).
+    const jumlahOtomatis = item.jumlah;
+    const overrideJumlah = jumlahOverrideMap.get(`${item.noPesanan}|${item.idProduk}|${item.hargaProduk}`);
+    const jumlah = overrideJumlah !== undefined ? overrideJumlah : jumlahOtomatis;
+
     totalPenghasilan += item.totalPenghasilan;
 
     // Pesanan yang dikembalikan/di-refund: barangnya kembali ke penjual (proses retur
@@ -202,15 +368,17 @@ app.post('/api/upload', requireLogin, upload.single('file'), (req, res) => {
     // dihitung ke Total Untung/HPP, dan tidak perlu diminta isi HPP juga.
     if (item.dikembalikan) {
       jumlahDikembalikan += 1;
-      return { ...item, hpp, untung: 0, marginPersen: null };
+      return { ...item, jumlah, jumlahOtomatis, hpp, untung: 0, marginPersen: null };
     }
 
-    const untung = punyaHpp ? item.totalPenghasilan - hpp : null;
+    // HPP dikali jumlah pcs dulu sebelum dikurangkan — HPP yang disimpan selalu per 1 pcs.
+    const hppTotal = hpp !== null ? hpp * jumlah : null;
+    const untung = punyaHpp ? item.totalPenghasilan - hppTotal : null;
     const marginPersen =
       punyaHpp && item.totalPenghasilan !== 0 ? (untung / item.totalPenghasilan) * 100 : null;
 
     if (punyaHpp) {
-      totalHpp += hpp;
+      totalHpp += hppTotal;
       totalUntung += untung;
     } else {
       jumlahBelumAdaHpp += 1;
@@ -218,7 +386,10 @@ app.post('/api/upload', requireLogin, upload.single('file'), (req, res) => {
 
     return {
       ...item,
+      jumlah,
+      jumlahOtomatis,
       hpp,
+      hppTotal,
       untung,
       marginPersen,
     };

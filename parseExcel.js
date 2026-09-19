@@ -29,6 +29,35 @@ function excelSerialToDateString(value) {
   return String(value);
 }
 
+// File "Income" dari Shopee TIDAK punya kolom jumlah pcs eksplisit. Tapi kalau
+// pembeli beli >1 pcs produk yang sama dalam satu pesanan, kadang Shopee
+// menggabungkannya ke satu baris Sku dengan "Harga Produk" & "Total Penghasilan"
+// yang sudah dikali jumlah pcs-nya (bukan 1 baris = 1 pcs seperti baris lainnya) —
+// kalau tidak dikoreksi, HPP cuma dikurangi 1x padahal harusnya dikali jumlah pcs,
+// sehingga Untung jadi jauh lebih besar dari yang sebenarnya.
+//
+// Caranya mendeteksi: harga jual 1 pcs suatu produk biasanya konsisten di seluruh
+// file (dari baris-baris lain yang murni 1 pcs). Jadi kita ambil "Harga Produk"
+// TERKECIL yang pernah muncul untuk tiap ID Produk sebagai patokan harga 1 pcs,
+// lalu baris lain dibagi dengan patokan itu untuk menebak jumlah pcs-nya
+// (dibulatkan ke bilangan bulat terdekat). Sudah diverifikasi manual terhadap
+// data asli: pola ini konsisten (rasio harga antar-baris produk yang sama selalu
+// kelipatan bulat yang bersih, dan patokan harga 1 pcs-nya cocok dengan pesanan
+// lain yang murni 1 pcs untuk produk yang sama).
+function hitungJumlahPcsPerBaris(items) {
+  const hargaSatuanMinimum = new Map();
+  for (const it of items) {
+    if (it.hargaProduk > 0) {
+      const skrg = hargaSatuanMinimum.get(it.idProduk);
+      if (skrg === undefined || it.hargaProduk < skrg) hargaSatuanMinimum.set(it.idProduk, it.hargaProduk);
+    }
+  }
+  for (const it of items) {
+    const hargaSatuan = hargaSatuanMinimum.get(it.idProduk);
+    it.jumlah = hargaSatuan ? Math.max(1, Math.round(it.hargaProduk / hargaSatuan)) : 1;
+  }
+}
+
 function parseShopeeIncomeFile(buffer) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false });
 
@@ -116,6 +145,8 @@ function parseShopeeIncomeFile(buffer) {
     err.userFacing = true;
     throw err;
   }
+
+  hitungJumlahPcsPerBaris(items);
 
   return items;
 }

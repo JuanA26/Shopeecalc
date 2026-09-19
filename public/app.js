@@ -36,6 +36,8 @@ async function apiFetch(url, options = {}) {
 // ====== State ======
 let dataHasilUpload = null; // { items, ringkasan }
 let daftarHpp = [];         // dari GET /api/hpp
+let sortKolom = null;       // nama kolom yang sedang diurutkan di tabel Data, mis. "marginPersen"
+let sortArah = 1;           // 1 = naik (A-Z / kecil-besar), -1 = turun
 
 // ====== Elemen ======
 const halamanLogin = document.getElementById('halamanLogin');
@@ -52,6 +54,7 @@ const pesanLoading = document.getElementById('pesanLoading');
 const areaRingkasan = document.getElementById('areaRingkasan');
 const inputCari = document.getElementById('inputCari');
 const isiTabelData = document.getElementById('isiTabelData');
+const infoJumlahData = document.getElementById('infoJumlahData');
 
 const inputCariHpp = document.getElementById('inputCariHpp');
 const hppBaruId = document.getElementById('hppBaruId');
@@ -60,6 +63,12 @@ const hppBaruNilai = document.getElementById('hppBaruNilai');
 const tombolTambahHpp = document.getElementById('tombolTambahHpp');
 const pesanErrorHpp = document.getElementById('pesanErrorHpp');
 const isiTabelHpp = document.getElementById('isiTabelHpp');
+
+const inputCsvHpp = document.getElementById('inputCsvHpp');
+const tombolImporCsv = document.getElementById('tombolImporCsv');
+const pesanLoadingCsv = document.getElementById('pesanLoadingCsv');
+const pesanErrorCsv = document.getElementById('pesanErrorCsv');
+const pesanSuksesCsv = document.getElementById('pesanSuksesCsv');
 
 // ====== Login / Sesi ======
 async function cekSesi() {
@@ -79,7 +88,7 @@ function tampilkanLogin() {
 function tampilkanAplikasi(username) {
   halamanLogin.classList.add('tersembunyi');
   aplikasiUtama.classList.remove('tersembunyi');
-  labelUsername.textContent = `👤 ${username}`;
+  labelUsername.textContent = username;
   muatDaftarHpp();
 }
 
@@ -156,16 +165,65 @@ function renderRingkasan(r) {
   document.getElementById('kartuDikembalikan').classList.toggle('tersembunyi', !r.jumlahDikembalikan);
 }
 
+// Nilai satu baris untuk kolom tertentu, dipakai buat urutkan tabel Data.
+// Baris yang "dikembalikan" untungnya dianggap 0 (sama seperti yang ditampilkan),
+// dan HPP yang belum diisi (null) selalu ditaruh paling akhir apa pun arah urutannya
+// — supaya "belum diisi" tidak nyampur di tengah angka yang sudah lengkap.
+function nilaiUntukUrut(it, kolom) {
+  switch (kolom) {
+    case 'jumlah': return it.jumlah;
+    case 'totalPenghasilan': return it.totalPenghasilan;
+    case 'hpp': return it.hpp === null ? null : (it.hppTotal ?? it.hpp);
+    case 'untung': return it.dikembalikan ? 0 : it.untung;
+    case 'marginPersen': return it.dikembalikan ? 0 : it.marginPersen;
+    default: return it[kolom];
+  }
+}
+
+function urutkanItems(items) {
+  if (!sortKolom) return items;
+  return [...items].sort((a, b) => {
+    const va = nilaiUntukUrut(a, sortKolom);
+    const vb = nilaiUntukUrut(b, sortKolom);
+    if (va === null || va === undefined) return vb === null || vb === undefined ? 0 : 1;
+    if (vb === null || vb === undefined) return -1;
+    if (typeof va === 'string' || typeof vb === 'string') {
+      return String(va).localeCompare(String(vb), 'id') * sortArah;
+    }
+    return (va - vb) * sortArah;
+  });
+}
+
+function perbaruiIndikatorUrutHeader() {
+  document.querySelectorAll('#tabelData .th-urut').forEach((th) => {
+    const aktif = th.dataset.urut === sortKolom;
+    th.classList.toggle('urut-aktif', aktif);
+    const panahLama = th.querySelector('.panah-urut');
+    if (panahLama) panahLama.remove();
+    const panah = document.createElement('span');
+    panah.className = 'panah-urut';
+    panah.textContent = aktif ? (sortArah === 1 ? '▲' : '▼') : '▲▼';
+    th.appendChild(panah);
+  });
+}
+
 function renderTabelData(items) {
   const kataKunci = inputCari.value.trim().toLowerCase();
-  const filtered = !kataKunci
-    ? items
-    : items.filter((it) =>
-        [it.noPesanan, it.namaProduk, it.idProduk].some((v) => String(v).toLowerCase().includes(kataKunci))
-      );
+  const filtered = urutkanItems(
+    !kataKunci
+      ? items
+      : items.filter((it) =>
+          [it.noPesanan, it.namaProduk, it.idProduk].some((v) => String(v).toLowerCase().includes(kataKunci))
+        )
+  );
+
+  // Total baris & total pcs yang lagi ditampilkan (ikut berubah kalau lagi dicari/difilter),
+  // supaya kelihatan langsung berapa banyak yang terjual tanpa harus menghitung manual.
+  const totalPcsTampil = filtered.reduce((jumlah, it) => jumlah + (it.jumlah || 0), 0);
+  infoJumlahData.textContent = `${filtered.length} baris · ${totalPcsTampil} pcs`;
 
   if (!filtered.length) {
-    isiTabelData.innerHTML = `<tr><td colspan="9" class="teks-redup">Tidak ada data yang cocok.</td></tr>`;
+    isiTabelData.innerHTML = `<tr><td colspan="10" class="teks-redup">Tidak ada data yang cocok.</td></tr>`;
     return;
   }
 
@@ -179,10 +237,15 @@ function renderTabelData(items) {
 
       // Pesanan yang dikembalikan tidak perlu diminta isi HPP (barangnya kembali ke
       // penjual, jadi HPP tidak relevan buat baris ini) — cukup tampilkan tanda "-".
+      // Baris yang jumlah pcs-nya >1 (lihat kolom "Jumlah"): tampilkan total HPP-nya
+      // (yang sudah dikali jumlah pcs) sebagai angka utama, dengan HPP per-pcs kecil
+      // di bawahnya supaya tetap transparan dari mana angkanya berasal.
       const selHpp = it.dikembalikan
         ? '<span class="teks-redup" title="Tidak relevan — pesanan ini dikembalikan.">-</span>'
         : punyaHpp
-        ? formatRupiah(it.hpp)
+        ? it.jumlah > 1
+          ? `${formatRupiah(it.hppTotal)}<br><span class="pill pill-abu" title="HPP per 1 pcs: ${formatRupiah(it.hpp)}, dikali jumlah pcs di kolom &quot;Jumlah&quot; sebelah kiri.">${formatRupiah(it.hpp)}/pcs</span>`
+          : formatRupiah(it.hpp)
         : `<div class="sel-hpp-cepat">
              <input type="number" class="input-hpp-cepat" placeholder="Isi HPP" min="0"
                     data-id="${escapeHtml(it.idProduk)}" data-nama="${escapeHtml(it.namaProduk)}">
@@ -190,8 +253,23 @@ function renderTabelData(items) {
                      data-id="${escapeHtml(it.idProduk)}" data-nama="${escapeHtml(it.namaProduk)}">Simpan</button>
            </div>`;
 
+      // Jumlah pcs: defaultnya 1, otomatis naik kalau baris ini terdeteksi mewakili
+      // beberapa pcs produk yang sama (lihat parseExcel.js). Selalu bisa dikoreksi
+      // manual di sini — border oranye + tombol "Reset" muncul kalau nilainya
+      // sedang beda dari tebakan otomatis, supaya jelas kapan itu koreksi manual.
+      const jumlahDiubahManual = !it.dikembalikan && it.jumlah !== it.jumlahOtomatis;
+      const selJumlah = it.dikembalikan
+        ? '<span class="teks-redup" title="Tidak relevan — pesanan ini dikembalikan.">-</span>'
+        : `<div class="sel-jumlah">
+             <input type="number" class="input-jumlah${jumlahDiubahManual ? ' diubah-manual' : ''}" min="1" step="1"
+                    value="${it.jumlah}" data-order="${escapeHtml(it.noPesanan)}" data-id="${escapeHtml(it.idProduk)}"
+                    data-harga="${it.hargaProduk}"
+                    title="Jumlah pcs pada baris ini (dipakai untuk mengalikan HPP). Tebakan otomatis: ${it.jumlahOtomatis} pcs.">
+             ${jumlahDiubahManual ? `<button type="button" class="tombol-reset-jumlah" data-order="${escapeHtml(it.noPesanan)}" data-id="${escapeHtml(it.idProduk)}" data-harga="${it.hargaProduk}">Reset ke ${it.jumlahOtomatis}</button>` : ''}
+           </div>`;
+
       const totalPenghasilanTampil = it.dikembalikan
-        ? `${formatRupiah(it.totalPenghasilan)}<span class="tag-refund" title="Pesanan ini dikembalikan / di-refund ke pembeli sebesar ${formatRupiah(it.jumlahPengembalian)} (menurut kolom &quot;Jumlah Pengembalian Dana ke Pembeli&quot; di file Shopee).">↩ Dikembalikan</span>`
+        ? `${formatRupiah(it.totalPenghasilan)}<br><span class="pill pill-kuning" title="Pesanan ini dikembalikan / di-refund ke pembeli sebesar ${formatRupiah(it.jumlahPengembalian)} (menurut kolom &quot;Jumlah Pengembalian Dana ke Pembeli&quot; di file Shopee).">Dikembalikan</span>`
         : formatRupiah(it.totalPenghasilan);
 
       const untungTampil = it.dikembalikan
@@ -206,6 +284,7 @@ function renderTabelData(items) {
           <td data-label="Tanggal Dana Cair">${escapeHtml(it.tanggalDilepaskan)}</td>
           <td class="kolom-nama" data-label="Nama Produk" title="${escapeHtml(it.namaProduk)}">${escapeHtml(potongNama(it.namaProduk))}</td>
           <td data-label="ID Produk">${escapeHtml(it.idProduk)}</td>
+          <td class="kolom-jumlah" data-label="Jumlah">${selJumlah}</td>
           <td class="kolom-total" data-label="Total Penghasilan">${totalPenghasilanTampil}</td>
           <td class="kolom-hpp" data-label="Harga Modal (HPP)">${selHpp}</td>
           <td class="${kelasUntung}" data-label="Untung">${untungTampil}</td>
@@ -228,6 +307,70 @@ function renderTabelData(items) {
       simpanHpp(input.dataset.id, input.dataset.nama, input.value);
     });
   });
+
+  // Kolom "Jumlah": simpan otomatis begitu kotaknya kehilangan fokus (blur) atau
+  // saat tekan Enter — sama seperti pola isi HPP, tidak perlu tombol "Simpan" terpisah.
+  isiTabelData.querySelectorAll('.input-jumlah').forEach((input) => {
+    const nilaiAwal = input.value;
+    const simpanKalauBerubah = () => {
+      if (input.value !== nilaiAwal) {
+        simpanJumlah(input.dataset.order, input.dataset.id, input.dataset.harga, input.value);
+      }
+    };
+    input.addEventListener('blur', simpanKalauBerubah);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    });
+  });
+  isiTabelData.querySelectorAll('.tombol-reset-jumlah').forEach((tombol) => {
+    tombol.addEventListener('click', () => resetJumlah(tombol.dataset.order, tombol.dataset.id, tombol.dataset.harga));
+  });
+}
+
+// Baris pesanan+produk yang dituju: cocokkan lewat No. Pesanan + ID Produk + Harga
+// Produk baris itu — order_sn+id_produk saja BISA tidak unik (satu pesanan boleh
+// punya >1 baris Sku untuk produk yang sama, lihat catatan di db.js/server.js).
+function cariItemJumlah(orderSn, idProduk, hargaProduk) {
+  return dataHasilUpload.items.find(
+    (it) => it.noPesanan === orderSn && it.idProduk === idProduk && String(it.hargaProduk) === String(hargaProduk)
+  );
+}
+
+// Simpan koreksi manual jumlah pcs untuk satu baris pesanan+produk, lalu hitung
+// ulang untung/margin di tabel yang sedang tampil (tanpa perlu unggah ulang file).
+async function simpanJumlah(orderSn, idProduk, hargaProduk, nilaiMentah) {
+  const nilai = Number(nilaiMentah);
+  if (!Number.isInteger(nilai) || nilai < 1) {
+    alert('Jumlah harus berupa bilangan bulat, minimal 1.');
+    renderTabelData(dataHasilUpload.items); // kembalikan tampilan ke nilai semula
+    return;
+  }
+  try {
+    await apiFetch(
+      `/api/jumlah/${encodeURIComponent(orderSn)}/${encodeURIComponent(idProduk)}/${encodeURIComponent(hargaProduk)}`,
+      { method: 'PUT', body: JSON.stringify({ jumlah: nilai }) }
+    );
+    const item = cariItemJumlah(orderSn, idProduk, hargaProduk);
+    if (item) item.jumlah = nilai;
+    hitungUlangDanTampilkanUlang();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+// Hapus koreksi manual — baris ini kembali memakai tebakan otomatis.
+async function resetJumlah(orderSn, idProduk, hargaProduk) {
+  try {
+    await apiFetch(
+      `/api/jumlah/${encodeURIComponent(orderSn)}/${encodeURIComponent(idProduk)}/${encodeURIComponent(hargaProduk)}`,
+      { method: 'DELETE' }
+    );
+    const item = cariItemJumlah(orderSn, idProduk, hargaProduk);
+    if (item) item.jumlah = item.jumlahOtomatis;
+    hitungUlangDanTampilkanUlang();
+  } catch (err) {
+    alert(err.message);
+  }
 }
 
 // Fungsi bersama: simpan satu nilai HPP ke server, lalu refresh tabel Data & tabel HPP.
@@ -269,12 +412,15 @@ function hitungUlangDanTampilkanUlang() {
       return { ...it, hpp, untung: 0, marginPersen: null };
     }
 
-    const untung = punyaHpp ? it.totalPenghasilan - hpp : null;
+    // HPP dikali jumlah pcs (auto-terdeteksi atau hasil koreksi manual — lihat kolom
+    // "Jumlah") sebelum dikurangkan, sama seperti logika di server.js.
+    const hppTotal = punyaHpp ? hpp * it.jumlah : null;
+    const untung = punyaHpp ? it.totalPenghasilan - hppTotal : null;
     const marginPersen = punyaHpp && it.totalPenghasilan !== 0 ? (untung / it.totalPenghasilan) * 100 : null;
 
-    if (punyaHpp) { totalHpp += hpp; totalUntung += untung; } else { jumlahBelumAdaHpp += 1; }
+    if (punyaHpp) { totalHpp += hppTotal; totalUntung += untung; } else { jumlahBelumAdaHpp += 1; }
 
-    return { ...it, hpp, untung, marginPersen };
+    return { ...it, hpp, hppTotal, untung, marginPersen };
   });
 
   dataHasilUpload.ringkasan = {
@@ -292,6 +438,22 @@ function hitungUlangDanTampilkanUlang() {
 inputCari.addEventListener('input', () => {
   if (dataHasilUpload) renderTabelData(dataHasilUpload.items);
 });
+
+// Klik judul kolom untuk urutkan tabel Data — klik lagi di kolom yang sama untuk
+// membalik arahnya (naik/turun), klik kolom lain untuk pindah urutan ke situ.
+document.querySelectorAll('#tabelData .th-urut').forEach((th) => {
+  th.addEventListener('click', () => {
+    if (sortKolom === th.dataset.urut) {
+      sortArah *= -1;
+    } else {
+      sortKolom = th.dataset.urut;
+      sortArah = 1;
+    }
+    perbaruiIndikatorUrutHeader();
+    if (dataHasilUpload) renderTabelData(dataHasilUpload.items);
+  });
+});
+perbaruiIndikatorUrutHeader();
 
 // ====== Tab HPP ======
 async function muatDaftarHpp() {
@@ -323,12 +485,17 @@ function gabunganProdukUntukTabelHpp() {
   return [...belumPunyaHpp, ...daftarHpp];
 }
 
+let filterHpp = 'semua'; // 'semua' | 'belum' | 'sudah'
+
 function renderTabelHpp() {
   const kataKunci = inputCariHpp.value.trim().toLowerCase();
   const semua = gabunganProdukUntukTabelHpp();
-  const filtered = !kataKunci
+  let filtered = !kataKunci
     ? semua
     : semua.filter((r) => [r.id_produk, r.nama_produk].some((v) => String(v).toLowerCase().includes(kataKunci)));
+
+  if (filterHpp === 'belum') filtered = filtered.filter((r) => r.hpp === null);
+  if (filterHpp === 'sudah') filtered = filtered.filter((r) => r.hpp !== null);
 
   if (!filtered.length) {
     isiTabelHpp.innerHTML = `<tr><td colspan="6" class="teks-redup">Belum ada produk. Tambahkan di atas, atau unggah file dulu di tab "Unggah &amp; Lihat Data".</td></tr>`;
@@ -388,6 +555,15 @@ function renderTabelHpp() {
 
 inputCariHpp.addEventListener('input', renderTabelHpp);
 
+document.querySelectorAll('.pill-filter[data-filter-hpp]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.pill-filter[data-filter-hpp]').forEach((b) => b.classList.remove('aktif'));
+    btn.classList.add('aktif');
+    filterHpp = btn.dataset.filterHpp;
+    renderTabelHpp();
+  });
+});
+
 tombolTambahHpp.addEventListener('click', async () => {
   pesanErrorHpp.classList.add('tersembunyi');
   const id = hppBaruId.value.trim();
@@ -411,6 +587,42 @@ tombolTambahHpp.addEventListener('click', async () => {
   } catch (err) {
     pesanErrorHpp.textContent = err.message;
     pesanErrorHpp.classList.remove('tersembunyi');
+  }
+});
+
+// ====== Impor CSV ======
+inputCsvHpp.addEventListener('change', () => {
+  tombolImporCsv.disabled = !inputCsvHpp.files.length;
+});
+
+tombolImporCsv.addEventListener('click', async () => {
+  if (!inputCsvHpp.files.length) return;
+  pesanErrorCsv.classList.add('tersembunyi');
+  pesanSuksesCsv.classList.add('tersembunyi');
+  pesanLoadingCsv.classList.remove('tersembunyi');
+  tombolImporCsv.disabled = true;
+
+  const formData = new FormData();
+  formData.append('file', inputCsvHpp.files[0]);
+
+  try {
+    const res = await fetch('/api/hpp/import-csv', { method: 'POST', body: formData });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Gagal mengimpor file CSV.');
+
+    pesanSuksesCsv.textContent =
+      `Selesai: ${body.ditambahkan} produk baru ditambahkan, ${body.diperbarui} diperbarui` +
+      (body.dilewati ? `, ${body.dilewati} baris dilewati (data tidak valid).` : '.');
+    pesanSuksesCsv.classList.remove('tersembunyi');
+    inputCsvHpp.value = '';
+    await muatDaftarHpp();
+    hitungUlangDanTampilkanUlang();
+  } catch (err) {
+    pesanErrorCsv.textContent = err.message;
+    pesanErrorCsv.classList.remove('tersembunyi');
+  } finally {
+    pesanLoadingCsv.classList.add('tersembunyi');
+    tombolImporCsv.disabled = !inputCsvHpp.files.length;
   }
 });
 

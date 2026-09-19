@@ -11,7 +11,10 @@
 <!-- ====== HALAMAN LOGIN ====== -->
 <div id="halamanLogin" class="halaman-login">
   <div class="kartu-login">
-    <h1>🛍️ Kalkulator Untung Toko</h1>
+    <div class="logo-login">
+      <svg class="ikon" viewBox="0 0 24 24"><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24L4 3a1 1 0 0 0-1 1l.24 5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.82Z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>
+    </div>
+    <h1>Kalkulator Untung Toko</h1>
     <p class="subjudul">Silakan masuk dulu untuk melihat data.</p>
     <form id="formLogin">
       <label for="inputUsername">Username</label>
@@ -29,7 +32,10 @@
 <!-- ====== APLIKASI UTAMA ====== -->
 <div id="aplikasiUtama" class="tersembunyi">
   <header class="header-app">
-    <h1>🛍️ Kalkulator Untung Toko Shopee</h1>
+    <h1>
+      <svg class="ikon" viewBox="0 0 24 24"><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24L4 3a1 1 0 0 0-1 1l.24 5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.82Z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>
+      Kalkulator Untung Toko Shopee
+    </h1>
     <div class="info-user">
       <span id="labelUsername"></span>
       <button id="tombolLogout" class="tombol tombol-kecil">Keluar</button>
@@ -37,25 +43,26 @@
   </header>
 
   <nav class="tab-nav">
-    <button class="tab-tombol aktif" data-tab="tabUpload">📄 Unggah &amp; Lihat Data</button>
-    <button class="tab-tombol" data-tab="tabHpp">💰 Atur Harga Modal (HPP)</button>
+    <button class="tab-tombol aktif" data-tab="tabUpload">
+      <svg class="ikon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+      Unggah &amp; Lihat Data
+    </button>
+    <button class="tab-tombol" data-tab="tabHpp">
+      <svg class="ikon" viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+      Atur Harga Modal (HPP)
+    </button>
   </nav>
 
   <!-- ---------- TAB 1: UPLOAD & LIHAT DATA ---------- -->
   <section id="tabUpload" class="tab-isi aktif">
     <div class="kartu">
       <h2>1. Unggah File Excel dari Shopee</h2>
-      <p class="keterangan">
-        Pilih file Excel "Income" yang diunduh dari Shopee (contoh nama file:
-        <em>Income.sudah dilepas.id...xlsx</em>). Data di file ini tidak disimpan di server —
-        hanya diproses sebentar untuk dihitung, lalu ditampilkan di layar Anda.
-      </p>
       <div class="baris-unggah">
         <input type="file" id="inputFile" accept=".xlsx,.xls">
         <button id="tombolProses" class="tombol tombol-utama" disabled>Proses File</button>
       </div>
       <p id="pesanErrorUpload" class="pesan-error tersembunyi"></p>
-      <p id="pesanLoading" class="pesan-loading tersembunyi">⏳ Sedang memproses file...</p>
+      <p id="pesanLoading" class="pesan-loading tersembunyi"><span class="spinner"></span> Sedang memproses file...</p>
     </div>
 
     <div id="areaRingkasan" class="tersembunyi">
@@ -64,7 +71,7 @@
           <div class="label-ringkasan">Total Pendapatan</div>
           <div class="angka-ringkasan" id="ringkasanPendapatan">Rp 0</div>
         </div>
-        <div class="kartu-ringkasan">
+        <div class="kartu-ringkasan kartu-utama">
           <div class="label-ringkasan">Total Untung</div>
           <div class="angka-ringkasan" id="ringkasanUntung">Rp 0</div>
         </div>
@@ -84,27 +91,34 @@
 
       <div class="kartu">
         <div class="baris-filter">
-          <h2>2. Rincian Per Produk Terjual</h2>
-          <input type="text" id="inputCari" placeholder="🔍 Cari nama produk / No. Pesanan / ID Produk...">
+          <div class="baris-filter-judul">
+            <h2>2. Rincian Per Produk Terjual</h2>
+            <span id="infoJumlahData" class="info-jumlah-data"></span>
+          </div>
+          <div class="input-ikon">
+            <svg class="ikon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" id="inputCari" placeholder="Cari nama produk / No. Pesanan / ID Produk...">
+          </div>
         </div>
         <div class="tabel-scroll">
           <table id="tabelData">
             <colgroup>
-              <col style="width:14%"><col style="width:9%"><col style="width:9%">
-              <col style="width:24%"><col style="width:9%"><col style="width:10%">
-              <col style="width:10%"><col style="width:9%"><col style="width:6%">
+              <col style="width:11%"><col style="width:8%"><col style="width:8%">
+              <col style="width:21%"><col style="width:8%"><col style="width:6%">
+              <col style="width:9%"><col style="width:11%"><col style="width:9%"><col style="width:6%">
             </colgroup>
             <thead>
               <tr>
-                <th>No. Pesanan</th>
-                <th>Tanggal Pesanan</th>
-                <th>Tanggal Dana Cair</th>
-                <th>Nama Produk</th>
-                <th>ID Produk</th>
-                <th>Total Penghasilan</th>
-                <th>Harga Modal (HPP)</th>
-                <th>Untung</th>
-                <th>Margin %</th>
+                <th class="th-urut" data-urut="noPesanan">No. Pesanan</th>
+                <th class="th-urut" data-urut="waktuPesanan">Tanggal Pesanan</th>
+                <th class="th-urut" data-urut="tanggalDilepaskan">Tanggal Dana Cair</th>
+                <th class="th-urut" data-urut="namaProduk">Nama Produk</th>
+                <th class="th-urut" data-urut="idProduk">ID Produk</th>
+                <th class="th-urut" data-urut="jumlah">Jumlah</th>
+                <th class="th-urut" data-urut="totalPenghasilan">Total Penghasilan</th>
+                <th class="th-urut" data-urut="hpp">Harga Modal (HPP)</th>
+                <th class="th-urut" data-urut="untung">Untung</th>
+                <th class="th-urut" data-urut="marginPersen">Margin %</th>
               </tr>
             </thead>
             <tbody id="isiTabelData"></tbody>
@@ -117,20 +131,41 @@
   <!-- ---------- TAB 2: ATUR HPP ---------- -->
   <section id="tabHpp" class="tab-isi">
     <div class="kartu">
-      <h2>💰 Apa itu Harga Modal (HPP)?</h2>
-      <p class="keterangan">
-        <strong>HPP (Harga Pokok Penjualan)</strong> adalah harga modal / biaya untuk membuat atau
-        membeli <strong>1 pcs</strong> produk tersebut (belum termasuk ongkir/iklan/biaya Shopee — itu
-        semua sudah otomatis dihitung Shopee di "Total Penghasilan").<br>
-        Untung dihitung dengan rumus: <strong>Untung = Total Penghasilan − HPP</strong>.
-        Isi HPP sekali di sini, nanti otomatis dipakai terus setiap kali Anda unggah file baru.
-      </p>
+      <h2>Impor / Ekspor CSV</h2>
+      <div class="grid-impor-ekspor">
+        <div class="kolom-aksi">
+          <h3>
+            <svg class="ikon" viewBox="0 0 24 24"><path d="M12 21V9"/><path d="m7 14 5-5 5 5"/><path d="M5 3h14"/></svg>
+            Impor
+          </h3>
+          <div class="baris-filter">
+            <input type="file" id="inputCsvHpp" accept=".csv">
+            <button id="tombolImporCsv" class="tombol tombol-utama" disabled>Impor CSV</button>
+          </div>
+          <p id="pesanLoadingCsv" class="pesan-loading tersembunyi"><span class="spinner"></span> Sedang mengimpor...</p>
+          <p id="pesanErrorCsv" class="pesan-error tersembunyi"></p>
+          <p id="pesanSuksesCsv" class="pesan-sukses tersembunyi"></p>
+        </div>
+        <div class="kolom-aksi">
+          <h3>
+            <svg class="ikon" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+            Ekspor
+          </h3>
+          <a id="tombolEksporCsv" href="/api/hpp/export-csv" class="tombol tombol-kecil" download>
+            <svg class="ikon" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+            Unduh CSV
+          </a>
+        </div>
+      </div>
     </div>
 
     <div class="kartu">
       <h2>Tambah / Cari Produk</h2>
       <div class="baris-filter">
-        <input type="text" id="inputCariHpp" placeholder="🔍 Cari nama produk / ID Produk...">
+        <div class="input-ikon">
+          <svg class="ikon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" id="inputCariHpp" placeholder="Cari nama produk / ID Produk...">
+        </div>
       </div>
       <div class="form-tambah-produk">
         <input type="text" id="hppBaruId" placeholder="ID Produk">
@@ -143,6 +178,11 @@
 
     <div class="kartu">
       <h2>Daftar Harga Modal Produk</h2>
+      <div class="pill-filter-row">
+        <button class="pill-filter aktif" data-filter-hpp="semua">Semua</button>
+        <button class="pill-filter" data-filter-hpp="belum">Belum Diisi</button>
+        <button class="pill-filter" data-filter-hpp="sudah">Sudah Diisi</button>
+      </div>
       <div class="tabel-scroll">
         <table id="tabelHpp">
           <colgroup>

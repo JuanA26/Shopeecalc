@@ -624,6 +624,103 @@ app.put('/api/iklan/setelan/:idProduk', requireLogin, (req, res) => {
   res.json(db.prepare('SELECT id_produk, target_roas, modal_harian, updated_at, updated_by FROM iklan_setelan WHERE id_produk = ?').get(idProduk));
 });
 
+// ---------- SEMENTARA: probe API Iklan (2026-09-25) — HAPUS setelah hasilnya dicatat ----------
+// Sekali buka untuk melihat bentuk respons asli endpoint Ads (token produksi hanya ada di
+// Render). Hanya endpoint baca-saja dari ENDPOINT_BACA_SAJA; hanya metrik iklan, tanpa data
+// pembeli. Daftar panjang dipotong (jumlah + beberapa contoh) supaya hasilnya bisa ditempel.
+app.get('/api/iklan/probe', requireLogin, async (req, res) => {
+  const token = barisTokenAktif();
+  if (!token) return res.status(400).json({ error: 'Toko belum terhubung.' });
+  const panggil = async (path, o) => {
+    const t = await ambilTokenAktif(token.shop_id);
+    return shopeeApi.callShopApi(path, { shopId: t.shop_id, accessToken: t.access_token, ...o });
+  };
+  // Tanggal WIB format DD-MM-YYYY (format Shopee Ads), n hari ke belakang dari hari ini.
+  const tgl = (n) => {
+    const iso = new Date(Date.now() + 7 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
+    const [y, m, d] = iso.split('-');
+    return `${d}-${m}-${y}`;
+  };
+  const potong = (arr, n = 3) => (Array.isArray(arr) ? { jumlah: arr.length, contoh: arr.slice(0, n) } : arr);
+  const hasil = { env: shopeeApi.getEnv(), shopId: token.shop_id, waktu: new Date().toISOString() };
+  const coba = async (nama, fn) => {
+    try { hasil[nama] = await fn(); } catch (err) { hasil[nama] = { gagalDiServer: err.message }; }
+    return hasil[nama];
+  };
+  const r = (x) => (x && x.response) || {};
+
+  await coba('gmsEligibility', () => panggil('/api/v2/ads/check_create_gms_product_campaign_eligibility'));
+
+  const daftar = await coba('campaignIdList', () =>
+    panggil('/api/v2/ads/get_product_level_campaign_id_list', { query: { ad_type: 'all', offset: '0', limit: '5000' } }));
+  const semuaId = (r(daftar).campaign_list || []).map((c) => c.campaign_id);
+  hasil.campaignIdList = { ...daftar, response: { ...r(daftar), campaign_list: potong(r(daftar).campaign_list, 10) } };
+  const id100 = semuaId.slice(0, 100).join(',');
+
+  if (id100) {
+    const setelan = await coba('campaignSettings', () =>
+      panggil('/api/v2/ads/get_product_level_campaign_setting_info', { query: { info_type_list: '1,3,4', campaign_id_list: id100 } }));
+    const list = r(setelan).campaign_list || [];
+    // Ringkas: semua kampanye, tanpa daftar keyword manual.
+    hasil.campaignSettings = {
+      error: setelan.error, message: setelan.message, warning: setelan.warning,
+      jumlah: list.length,
+      ringkas: list.map((c) => ({
+        id: c.campaign_id,
+        ...c.common_info,
+        roas_target: c.auto_bidding_info && c.auto_bidding_info.roas_target,
+        auto_products: potong(c.auto_product_ads_info, 5),
+      })),
+    };
+    const harian = await coba('productCampaignDaily', () =>
+      panggil('/api/v2/ads/get_product_campaign_daily_performance', { query: { start_date: tgl(28), end_date: tgl(1), campaign_id_list: id100 } }));
+    const kamp = (Array.isArray(harian.response) ? harian.response : []).flatMap((s) => s.campaign_list || []);
+    hasil.productCampaignDaily = {
+      error: harian.error, message: harian.message, warning: harian.warning,
+      jumlahKampanye: kamp.length,
+      contoh: kamp.slice(0, 3).map((c) => ({ ...c, metrics_list: potong(c.metrics_list, 3) })),
+      perKampanye: kamp.map((c) => ({
+        id: c.campaign_id, ad_type: c.ad_type, ad_name: c.ad_name, hari: (c.metrics_list || []).length,
+        expense: (c.metrics_list || []).reduce((s, m) => s + (m.expense || 0), 0),
+      })),
+    };
+  }
+
+  const toko = await coba('allCpcDaily', () =>
+    panggil('/api/v2/ads/get_all_cpc_ads_daily_performance', { query: { start_date: tgl(28), end_date: tgl(1) } }));
+  hasil.allCpcDaily = { ...toko, response: potong(toko.response, 5) };
+
+  await coba('gmsCampaign28Hari', () =>
+    panggil('/api/v2/ads/get_gms_campaign_performance', { method: 'POST', body: { start_date: tgl(28), end_date: tgl(1) } }));
+  // Uji batas rentang: dokumentasi bilang 3 bulan di parameter tapi 1 bulan di daftar error.
+  await coba('gmsCampaign60Hari', () =>
+    panggil('/api/v2/ads/get_gms_campaign_performance', { method: 'POST', body: { start_date: tgl(60), end_date: tgl(1) } }));
+
+  const item = await coba('gmsItem28Hari', () =>
+    panggil('/api/v2/ads/get_gms_item_performance', { method: 'POST', body: { start_date: tgl(28), end_date: tgl(1), offset: 0, limit: 100 } }));
+  const itemList = r(item).result_list || [];
+  hasil.gmsItem28Hari = {
+    ...item,
+    response: { ...r(item), result_list: potong(itemList, 5) },
+    ringkasSemua: itemList.map((x) => ({ item_id: x.item_id, expense: x.report && x.report.expense, direct_roi: x.report && x.report.direct_roi, broad_roi: x.report && x.report.broad_roi })),
+  };
+
+  await coba('gmsDeletedItems', () =>
+    panggil('/api/v2/ads/list_gms_user_deleted_item', { method: 'POST', body: { offset: 0, limit: 100 } }));
+
+  const contohItem = itemList.slice(0, 3).map((x) => x.item_id);
+  hasil.recommendedRoi = [];
+  for (const itemId of contohItem) {
+    try {
+      hasil.recommendedRoi.push({ itemId, ...(await panggil('/api/v2/ads/get_product_recommended_roi_target', {
+        query: { reference_id: crypto.randomUUID(), item_id: String(itemId) },
+      })) });
+    } catch (err) { hasil.recommendedRoi.push({ itemId, gagalDiServer: err.message }); }
+  }
+
+  res.type('application/json').send(JSON.stringify(hasil, null, 2));
+});
+
 // ---------- Shopee Open Platform API — OAuth + tes ambil data ----------
 // Lihat shopeeApi.js untuk signing/endpoint, §10/§19 PROJECT_NOTES.md (folder induk) untuk
 // konteks. Tahap sekarang: sandbox saja (SHOPEE_ENV=sandbox di .env, Test Partner ID/Key

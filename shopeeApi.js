@@ -62,6 +62,20 @@ const ENDPOINT_BACA_SAJA = new Set([
   // cuma get_return_detail yang dibuka: dipakai sinkronShopee.js untuk tahu barang MANA di
   // satu pesanan yang diretur (escrow detail hanya memberi daftar nomor returnya).
   '/api/v2/returns/get_return_detail',
+  // Modul Ads — hanya laporan & setelan yang DIBACA (dicek di open.shopee.com 2026-09-25, semua
+  // bisa dipanggil app "Seller In House System"). Endpoint create_/edit_ kampanye (termasuk
+  // create/edit_gms_product_campaign) sengaja TIDAK dibuka: aplikasi hanya memberi saran, orang
+  // yang mengubah iklan di Seller Centre (§13.5 PROJECT_NOTES.md).
+  '/api/v2/ads/get_gms_campaign_performance', // POST; total per periode (start ≠ end, maks 1 bln)
+  '/api/v2/ads/get_gms_item_performance', // POST; per produk, ada metrik direct_*
+  '/api/v2/ads/list_gms_user_deleted_item', // POST; produk yang dikeluarkan dari GMV Max
+  '/api/v2/ads/check_create_gms_product_campaign_eligibility', // cuma cek, tidak membuat apa-apa
+  '/api/v2/ads/get_product_level_campaign_id_list',
+  '/api/v2/ads/get_product_level_campaign_setting_info', // anggaran, roas_target, status
+  '/api/v2/ads/get_product_campaign_daily_performance', // harian, ada direct_gmv
+  '/api/v2/ads/get_all_cpc_ads_daily_performance', // total toko harian
+  // reference_id di endpoint ini hanya penanda anti-duplikat untuk create_ yang TIDAK kita panggil.
+  '/api/v2/ads/get_product_recommended_roi_target',
 ]);
 
 // Tautan otorisasi (Seller in House System): seller login lalu redirect balik ke redirectUri

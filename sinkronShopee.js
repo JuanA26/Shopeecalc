@@ -15,7 +15,9 @@
 const JENDELA_HARI = 14; // get_escrow_list: rentang per panggilan dibuat pendek supaya aman
 const UKURAN_BATCH = 50; // batas order_sn per panggilan get_escrow_detail_batch / get_order_detail
 const HARI_AWAL_DEFAULT = 90; // sinkron pertama menarik 90 hari ke belakang
-const HARI_TUMPANG_TINDIH = 3; // sinkron berikutnya mundur 3 hari dari batas terakhir, jaga-jaga telat masuk
+const HARI_TUMPANG_TINDIH = 3; // sinkron dana berikutnya mundur 3 hari dari batas terakhir (cuma panggilan daftar, murah)
+const DETIK_TUMPANG_ORDER = 60 * 60; // sinkron pesanan berikutnya mundur 1 jam — pesanan yang statusnya tidak berubah dilewati
+const PARALEL = 4; // jumlah panggilan API yang boleh jalan bersamaan (jauh di bawah batas laju Shopee)
 const DETIK_SEHARI = 86400;
 
 // Tanggal WIB (GMT+7, zona waktu Shopee Indonesia & file Excel-nya) dari unix detik.
@@ -30,6 +32,21 @@ function cekError(hasil, namaEndpoint) {
   }
   return (hasil && hasil.response) || {};
 }
+
+// Jalankan fn untuk tiap potongan (batch) dengan paling banyak `n` sekaligus, urutan hasil tetap.
+async function paralel(daftar, n, fn) {
+  const hasil = new Array(daftar.length);
+  let berikut = 0;
+  const pekerja = Array.from({ length: Math.min(n, daftar.length) }, async () => {
+    while (berikut < daftar.length) {
+      const i = berikut++;
+      hasil[i] = await fn(daftar[i], i);
+    }
+  });
+  await Promise.all(pekerja);
+  return hasil;
+}
+const potong = (daftar, ukuran) => Array.from({ length: Math.ceil(daftar.length / ukuran) }, (_, i) => daftar.slice(i * ukuran, (i + 1) * ukuran));
 
 // Status retur yang dianggap barangnya benar-benar kembali & uangnya dikembalikan.
 // Pesanan di sini semuanya sudah dilepas dananya, jadi retur yang masih "diproses" jarang;
@@ -125,13 +142,10 @@ async function ambilEscrowDetail(panggil, daftarSn) {
       batchEscrowDitolak = true;
     }
   }
-  const hasilSatuan = [];
-  for (const sn of daftarSn) {
-    const hasil = await panggil('/api/v2/payment/get_escrow_detail', { query: { order_sn: sn } });
-    hasilSatuan.push(cekError(hasil, 'get_escrow_detail'));
-  }
-  return hasilSatuan;
+  return paralel(daftarSn, PARALEL, async (sn) =>
+    cekError(await panggil('/api/v2/payment/get_escrow_detail', { query: { order_sn: sn } }), 'get_escrow_detail'));
 }
+const modeEscrow = () => (batchEscrowDitolak ? 'satu-per-satu' : 'batch');
 
 async function ambilOrderDetail(panggil, daftarSn) {
   const hasil = await panggil('/api/v2/order/get_order_detail', {
@@ -168,26 +182,32 @@ async function daftarEscrow(panggil, dari, sampai) {
 // Semua order_sn yang dibuat ATAU berubah status dalam rentang [dari, sampai] — pakai
 // time_range_field=update_time supaya pesanan lama yang baru batal/selesai ikut terambil ulang.
 async function daftarOrderBerubah(panggil, dari, sampai) {
-  const hasil = new Set();
+  const hasil = new Map(); // order_sn → status menurut daftar
   for (let awal = dari; awal < sampai; awal += JENDELA_HARI * DETIK_SEHARI) {
     const akhir = Math.min(sampai, awal + JENDELA_HARI * DETIK_SEHARI);
     let cursor = '';
     for (;;) {
-      const query = { time_range_field: 'update_time', time_from: awal, time_to: akhir, page_size: 100 };
+      const query = { time_range_field: 'update_time', time_from: awal, time_to: akhir, page_size: 100, response_optional_fields: 'order_status' };
       if (cursor) query.cursor = cursor;
       const resp = cekError(await panggil('/api/v2/order/get_order_list', { query }), 'get_order_list');
-      for (const o of resp.order_list || []) hasil.add(o.order_sn);
+      for (const o of resp.order_list || []) hasil.set(o.order_sn, o.order_status || null);
       if (!resp.more || !resp.next_cursor) break;
       cursor = resp.next_cursor;
     }
   }
-  return [...hasil];
+  return hasil;
 }
 
 // Langkah pesanan (per tanggal dibuat): simpan status + barang semua pesanan yang berubah.
 async function sinkronOrder({ db, panggil, shopId, dari, sampai, onProgres }) {
   if (onProgres) onProgres({ tahap: 'pesanan', selesai: 0, total: null }); // total belum diketahui: sedang mendaftar
-  const daftar = await daftarOrderBerubah(panggil, dari, sampai);
+  const terdaftar = await daftarOrderBerubah(panggil, dari, sampai);
+  // Lewati pesanan yang sudah tersimpan dengan status yang sama — tidak ada yang perlu diunduh ulang.
+  const statusLama = db.prepare('SELECT status FROM api_order WHERE order_sn = ?');
+  const daftar = [...terdaftar].filter(([sn, status]) => {
+    const lama = statusLama.get(sn);
+    return !lama || !status || lama.status !== status;
+  }).map(([sn]) => sn);
   const simpanOrder = db.prepare(
     `INSERT INTO api_order (order_sn, shop_id, tanggal_pesanan, create_time, update_time, status) VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(order_sn) DO UPDATE SET tanggal_pesanan = excluded.tanggal_pesanan, create_time = excluded.create_time,
@@ -199,8 +219,8 @@ async function sinkronOrder({ db, panggil, shopId, dari, sampai, onProgres }) {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
   if (onProgres) onProgres({ tahap: 'pesanan', selesai: 0, total: daftar.length });
-  for (let i = 0; i < daftar.length; i += UKURAN_BATCH) {
-    const potongan = daftar.slice(i, i + UKURAN_BATCH);
+  let selesai = 0;
+  await paralel(potong(daftar, UKURAN_BATCH), PARALEL, async (potongan) => {
     const resp = cekError(
       await panggil('/api/v2/order/get_order_detail', {
         query: { order_sn_list: potongan.join(','), response_optional_fields: 'item_list,order_status,create_time,update_time' },
@@ -224,9 +244,10 @@ async function sinkronOrder({ db, panggil, shopId, dari, sampai, onProgres }) {
       db.exec('ROLLBACK');
       throw err;
     }
-    if (onProgres) onProgres({ tahap: 'pesanan', selesai: Math.min(i + UKURAN_BATCH, daftar.length), total: daftar.length });
-  }
-  return daftar.length;
+    selesai += potongan.length;
+    if (onProgres) onProgres({ tahap: 'pesanan', selesai, total: daftar.length });
+  });
+  return { diperiksa: terdaftar.size, diperbarui: daftar.length };
 }
 
 // Sinkron satu toko. `panggil(path, opsi)` = callShopApi yang sudah terikat token toko ini.
@@ -238,9 +259,9 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
 
   let dariOrder;
   if (hariMundur) dariOrder = sekarang - hariMundur * DETIK_SEHARI;
-  else if (state.order_ts) dariOrder = state.order_ts - DETIK_SEHARI; // mundur 1 hari, jaga-jaga
+  else if (state.order_ts) dariOrder = state.order_ts - DETIK_TUMPANG_ORDER;
   else dariOrder = sekarang - HARI_AWAL_DEFAULT * DETIK_SEHARI;
-  const orderBerubah = await sinkronOrder({ db, panggil, shopId, dari: dariOrder, sampai: sekarang, onProgres });
+  const hasilOrder = await sinkronOrder({ db, panggil, shopId, dari: dariOrder, sampai: sekarang, onProgres });
 
   let dari;
   if (hariMundur) dari = sekarang - hariMundur * DETIK_SEHARI;
@@ -269,23 +290,32 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
-  for (let i = 0; i < baru.length; i += UKURAN_BATCH) {
-    const potongan = baru.slice(i, i + UKURAN_BATCH);
-    const [daftarDetail, orderDetail] = await Promise.all([ambilEscrowDetail(panggil, potongan), ambilOrderDetail(panggil, potongan)]);
+  // Tanggal dibuat & status biasanya sudah ada dari langkah pesanan — get_order_detail hanya
+  // untuk yang belum tersimpan (mis. pesanan lama di luar jendela langkah pesanan).
+  const orderTersimpan = db.prepare('SELECT create_time, status FROM api_order WHERE order_sn = ?');
+  let selesai = 0;
+  await paralel(potong(baru, UKURAN_BATCH), PARALEL, async (potongan) => {
+    const dikenal = new Map();
+    for (const sn of potongan) {
+      const o = orderTersimpan.get(sn);
+      if (o && o.create_time) dikenal.set(sn, { order_sn: sn, create_time: o.create_time, order_status: o.status });
+    }
+    const belumDikenal = potongan.filter((sn) => !dikenal.has(sn));
+    const [daftarDetail, orderDetail] = await Promise.all([
+      ambilEscrowDetail(panggil, potongan),
+      belumDikenal.length ? ambilOrderDetail(panggil, belumDikenal) : new Map(),
+    ]);
 
     const siapSimpan = [];
     for (const detail of daftarDetail) {
       const sn = detail.order_sn;
       if (!sn) continue;
-      const daftarRetur = [];
-      for (const returnSn of detail.return_order_sn_list || []) {
-        try {
-          daftarRetur.push(await ambilRetur(panggil, returnSn));
-        } catch (err) {
+      const daftarRetur = (await Promise.all((detail.return_order_sn_list || []).map((returnSn) =>
+        ambilRetur(panggil, returnSn).catch((err) => {
           console.warn(`[SINKRON] Rincian retur ${returnSn} (pesanan ${sn}) gagal diambil: ${err.message}`);
-        }
-      }
-      const order = orderDetail.get(sn) || {};
+          return null;
+        })))).filter(Boolean);
+      const order = dikenal.get(sn) || orderDetail.get(sn) || {};
       siapSimpan.push({ sn, detail, order, baris: susunBarisPesanan(detail, daftarRetur), adaRetur: daftarRetur.some(returDihitung) });
     }
 
@@ -307,10 +337,14 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
       db.exec('ROLLBACK');
       throw err;
     }
-    if (onProgres) onProgres({ tahap: 'dana', selesai: Math.min(i + UKURAN_BATCH, baru.length), total: baru.length });
-  }
+    selesai += potongan.length;
+    if (onProgres) onProgres({ tahap: 'dana', selesai, total: baru.length });
+  });
 
-  return { dari, sampai: sekarang, dilihat: escrow.size, baru: baru.length, orderBerubah, orderSampai: sekarang };
+  return {
+    dari, sampai: sekarang, dilihat: escrow.size, baru: baru.length,
+    orderDiperiksa: hasilOrder.diperiksa, orderBerubah: hasilOrder.diperbarui, orderSampai: sekarang,
+  };
 }
 
 // Status pesanan yang belum/tidak jadi penjualan — tidak ditampilkan sama sekali.
@@ -384,4 +418,4 @@ function bacaItemPesanan(db, shopId, dari, sampai, rasioPerkiraan) {
   );
 }
 
-module.exports = { sinkronkan, bacaItemPesanan, rasioPencairanToko, susunBarisPesanan, tanggalWib, HARI_AWAL_DEFAULT };
+module.exports = { modeEscrow, sinkronkan, bacaItemPesanan, rasioPencairanToko, susunBarisPesanan, tanggalWib, HARI_AWAL_DEFAULT };

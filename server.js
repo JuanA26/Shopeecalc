@@ -9,7 +9,7 @@ const bcrypt = require('bcryptjs');
 const db = require('./db');
 const { parseCsvLine, parseShopeeAdsCsv, hitungAnalisisIklan, RASIO_PENCAIRAN_DEFAULT, TINGKAT_CAIR_DEFAULT } = require('./analisisIklan');
 const shopeeApi = require('./shopeeApi');
-const { sinkronkan, bacaItemPesanan, rasioPencairanToko } = require('./sinkronShopee');
+const { sinkronkan, bacaItemPesanan, rasioPencairanToko, modeEscrow } = require('./sinkronShopee');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -398,8 +398,9 @@ function jalankanSinkron(opsi = {}) {
         pesan: null,
         jumlah_baru: hasil.baru,
         order_ts: hasil.orderSampai,
+        order_berubah: hasil.orderBerubah,
       });
-      console.log(`[SINKRON] Selesai: ${hasil.orderBerubah} pesanan diperbarui, ${hasil.baru} dana cair baru dari ${hasil.dilihat}.`);
+      console.log(`[SINKRON] Selesai: ${hasil.orderBerubah} dari ${hasil.orderDiperiksa} pesanan baru/berubah, ${hasil.baru} dana cair baru dari ${hasil.dilihat} (escrow: ${modeEscrow()}).`);
       return hasil;
     })
     .catch((err) => {
@@ -433,6 +434,8 @@ function statusSinkron() {
     pesan: s.pesan || null,
     terakhirSelesai: s.terakhir_selesai || null,
     jumlahBaru: s.jumlah_baru ?? null,
+    jumlahOrderBerubah: s.order_berubah ?? null,
+    modeEscrow: modeEscrow(),
     jumlahPesanan: agg.jumlah,
     tanggalTerlama: agg.terlama,
     tanggalTerbaru: agg.terbaru,

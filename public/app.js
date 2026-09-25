@@ -312,7 +312,7 @@ function renderProgres(s) {
     label.textContent = `Langkah ${idx + 1} dari 2 · ${namaLangkah}`;
     angka.textContent = p.total
       ? `${p.selesai.toLocaleString('id-ID')} / ${p.total.toLocaleString('id-ID')} · ${persen}%`
-      : `tidak ada yang baru · ${persen}%`;
+      : `tidak ada yang berubah · ${persen}%`;
     return;
   }
 
@@ -325,7 +325,14 @@ function renderProgres(s) {
   trek.setAttribute('aria-valuenow', '100');
   lPesanan.className = 'langkah-progres beres';
   lDana.className = 'langkah-progres' + (gagal ? '' : ' beres');
-  label.textContent = gagal ? '✕ Gagal mengambil data — lihat pesan di bawah' : '✓ Selesai — data sudah terbaru';
+  // Ringkasan hasil: tidak ada yang baru → "Data sudah terbaru"; kalau ada, sebutkan berapa.
+  const nOrder = (s && s.jumlahOrderBerubah) || 0, nDana = (s && s.jumlahBaru) || 0;
+  const bagianBaru = [];
+  if (nOrder) bagianBaru.push(`${nOrder.toLocaleString('id-ID')} pesanan baru/berubah`);
+  if (nDana) bagianBaru.push(`${nDana.toLocaleString('id-ID')} dana cair baru`);
+  label.textContent = gagal
+    ? '✕ Gagal mengambil data — lihat pesan di bawah'
+    : bagianBaru.length ? `✓ Selesai — ${bagianBaru.join(' · ')}` : '✓ Data sudah terbaru — tidak ada pesanan baru';
   angka.textContent = '';
   clearTimeout(jedaPudarProgres);
   if (!gagal) {

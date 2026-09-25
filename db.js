@@ -160,5 +160,6 @@ db.exec(`
 
 // Kolom yang ditambahkan setelah tabel sinkron_shopee sudah ada di produksi.
 try { db.exec('ALTER TABLE sinkron_shopee ADD COLUMN order_ts INTEGER'); } catch (_) { /* sudah ada */ }
+try { db.exec('ALTER TABLE sinkron_shopee ADD COLUMN order_berubah INTEGER'); } catch (_) { /* sudah ada */ }
 
 module.exports = db;

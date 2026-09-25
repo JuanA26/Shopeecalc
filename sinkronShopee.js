@@ -19,6 +19,26 @@ const HARI_TUMPANG_TINDIH = 3; // sinkron dana berikutnya mundur 3 hari dari bat
 const DETIK_TUMPANG_ORDER = 60 * 60; // sinkron pesanan berikutnya mundur 1 jam — pesanan yang statusnya tidak berubah dilewati
 const PARALEL = 4; // jumlah panggilan API yang boleh jalan bersamaan (jauh di bawah batas laju Shopee)
 const DETIK_SEHARI = 86400;
+const BATAS_ULANG = 200; // maksimal pesanan dari tabel sinkron_ulang yang dicoba lagi per sinkron (per jenis)
+
+// Antrean ambil-ulang (tabel sinkron_ulang, db.js): pesanan yang pengambilannya tidak lengkap
+// dicatat, lalu dicoba lagi di sinkron berikutnya sampai berhasil.
+function antreanUlang(db, shopId, jenis) {
+  shopId = String(shopId);
+  const pilih = db.prepare('SELECT order_sn FROM sinkron_ulang WHERE shop_id = ? AND jenis = ? ORDER BY pertama, order_sn LIMIT ?');
+  const tambah = db.prepare(
+    `INSERT INTO sinkron_ulang (shop_id, order_sn, jenis) VALUES (?, ?, ?)
+     ON CONFLICT(shop_id, order_sn, jenis) DO UPDATE SET percobaan = percobaan + 1`
+  );
+  const buang = db.prepare('DELETE FROM sinkron_ulang WHERE shop_id = ? AND order_sn = ? AND jenis = ?');
+  const hitung = db.prepare('SELECT COUNT(*) AS n FROM sinkron_ulang WHERE shop_id = ? AND jenis = ?');
+  return {
+    daftar: () => pilih.all(shopId, jenis, BATAS_ULANG).map((r) => r.order_sn),
+    catat: (sn) => tambah.run(shopId, sn, jenis),
+    hapus: (sn) => buang.run(shopId, sn, jenis),
+    sisa: () => hitung.get(shopId, jenis).n,
+  };
+}
 
 // Tanggal WIB (GMT+7, zona waktu Shopee Indonesia & file Excel-nya) dari unix detik.
 function tanggalWib(ts) {
@@ -214,6 +234,11 @@ async function sinkronOrder({ db, panggil, shopId, dari, sampai, onProgres }) {
     const lama = statusLama.get(sn);
     return !lama || !status || lama.status !== status;
   }).map(([sn]) => sn);
+  // Pesanan yang dulu tidak ada di respons get_order_detail: jendela sinkron sudah lewat, jadi
+  // diambil ulang langsung per order_sn (kalau tidak, status batal/selesai-nya tidak pernah masuk).
+  const ulang = antreanUlang(db, shopId, 'order');
+  const sudahDaftar = new Set(daftar);
+  for (const sn of ulang.daftar()) if (!sudahDaftar.has(sn)) daftar.push(sn);
   const simpanOrder = db.prepare(
     `INSERT INTO api_order (order_sn, shop_id, tanggal_pesanan, create_time, update_time, status) VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(order_sn) DO UPDATE SET tanggal_pesanan = excluded.tanggal_pesanan, create_time = excluded.create_time,
@@ -226,6 +251,7 @@ async function sinkronOrder({ db, panggil, shopId, dari, sampai, onProgres }) {
   );
   if (onProgres) onProgres({ tahap: 'pesanan', selesai: 0, total: daftar.length });
   let selesai = 0;
+  let terlewat = 0;
   await paralel(potong(daftar, UKURAN_BATCH), PARALEL, async (potongan) => {
     const resp = cekError(
       await panggil('/api/v2/order/get_order_detail', {
@@ -233,8 +259,13 @@ async function sinkronOrder({ db, panggil, shopId, dari, sampai, onProgres }) {
       }),
       'get_order_detail'
     );
+    const ada = new Set((resp.order_list || []).map((o) => o.order_sn));
     db.exec('BEGIN');
     try {
+      for (const sn of potongan) {
+        if (ada.has(sn)) ulang.hapus(sn);
+        else { ulang.catat(sn); terlewat += 1; }
+      }
       for (const o of resp.order_list || []) {
         simpanOrder.run(o.order_sn, String(shopId), tanggalWib(o.create_time), o.create_time || null, o.update_time || null, o.order_status || null);
         hapusItem.run(o.order_sn);
@@ -253,7 +284,8 @@ async function sinkronOrder({ db, panggil, shopId, dari, sampai, onProgres }) {
     selesai += potongan.length;
     if (onProgres) onProgres({ tahap: 'pesanan', selesai, total: daftar.length });
   });
-  return { diperiksa: terdaftar.size, diperbarui: daftar.length };
+  if (terlewat) console.warn(`[SINKRON] ${terlewat} pesanan tidak ada di respons get_order_detail — dicoba lagi di sinkron berikutnya.`);
+  return { diperiksa: terdaftar.size, diperbarui: daftar.length - terlewat, terlewat };
 }
 
 // Sinkron satu toko. `panggil(path, opsi)` = callShopApi yang sudah terikat token toko ini.
@@ -282,12 +314,21 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
   const baru = [...escrow.keys()]
     .filter((sn) => !sudahAda.get(sn))
     .sort((a, b) => escrow.get(b) - escrow.get(a));
+  const jumlahBaru = baru.length;
+  // Pesanan yang rincian returnya dulu gagal diambil: sudah tersimpan (seolah tanpa retur), jadi
+  // filter "sudah ada" di atas melewatinya. Ambil ulang di belakang antrean sampai returnya terbaca.
+  const ulangRetur = antreanUlang(db, shopId, 'retur');
+  const sudahAntre = new Set(baru);
+  for (const sn of ulangRetur.daftar()) if (!sudahAntre.has(sn)) baru.push(sn);
   if (onProgres) onProgres({ tahap: 'dana', selesai: 0, total: baru.length });
 
+  // tanggal_dilepaskan: pesanan ambil-ulang bisa di luar jendela get_escrow_list (tanggalnya
+  // kosong) — pertahankan tanggal yang sudah tersimpan.
   const simpanPesanan = db.prepare(
     `INSERT INTO api_pesanan (order_sn, shop_id, waktu_pesanan, tanggal_dilepaskan, escrow_amount, status_pesanan, ada_retur, synced_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(order_sn) DO UPDATE SET waktu_pesanan = excluded.waktu_pesanan, tanggal_dilepaskan = excluded.tanggal_dilepaskan,
+     ON CONFLICT(order_sn) DO UPDATE SET waktu_pesanan = excluded.waktu_pesanan,
+       tanggal_dilepaskan = COALESCE(NULLIF(excluded.tanggal_dilepaskan, ''), api_pesanan.tanggal_dilepaskan),
        escrow_amount = excluded.escrow_amount, status_pesanan = excluded.status_pesanan, ada_retur = excluded.ada_retur, synced_at = excluded.synced_at`
   );
   const hapusItem = db.prepare('DELETE FROM api_pesanan_item WHERE order_sn = ?');
@@ -319,13 +360,15 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
     for (const detail of daftarDetail) {
       const sn = detail.order_sn;
       if (!sn) continue;
+      let returGagal = false;
       const daftarRetur = (await Promise.all((detail.return_order_sn_list || []).map((returnSn) =>
         ambilRetur(panggil, returnSn).catch((err) => {
-          console.warn(`[SINKRON] Rincian retur ${returnSn} (pesanan ${sn}) gagal diambil: ${err.message}`);
+          console.warn(`[SINKRON] Rincian retur ${returnSn} (pesanan ${sn}) gagal diambil: ${err.message} — dicoba lagi nanti.`);
+          returGagal = true;
           return null;
         })))).filter(Boolean);
       const order = dikenal.get(sn) || orderDetail.get(sn) || {};
-      siapSimpan.push({ sn, detail, order, baris: susunBarisPesanan(detail, daftarRetur), adaRetur: daftarRetur.some(returDihitung) });
+      siapSimpan.push({ sn, detail, order, baris: susunBarisPesanan(detail, daftarRetur), adaRetur: daftarRetur.some(returDihitung), returGagal });
     }
 
     db.exec('BEGIN');
@@ -340,6 +383,8 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
         p.baris.forEach((b, idx) =>
           simpanItem.run(p.sn, idx, b.idProduk, b.modelId, b.namaProduk, b.namaModel, b.jumlah, b.hargaProduk, b.totalPenghasilan, b.dikembalikan ? 1 : 0, b.jumlahPengembalian)
         );
+        // Tetap disimpan (angka terbaik yang ada), tapi diantre supaya returnya dibaca ulang.
+        if (p.returGagal) ulangRetur.catat(p.sn); else ulangRetur.hapus(p.sn);
       }
       db.exec('COMMIT');
     } catch (err) {
@@ -351,12 +396,17 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
   });
 
   if (terlewat.length) console.warn(`[SINKRON] ${terlewat.length} pesanan cair tidak ada di respons escrow — dicoba lagi nanti.`);
+  const returTertunda = ulangRetur.sisa();
+  if (returTertunda) console.warn(`[SINKRON] ${returTertunda} pesanan menunggu rincian retur diambil ulang.`);
   // Batas "sudah ditarik" tidak boleh melewati pesanan yang terlewat, supaya sinkron berikutnya
-  // (yang mulai dari batas itu dikurangi 3 hari) masih mendaftarnya lagi.
-  const sampai = terlewat.length ? Math.min(...terlewat.map((sn) => escrow.get(sn))) : sekarang;
+  // (yang mulai dari batas itu dikurangi 3 hari) masih mendaftarnya lagi. Pesanan ambil-ulang
+  // retur tidak ikut: sudah tersimpan dan tetap ada di antrean sinkron_ulang.
+  const terlewatBaru = terlewat.filter((sn) => escrow.has(sn) && !sudahAda.get(sn));
+  const sampai = terlewatBaru.length ? Math.min(...terlewatBaru.map((sn) => escrow.get(sn))) : sekarang;
   return {
-    dari, sampai, dilihat: escrow.size, baru: baru.length - terlewat.length,
+    dari, sampai, dilihat: escrow.size, baru: jumlahBaru - terlewatBaru.length,
     orderDiperiksa: hasilOrder.diperiksa, orderBerubah: hasilOrder.diperbarui, orderSampai: sekarang,
+    orderTerlewat: hasilOrder.terlewat, returTertunda,
   };
 }
 

@@ -424,7 +424,7 @@ function jalankanSinkron(opsi = {}) {
         order_ts: hasil.orderSampai,
         order_berubah: hasil.orderBerubah,
       });
-      console.log(`[SINKRON] Selesai: ${hasil.orderBerubah} dari ${hasil.orderDiperiksa} pesanan baru/berubah, ${hasil.baru} dana cair baru dari ${hasil.dilihat} (escrow: ${modeEscrow()}).`);
+      console.log(`[SINKRON] Selesai: ${hasil.orderBerubah} dari ${hasil.orderDiperiksa} pesanan baru/berubah, ${hasil.baru} dana cair baru dari ${hasil.dilihat} (escrow: ${modeEscrow()}); diambil ulang nanti: ${hasil.orderTerlewat} pesanan, ${hasil.returTertunda} retur.`);
       return hasil;
     })
     .catch((err) => {

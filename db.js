@@ -157,6 +157,20 @@ db.exec(`
     PRIMARY KEY (order_sn, baris)
   );
 
+  -- Pesanan yang harus diambil ulang di sinkron berikutnya (sinkronShopee.js), karena
+  -- pengambilan sebelumnya tidak lengkap:
+  --   jenis 'order' = get_order_detail tidak mengembalikan pesanan ini (status/barang belum tersimpan);
+  --   jenis 'retur' = rincian retur gagal diambil (pesanan tersimpan seolah tidak ada retur).
+  -- Baris dihapus begitu pengambilan ulang berhasil.
+  CREATE TABLE IF NOT EXISTS sinkron_ulang (
+    shop_id TEXT NOT NULL,
+    order_sn TEXT NOT NULL,
+    jenis TEXT NOT NULL,
+    percobaan INTEGER NOT NULL DEFAULT 1,
+    pertama TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (shop_id, order_sn, jenis)
+  );
+
   -- Iklan dari Shopee Ads API (sinkronIklan.js), pengganti file CSV "Data Keseluruhan Iklan".
   -- Satu baris per kampanye (Seller Centre: "Iklan Produk · GMV Max ROAS/Auto" = di API
   -- ad_type manual + bidding_method auto; roas_target 0 = GMV Max Auto). budget_harian 0 =

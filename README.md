@@ -130,8 +130,8 @@ The ads CSV from Seller Centre can still be uploaded under "Cadangan" if the aut
 
 ## 5. Tests
 
-Run `npm test` for the financial regression tests (profit and break-even maths, paid-order rate with
-partial returns, payout split, return deductions). No Shopee credentials are needed.
+Run `npm test` for the regression tests (profit and break-even maths, paid-order rate with partial
+returns, payout split, return deductions, sync retries against a mock Shopee). No Shopee credentials are needed.
 The calculator excludes business overhead unless it is already part of HPP/payout deductions.
 
 ## 6. Project structure

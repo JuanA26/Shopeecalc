@@ -296,7 +296,12 @@ function renderStatusSinkron(s) {
     return;
   }
   const bagian = [];
-  if (s.sedangBerjalan) bagian.push('Sedang mengambil data terbaru dari Shopee...');
+  if (s.sedangBerjalan) {
+    const p = s.progres;
+    bagian.push(p && p.total
+      ? `Sedang mengambil data dari Shopee: ${p.selesai.toLocaleString('id-ID')} dari ${p.total.toLocaleString('id-ID')} pesanan baru`
+      : 'Sedang mengambil data dari Shopee...');
+  }
   else if (s.terakhirSelesai) {
     const waktu = new Date(s.terakhirSelesai).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     bagian.push(s.status === 'gagal' ? `Sinkron terakhir gagal (${waktu})` : `Terakhir diperbarui ${waktu}`);
@@ -340,17 +345,32 @@ async function mulaiDataOtomatis() {
   await muatStatusSinkron();
   const s = statusSinkronTerakhir;
   if (!s || !s.terhubung) return;
-  if (s.sedangBerjalan) {
-    // Sinkron terjadwal sedang jalan di server: tunggu selesai, baru tampilkan.
-    tampilkanLoadingSinkron('Sedang mengambil data terbaru dari Shopee...');
-    while (statusSinkronTerakhir && statusSinkronTerakhir.sedangBerjalan) {
-      await new Promise((r) => setTimeout(r, 5000));
-      await muatStatusSinkron();
-    }
-    tampilkanLoadingSinkron('');
-    await muatDataPenjualan();
-  } else if (!s.jumlahPesanan) await sinkronSekarang();
+  if (s.sedangBerjalan) await ikutiSinkronBerjalan();
+  else if (!s.jumlahPesanan) await sinkronSekarang();
   else await muatDataPenjualan();
+}
+
+// Sinkron terjadwal sedang jalan di server (bisa belasan menit untuk yang pertama): tampilkan
+// dulu data yang sudah tersimpan, perbarui status tiap 5 detik & data tiap 30 detik, lalu
+// muat ulang sekali lagi setelah selesai. Pesanan terbaru diambil duluan (sinkronShopee.js).
+async function ikutiSinkronBerjalan() {
+  if (statusSinkronTerakhir.jumlahPesanan) await muatDataPenjualanDiam();
+  let putaran = 0;
+  while (statusSinkronTerakhir && statusSinkronTerakhir.sedangBerjalan) {
+    await new Promise((r) => setTimeout(r, 5000));
+    await muatStatusSinkron();
+    if (++putaran % 6 === 0) await muatDataPenjualanDiam();
+  }
+  await muatDataPenjualan();
+}
+
+// Muat data tanpa menampilkan pesan "belum ada pesanan" — dipakai selama sinkron masih jalan,
+// saat periode yang dipilih mungkin memang belum terisi.
+async function muatDataPenjualanDiam() {
+  try {
+    const q = new URLSearchParams({ dari: tanggalDari.value, sampai: tanggalSampai.value });
+    terapkanDataPenjualan(await apiFetch(`/api/pesanan?${q}`));
+  } catch (_) { /* belum ada data di periode ini — tunggu putaran berikutnya */ }
 }
 
 function renderRingkasan(r) {

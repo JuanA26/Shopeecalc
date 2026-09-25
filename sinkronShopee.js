@@ -167,7 +167,7 @@ async function daftarEscrow(panggil, dari, sampai) {
 
 // Sinkron satu toko. `panggil(path, opsi)` = callShopApi yang sudah terikat token toko ini.
 // opsi.hariMundur: paksa tarik ulang N hari ke belakang (mis. untuk menambah riwayat lama).
-async function sinkronkan({ db, panggil, shopId, hariMundur } = {}) {
+async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
   const sekarang = Math.floor(Date.now() / 1000);
   const state = db.prepare('SELECT * FROM sinkron_shopee WHERE shop_id = ?').get(shopId) || {};
 
@@ -178,7 +178,12 @@ async function sinkronkan({ db, panggil, shopId, hariMundur } = {}) {
 
   const escrow = await daftarEscrow(panggil, dari, sekarang);
   const sudahAda = db.prepare('SELECT 1 FROM api_pesanan WHERE order_sn = ?');
-  const baru = [...escrow.keys()].filter((sn) => !sudahAda.get(sn));
+  // Terbaru dulu: sinkron pertama (90 hari) bisa belasan menit, jadi periode yang paling sering
+  // dilihat (30 hari terakhir) harus sudah terisi duluan.
+  const baru = [...escrow.keys()]
+    .filter((sn) => !sudahAda.get(sn))
+    .sort((a, b) => escrow.get(b) - escrow.get(a));
+  if (onProgres) onProgres({ selesai: 0, total: baru.length });
 
   const simpanPesanan = db.prepare(
     `INSERT INTO api_pesanan (order_sn, shop_id, waktu_pesanan, tanggal_dilepaskan, escrow_amount, status_pesanan, ada_retur, synced_at)
@@ -230,6 +235,7 @@ async function sinkronkan({ db, panggil, shopId, hariMundur } = {}) {
       db.exec('ROLLBACK');
       throw err;
     }
+    if (onProgres) onProgres({ selesai: Math.min(i + UKURAN_BATCH, baru.length), total: baru.length });
   }
 
   return { dari, sampai: sekarang, dilihat: escrow.size, baru: baru.length };

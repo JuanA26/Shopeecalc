@@ -450,6 +450,7 @@ app.get('/api/pesanan', requireLogin, (req, res) => {
 
 // ---------- Sinkron otomatis ----------
 let sinkronBerjalan = null; // Promise sinkron yang sedang jalan — cegah dua sinkron bersamaan
+let progresSinkron = null;   // { selesai, total } pesanan baru yang sedang diambil, untuk UI
 
 function jalankanSinkron(opsi = {}) {
   if (sinkronBerjalan) return sinkronBerjalan;
@@ -472,7 +473,8 @@ function jalankanSinkron(opsi = {}) {
     return shopeeApi.callShopApi(path, { shopId: t.shop_id, accessToken: t.access_token, ...o });
   };
 
-  sinkronBerjalan = sinkronkan({ db, panggil, shopId, hariMundur: opsi.hariMundur })
+  progresSinkron = null;
+  sinkronBerjalan = sinkronkan({ db, panggil, shopId, hariMundur: opsi.hariMundur, onProgres: (p) => { progresSinkron = p; } })
     .then((hasil) => {
       const lama = db.prepare('SELECT sampai_ts, dari_ts FROM sinkron_shopee WHERE shop_id = ?').get(shopId) || {};
       tulisStatus({
@@ -491,7 +493,7 @@ function jalankanSinkron(opsi = {}) {
       tulisStatus({ terakhir_selesai: new Date().toISOString(), status: 'gagal', pesan: err.message });
       throw err;
     })
-    .finally(() => { sinkronBerjalan = null; });
+    .finally(() => { sinkronBerjalan = null; progresSinkron = null; });
   return sinkronBerjalan;
 }
 
@@ -507,6 +509,7 @@ function statusSinkron() {
     env: shopeeApi.getEnv(),
     shopId: token.shop_id,
     sedangBerjalan: !!sinkronBerjalan,
+    progres: progresSinkron,
     status: s.status || null,
     pesan: s.pesan || null,
     terakhirSelesai: s.terakhir_selesai || null,

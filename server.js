@@ -267,6 +267,7 @@ function hitungMargin(items, infoTambahan) {
   let totalPenghasilan = 0;
   let totalHpp = 0;
   let totalUntung = 0;
+  let penghasilanDenganHpp = 0; // pendapatan dari baris yang punya HPP — penyebut margin
   let jumlahBelumAdaHpp = 0;
   let jumlahDikembalikan = 0;
   let penghasilanPerkiraan = 0;
@@ -304,6 +305,7 @@ function hitungMargin(items, infoTambahan) {
     if (punyaHpp) {
       totalHpp += hppTotal;
       totalUntung += untung;
+      penghasilanDenganHpp += item.totalPenghasilan;
     } else {
       jumlahBelumAdaHpp += 1;
     }
@@ -322,7 +324,10 @@ function hitungMargin(items, infoTambahan) {
     totalPenghasilan,
     totalHpp,
     totalUntung,
-    marginRataRataPersen: totalPenghasilan !== 0 ? (totalUntung / totalPenghasilan) * 100 : null,
+    // Untung ÷ pendapatan dari produk yang SUDAH ada HPP-nya saja: produk tanpa HPP tidak punya
+    // untung yang diketahui, jadi pendapatannya juga tidak ikut penyebut (dulu ikut → margin terbaca rendah).
+    marginRataRataPersen: penghasilanDenganHpp !== 0 ? (totalUntung / penghasilanDenganHpp) * 100 : null,
+    penghasilanDenganHpp,
     jumlahBelumAdaHpp,
     jumlahDikembalikan,
     totalOmzet,

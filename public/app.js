@@ -837,7 +837,7 @@ function hitungUlangDanTampilkanUlang() {
   if (!dataHasilUpload) return;
   const hppMap = new Map(daftarHpp.map((r) => [r.id_produk, r.hpp]));
 
-  let totalPenghasilan = 0, totalHpp = 0, totalUntung = 0, jumlahBelumAdaHpp = 0, jumlahDikembalikan = 0;
+  let totalPenghasilan = 0, totalHpp = 0, totalUntung = 0, jumlahBelumAdaHpp = 0, jumlahDikembalikan = 0, penghasilanDenganHpp = 0;
 
   dataHasilUpload.items = dataHasilUpload.items.map((it) => {
     const punyaHpp = hppMap.has(it.idProduk);
@@ -858,7 +858,7 @@ function hitungUlangDanTampilkanUlang() {
     const untung = punyaHpp ? it.totalPenghasilan - hppTotal : null;
     const marginPersen = punyaHpp && it.totalPenghasilan !== 0 ? (untung / it.totalPenghasilan) * 100 : null;
 
-    if (punyaHpp) { totalHpp += hppTotal; totalUntung += untung; } else { jumlahBelumAdaHpp += 1; }
+    if (punyaHpp) { totalHpp += hppTotal; totalUntung += untung; penghasilanDenganHpp += it.totalPenghasilan; } else { jumlahBelumAdaHpp += 1; }
 
     return { ...it, hpp, hppTotal, untung, marginPersen };
   });
@@ -869,7 +869,9 @@ function hitungUlangDanTampilkanUlang() {
     ...dataHasilUpload.ringkasan,
     jumlahBaris: dataHasilUpload.items.length,
     totalPenghasilan, totalHpp, totalUntung,
-    marginRataRataPersen: totalPenghasilan !== 0 ? (totalUntung / totalPenghasilan) * 100 : null,
+    // Sama seperti server: margin hanya dari produk yang punya HPP.
+    marginRataRataPersen: penghasilanDenganHpp !== 0 ? (totalUntung / penghasilanDenganHpp) * 100 : null,
+    penghasilanDenganHpp,
     jumlahBelumAdaHpp,
     jumlahDikembalikan,
   };

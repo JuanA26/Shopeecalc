@@ -8,7 +8,7 @@
 //                    7 hari setelah klik / 1 hari setelah lihat iklan, termasuk produk LAIN
 //                    yang ikut dibeli dan pesanan yang akhirnya batal/dikembalikan.
 //   omzetLangsung  = "Penjualan Langsung (GMV Langsung)": hanya produk yang diiklankan itu
-//                    sendiri. Angka ini yang paling jujur — dipakai untuk vonis untung/rugi.
+//                    sendiri. Dipakai untuk vonis konservatif; bukan ukuran penjualan tambahan.
 //   roasShopee     = omzet ÷ biaya ("Efektifitas Iklan" — angka besar yang dilihat di
 //                    Seller Centre). roasLangsung = omzetLangsung ÷ biaya.
 //   rasioPencairan = berapa bagian dari harga jual yang benar-benar cair ke penjual setelah
@@ -28,15 +28,13 @@
 //                    omzet ÷ terjual. Omzet LUAS tidak boleh dipakai kalau ada pilihan lain:
 //                    ia mencampur produk lain di pesanan yang sama, jadi harga produk murah
 //                    kelihatan 40–65% lebih mahal dari kenyataan (diukur 2026-09-20).
-//   marginPerRp    = untung bersih per Rp 1 omzet iklan = (hargaRata × rasio − HPP) ÷ hargaRata.
-//   roasImpas      = 1 ÷ (marginPerRp × tingkatCair): ROAS MINIMUM — di bawah ini iklan pasti
-//                    rugi bahkan kalau semua omzet iklan benar-benar tambahan. Bukan jaminan
-//                    untung di atasnya, karena omzet luas Shopee juga memuat penjualan yang
-//                    memang akan terjadi tanpa iklan.
+//   marginPerRp    = kontribusi per Rp 1 omzet iklan = (hargaRata × rasio − HPP) ÷ hargaRata.
+//   roasImpas      = 1 ÷ (marginPerRp × tingkatCair): estimasi impas produk langsung,
+//                    dengan asumsi basis harga dan tingkat cair sesuai. Belum mencakup
+//                    overhead maupun kontribusi produk lain. Bukan bukti dampak kausal iklan.
 //   targetDisarankan = roasImpas + 2 — angka untuk diisi di kolom "Target ROAS" Seller Centre.
-//                    Praktik umum penjual (minimum + 2–4 poin, karena ROAS yang dicapai Shopee
-//                    biasanya 2–4 poin di bawah target). Shopee sendiri menyarankan target dari
-//                    performa kompetitor, bukan dari margin.
+//                    Heuristik toko, bukan konversi skala langsung ke luas atau jaminan profit.
+//                    Shopee menyarankan target dari performa, bukan dari HPP penjual.
 //
 // Skala mana yang dipakai untuk vonis? Keputusan Lanjut / Kurangi / Jeda per produk memakai
 // ROAS LANGSUNG (hanya produk yang diiklankan) dibanding ROAS minimum — keputusan pengguna
@@ -54,7 +52,7 @@
 
 const RASIO_PENCAIRAN_DEFAULT = 0.78;
 const TINGKAT_CAIR_DEFAULT = 0.85; // 85% pesanan iklan dianggap dibayar kalau belum ada angka toko
-const MARGIN_TIPIS = 0.08;          // ≤ 8% per Rp omzet: iklan tidak bisa untung di target berapa pun
+const MARGIN_TIPIS = 0.08;          // kebijakan konservatif toko; bukan batas matematis profit
 const PENYANGGA_TARGET = 2;         // poin di atas ROAS minimum
 const HARI_BELAJAR = 7;             // tahap belajar GMV Max: jangan diubah/dinilai sebelum 7 hari (FAQ Shopee)
 const JEDA_DI_BAWAH = 0.5;          // ROAS langsung < 50% minimum: memotong modal tidak cukup, jeda
@@ -244,6 +242,10 @@ function vonis(p) {
     return { status: 'tunggu', aksi: 'tunggu', tindakan: `Masih belajar — cek lagi ${sampai}.` };
   }
   const m = p.berjalan || p;
+  if (p.tingkatCair === 0) {
+    return { status: 'rugi', aksi: 'jeda', tindakan: 'Jeda — belum ada pesanan yang menjadi penjualan pada data terukur.' };
+  }
+  if (p.berjalan && m.biaya === 0) return { status: 'tunggu', aksi: 'tunggu', tindakan: 'Belum ada biaya iklan — tunggu data.' };
   if (!p.hargaRata) {
     return {
       status: 'rugi', aksi: 'jeda',
@@ -318,13 +320,13 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
       ? rasioPencairan
       : RASIO_PENCAIRAN_DEFAULT;
   const tingkatCair =
-    Number.isFinite(opsi.tingkatCair) && opsi.tingkatCair > 0 && opsi.tingkatCair <= 1
+    Number.isFinite(opsi.tingkatCair) && opsi.tingkatCair >= 0 && opsi.tingkatCair <= 1
       ? opsi.tingkatCair
       : TINGKAT_CAIR_DEFAULT;
   const cairPerProduk = opsi.tingkatCairPerProduk || {};
   const cairProduk = (id) => {
     const n = cairPerProduk[id];
-    return Number.isFinite(n) && n > 0 && n <= 1 ? n : tingkatCair;
+    return Number.isFinite(n) && n >= 0 && n <= 1 ? n : tingkatCair;
   };
   const tanggalLaporanIso = opsi.tanggalLaporanIso || '';
   const tanggalRilisTerakhir = opsi.tanggalRilisTerakhir || '';
@@ -422,7 +424,7 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
 
   for (const p of perProduk.values()) {
     // Produk tanpa biaya dan tanpa penjualan (kampanye kosong) tidak perlu ditampilkan.
-    if (p.biaya === 0 && p.terjual === 0) continue;
+    if (p.biaya === 0 && p.terjual === 0 && !p.sedangBerjalan) continue;
 
     const infoHpp = p.tokoLevel ? null : hppMap.get(p.idProduk);
     const hpp = infoHpp && Number.isFinite(infoHpp.hpp) ? infoHpp.hpp : null;
@@ -461,7 +463,7 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
     };
     if (hpp !== null && p.hargaRata > 0) {
       p.marginPerRp = (p.hargaRata * rasioProduk - hpp) / p.hargaRata;
-      p.roasImpas = p.marginPerRp > 0 ? 1 / (p.marginPerRp * cair) : null;
+      p.roasImpas = p.marginPerRp > 0 && cair > 0 ? 1 / (p.marginPerRp * cair) : null;
       p.targetDisarankan = p.roasImpas !== null ? p.roasImpas + PENYANGGA_TARGET : null;
       hitungUntung(p, p.marginPerRp);
       if (p.berjalan) hitungUntung(p.berjalan, p.marginPerRp);

@@ -6,8 +6,8 @@ A small private web app for one Shopee shop. It pulls orders, payouts and ad dat
 Shopee Open Platform API** (read-only), combines them with the cost price (HPP) you enter per product,
 and shows:
 
-- **Real profit** per sale and per period (payout − HPP), by order date, including today.
-- **Whether each Shopee ad (GMV Max) makes money**, and one action per ad for Seller Centre.
+- **Contribution profit** per sale and per period (payout − HPP), by order date, including estimates for unsettled orders.
+- **Estimated ad profitability** (GMV Max), and one suggested action per ad for Seller Centre. Attribution does not prove additional sales caused by ads.
 
 The UI is in simple Bahasa Indonesia and login is required. There is no public sign-up.
 
@@ -80,18 +80,18 @@ from Shopee automatically. The page answers four questions:
 1. **Anggaran Iklan:** the store-level check.
    - Weekly profit after ads, last 4 complete weeks vs the 4 before. If ads went up but profit didn't:
      "kurangi Modal Harian".
-   - "Iklan mengklaim N%" shows how much of the store's sales Shopee credits to ads. Near 100% means the
-     ads mostly relabel sales that would have happened anyway.
+   - The attribution ratio compares ad-attributed units with shop units. It does not prove whether
+     ads caused those sales or the sales would have happened anyway.
 2. **Iklan yang Sedang Berjalan:** one row per running ad, showing the budget and target from Seller Centre
    and **one decision**, judged on **direct ROAS** (sales of the advertised product only) against its
    **ROAS minimum**:
    - **Lanjut:** direct ROAS ≥ minimum.
    - **Kurangi modal:** direct ROAS below the minimum → halve the daily budget.
    - **Jeda:** direct ROAS below half the minimum after 14 days; margin ≤ 8%; or the target needed
-     is above Shopee's highest recommendation + 25% (Shopee's own limit).
+     is above Shopee's highest recommendation + 25% (the app's policy, not a hard Shopee limit).
    - **Naikkan target:** the target set is below minimum + 2. Targets use Shopee's own ROAS scale,
      because that's what Shopee compares them with.
-   - **Tunggu:** the ad is younger than 7 days (Shopee's learning phase).
+   - **Tunggu:** the ad is younger than 7 days, or has no spend yet.
    - **Isi HPP dulu:** the product has no HPP.
    - Each row also shows Shopee's recommended target range, and a note when the ad ends within 7 days
      (extend it as "Tidak Terbatas" instead of creating a new one, which restarts learning).
@@ -106,9 +106,11 @@ The ads CSV from Seller Centre can still be uploaded under "Cadangan" if the aut
 - **Omzet** = selling price (after the shop's own discounts) × pcs, non-returned items.
 - **Pendapatan** = what Shopee pays out. It's exact for released orders (split over items by price, like
   Shopee's Income report). Otherwise ≈ price × the shop's payout ratio of the last 60 days.
-- **Untung** = Pendapatan − HPP × pcs, for items that have an HPP.
-- **Margin** = Untung ÷ Pendapatan of those same items.
-- Returned items count as 0.
+- **Untung** = payout − HPP × pcs for items with HPP, plus returned-item payout balances.
+- **Margin** = Untung ÷ payout for those same rows, including return balances.
+- Returned items have no HPP expense under the assumption that stock is reusable. Their payout balance
+  still affects profit, including negative return/shipping deductions. Refund-only and damaged stock
+  need separate cost accounting.
 
 **Analisis Iklan**
 - **Margin per Rp of sales** = (price × payout ratio − HPP) ÷ price, from the product's own paid-out
@@ -118,12 +120,21 @@ The ads CSV from Seller Centre can still be uploaded under "Cadangan" if the aut
   own order statuses (orders from 90 to 14 days ago, per product where there's enough data).
   - A value typed under "Semua produk & rincian" overrides it.
   - It is 85% when there isn't enough data.
-- **ROAS minimum** = 1 ÷ (margin × paid-order rate). Below it, the ad loses money even if every sale it
-  claims is real.
+- **ROAS minimum** = 1 ÷ (margin × paid-order rate). It estimates direct-product break-even under the
+  price, payout and paid-rate assumptions; cross-product contribution is not measured by this formula.
+- A measured zero paid rate is preserved. Partial returns remove only returned units from the
+  measured rate. Active zero-activity campaigns stay visible while waiting for data.
+- Target = minimum + 2 is a heuristic, not a conversion from direct to broad ROAS or a profit guarantee.
 - **Iklan Toko:** ad spend outside product campaigns (shop total − Σ campaigns) is kept as one line so
   its cost isn't lost.
 
-## 5. Project structure
+## 5. Tests
+
+Run `npm test` for the financial regression tests (profit and break-even maths, paid-order rate with
+partial returns, payout split, return deductions). No Shopee credentials are needed.
+The calculator excludes business overhead unless it is already part of HPP/payout deductions.
+
+## 6. Project structure
 
 ```
 webapp/
@@ -134,6 +145,7 @@ webapp/
   analisisIklan.js  Ads maths and per-ad decision; parser for the Seller Centre ads CSV
   db.js             SQLite schema (users, HPP, settings, Shopee token, orders, payouts, ads)
   scripts/add-user.js   Create/update login accounts
+  test/             Regression tests (npm test)
   public/           Frontend: index.html, app.js, style.css (no build step)
   data/app.db       SQLite database (gitignored; back it up)
   Dockerfile        For other container hosts

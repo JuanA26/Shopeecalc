@@ -4,6 +4,7 @@
   "description": "Kalkulator margin keuntungan penjualan Shopee (privat, login diperlukan)",
   "main": "server.js",
   "scripts": {
+    "test": "node --test",
     "start": "node server.js",
     "adduser": "node scripts/add-user.js"
   },

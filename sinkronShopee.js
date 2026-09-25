@@ -394,11 +394,18 @@ function tingkatCairTerukur(db, shopId, hariIni) {
   const dari = tertua > geser(hariIni, -90) ? tertua : geser(hariIni, -90);
   if (dari > sampai) return null;
   const rows = db.prepare(
-    `SELECT i.id_produk, SUM(i.jumlah) AS dibuat,
+    `WITH ordered AS (
+       SELECT order_sn, id_produk, SUM(jumlah) AS jumlah
+       FROM api_order_item GROUP BY order_sn, id_produk
+     ), returned AS (
+       SELECT order_sn, id_produk, SUM(jumlah) AS jumlah
+       FROM api_pesanan_item WHERE dikembalikan = 1 GROUP BY order_sn, id_produk
+     )
+     SELECT i.id_produk, SUM(i.jumlah) AS dibuat,
        SUM(CASE WHEN o.status IN (${STATUS_TIDAK_DIBAYAR.map(() => '?').join(',')})
-                  OR EXISTS (SELECT 1 FROM api_pesanan_item r WHERE r.order_sn = o.order_sn AND r.id_produk = i.id_produk AND r.dikembalikan = 1)
-                THEN 0 ELSE i.jumlah END) AS dibayar
-     FROM api_order o JOIN api_order_item i ON i.order_sn = o.order_sn
+                THEN 0 ELSE MAX(0, i.jumlah - COALESCE(r.jumlah, 0)) END) AS dibayar
+     FROM api_order o JOIN ordered i ON i.order_sn = o.order_sn
+     LEFT JOIN returned r ON r.order_sn = i.order_sn AND r.id_produk = i.id_produk
      WHERE o.shop_id = ? AND o.tanggal_pesanan BETWEEN ? AND ?
      GROUP BY i.id_produk`
   ).all(...STATUS_TIDAK_DIBAYAR, shopId, dari, sampai);

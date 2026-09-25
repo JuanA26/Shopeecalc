@@ -286,13 +286,13 @@ function hitungMargin(items, infoTambahan) {
     totalPenghasilan += item.totalPenghasilan;
     if (item.perkiraan) { penghasilanPerkiraan += item.totalPenghasilan; pesananPerkiraan.add(item.noPesanan); }
 
-    // Pesanan yang dikembalikan/di-refund: barangnya kembali ke penjual (proses retur
-    // Shopee mengharuskan pembeli mengirim balik sebelum dana dikembalikan), jadi HPP-nya
-    // TIDAK dianggap hilang — bukan untung, tapi juga bukan rugi. Baris ini sengaja tidak
-    // dihitung ke Total Untung/HPP, dan tidak perlu diminta isi HPP juga.
+    // Asumsi stok retur kembali layak jual: HPP tidak dibebankan lagi.
+    // Tetap hitung saldo pencairan (misalnya potongan ongkir retur) sebagai untung/rugi.
     if (item.dikembalikan) {
       pesananDikembalikan.add(item.noPesanan);
-      return { ...item, hpp, untung: 0, marginPersen: null };
+      totalUntung += item.totalPenghasilan;
+      penghasilanDenganHpp += item.totalPenghasilan;
+      return { ...item, hpp, hppTotal: 0, untung: item.totalPenghasilan, marginPersen: null };
     }
 
     totalOmzet += item.hargaProduk || 0;

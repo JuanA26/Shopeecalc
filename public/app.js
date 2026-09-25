@@ -518,10 +518,12 @@ function dataTrenHarian() {
   }
   for (const it of dataHasilUpload.items) {
     const h = hari.get(it.waktuPesanan);
-    if (!h || it.dikembalikan) continue;
-    h.omzet += it.hargaProduk || 0;
-    h.pcs += it.jumlah || 0;
-    h.pesananSet.add(it.noPesanan);
+    if (!h) continue;
+    if (!it.dikembalikan) {
+      h.omzet += it.hargaProduk || 0;
+      h.pcs += it.jumlah || 0;
+      h.pesananSet.add(it.noPesanan);
+    }
     if (it.untung !== null && it.untung !== undefined) h.untung += it.untung; else h.belumHpp += 1;
     if (it.perkiraan) h.perkiraan = true;
   }
@@ -672,7 +674,7 @@ window.addEventListener('resize', () => {
 });
 
 // Nilai satu baris untuk kolom tertentu, dipakai buat urutkan tabel Data.
-// Baris yang "dikembalikan" untungnya dianggap 0 (sama seperti yang ditampilkan),
+// Saldo retur tetap ikut untung/rugi,
 // dan HPP yang belum diisi (null) selalu ditaruh paling akhir apa pun arah urutannya
 // — supaya "belum diisi" tidak nyampur di tengah angka yang sudah lengkap.
 function nilaiUntukUrut(it, kolom) {
@@ -680,7 +682,7 @@ function nilaiUntukUrut(it, kolom) {
     case 'jumlah': return it.jumlah;
     case 'totalPenghasilan': return it.totalPenghasilan;
     case 'hpp': return it.hpp === null ? null : (it.hppTotal ?? it.hpp);
-    case 'untung': return it.dikembalikan ? 0 : it.untung;
+    case 'untung': return it.untung;
     case 'marginPersen': return it.dikembalikan ? 0 : it.marginPersen;
     default: return it[kolom];
   }
@@ -784,7 +786,7 @@ function renderTabelData(items) {
         : approx + formatRupiah(it.totalPenghasilan);
 
       const untungTampil = it.dikembalikan
-        ? '<span title="Barang dikembalikan ke Anda, jadi tidak dihitung untung maupun rugi.">Rp 0</span>'
+        ? `<span title="HPP dianggap kembali menjadi stok. Potongan atau saldo retur tetap dihitung.">${formatRupiah(it.untung)}</span>`
         : punyaHpp ? approx + formatRupiah(it.untung) : 'Belum diisi';
       const marginTampil = it.dikembalikan ? '-' : punyaHpp ? pillMargin(it.marginPersen) : '-';
 
@@ -855,11 +857,12 @@ function hitungUlangDanTampilkanUlang() {
 
     totalPenghasilan += it.totalPenghasilan;
 
-    // Sama seperti di server: pesanan yang dikembalikan tidak dihitung untung/rugi
-    // (barangnya kembali ke penjual), dan tidak perlu diminta isi HPP.
+    // Sama seperti server: HPP kembali ke stok, saldo pencairan retur tetap dihitung.
     if (it.dikembalikan) {
       pesananDikembalikan.add(it.noPesanan);
-      return { ...it, hpp, untung: 0, marginPersen: null };
+      totalUntung += it.totalPenghasilan;
+      penghasilanDenganHpp += it.totalPenghasilan;
+      return { ...it, hpp, hppTotal: 0, untung: it.totalPenghasilan, marginPersen: null };
     }
 
     // HPP dikali jumlah pcs (auto-terdeteksi atau hasil koreksi manual — lihat kolom
@@ -1434,8 +1437,8 @@ function renderCobaIklan() {
       // Rasio pencairan produk itu sendiri (bukan rata-rata toko), dan pesanan iklan yang
       // batal/tidak dibayar ikut diperhitungkan (tingkatCair) — sama seperti di server.
       const rasio = k.rasio || (dataIklan && dataIklan.ringkasan.rasioPencairan) || 0.78;
-      const cair = (dataIklan && dataIklan.ringkasan.tingkatCair) || 0.85;
-      const impas = k.margin > 0 ? 1 / (k.margin * rasio * cair) : null;
+      const cair = (dataIklan && dataIklan.ringkasan.tingkatCair) ?? 0.85;
+      const impas = k.margin > 0 && cair > 0 ? 1 / (k.margin * rasio * cair) : null;
       const targetMin = impas === null ? '-' : formatRoas(impas + 2);
       return `<li><span class="nama-singkat" title="${escapeHtml(k.namaProduk)}">${escapeHtml(namaSingkat(k.namaProduk, 60))}<small>${escapeHtml(k.idProduk)} · ${k.pcs} pcs · margin ${Math.round(k.margin * 100)}%</small></span><span class="nilai">target min ${targetMin}</span></li>`;
     })
@@ -1461,14 +1464,18 @@ function untungTokoPerMinggu() {
   const ambil = (k) => { let t = minggu.get(k); if (!t) { t = { mulai: k, pcs: 0, penghasilan: 0, penghasilanDiketahui: 0, untungDiketahui: 0, biayaIklan: 0, pcsIklan: 0, adaIklan: false }; minggu.set(k, t); } return t; };
   let minRilis = '', maxRilis = '', minPesanan = '';
   for (const it of sumberIklan().items) {
-    if (it.dikembalikan) continue;
     const k = seninIso(it.waktuPesanan);
     if (!k) continue;
     const t = ambil(k);
+    t.adaIncome = true;
     if (!minPesanan || it.waktuPesanan < minPesanan) minPesanan = String(it.waktuPesanan).slice(0, 10);
-    t.pcs += it.jumlah || 1;
-    t.penghasilan += it.totalPenghasilan || 0;
-    if (it.hpp !== null && it.untung !== null && it.untung !== undefined) { t.penghasilanDiketahui += it.totalPenghasilan || 0; t.untungDiketahui += it.untung; }
+    if (!it.dikembalikan) t.pcs += it.jumlah || 1;
+    if (it.dikembalikan) {
+      t.saldoRetur = (t.saldoRetur || 0) + (it.totalPenghasilan || 0);
+    } else {
+      t.penghasilan += it.totalPenghasilan || 0;
+      if (it.hpp !== null && it.untung !== null && it.untung !== undefined) { t.penghasilanDiketahui += it.totalPenghasilan || 0; t.untungDiketahui += it.untung; }
+    }
     const r = it.tanggalDilepaskan || '';
     if (r && (!minRilis || r < minRilis)) minRilis = r;
     if (r > maxRilis) maxRilis = r;
@@ -1509,13 +1516,13 @@ function untungTokoPerMinggu() {
     const selesai = tambahHari(t.mulai, 6);
     // Untung kotor: baris tanpa HPP diperkirakan pakai margin baris yang ada HPP-nya minggu itu.
     const marginDiketahui = t.penghasilanDiketahui ? t.untungDiketahui / t.penghasilanDiketahui : 0;
-    const untungKotor = t.untungDiketahui + (t.penghasilan - t.penghasilanDiketahui) * marginDiketahui;
-    const lengkap = t.pcs > 0 && t.mulai >= awalData && selesai <= batasLengkap;
+    const untungKotor = t.untungDiketahui + (t.penghasilan - t.penghasilanDiketahui) * marginDiketahui + (t.saldoRetur || 0);
+    const lengkap = !!t.adaIncome && t.mulai >= awalData && selesai <= batasLengkap;
     const iklanLengkap = !!dataIklan && t.mulai >= (iklanMulai || '9999') && selesai <= (iklanSelesai || '');
-    // Berapa bagian penjualan toko yang diklaim iklan. Mendekati (atau melewati) 100% =
-    // iklan hanya menempel pada penjualan yang memang terjadi, bukan menambah.
+    // Rasio atribusi, bukan bukti tambahan penjualan. Penyebut & pembilang berbeda
+    // (pesanan batal, waktu atribusi, produk lain), sehingga bisa melebihi 100%.
     const klaimIklan = t.pcs > 0 && dataIklan ? t.pcsIklan / t.pcs : null;
-    return { ...t, selesai, untungKotor, untungSetelahIklan: untungKotor - t.biayaIklan, klaimIklan, lengkap, iklanLengkap, adaIncome: t.pcs > 0 };
+    return { ...t, selesai, untungKotor, untungSetelahIklan: untungKotor - t.biayaIklan, klaimIklan, lengkap, iklanLengkap };
   }).filter((t) => t.adaIncome);
   return { minggu: daftar, minRilis, maxRilis, iklanMulai, iklanSelesai };
 }
@@ -1536,7 +1543,7 @@ function aturanMingguan(data) {
   if (pctIklan >= 0.1 && untungB <= untungA) return { kelas: 'aturan-kurangi', teks: 'Iklan naik, untung tidak naik → kurangi Modal Harian.', detail };
   if (pctIklan <= -0.1 && untungB >= untungA * 0.95) return { kelas: 'aturan-aman', teks: 'Iklan dikurangi, untung tidak turun → pertahankan.', detail };
   if (untungB > untungA && pctIklan >= 0.1) return { kelas: 'aturan-aman', teks: 'Iklan naik dan untung ikut naik → pertahankan.', detail };
-  if (pctUntung <= -0.15) return { kelas: '', teks: 'Untung turun walau iklan tetap → bukan soal iklan; cek harga & stok.', detail };
+  if (pctUntung <= -0.15) return { kelas: '', teks: 'Untung turun → cek iklan, harga, stok, dan retur.', detail };
   return { kelas: '', teks: 'Pertahankan, cek lagi minggu depan.', detail };
 }
 
@@ -1589,7 +1596,7 @@ function renderMingguan() {
   if (lengkapIklan.length >= 2) {
     const akhir = lengkapIklan[lengkapIklan.length - 1], awal = lengkapIklan[0];
     const pct = (t) => `${Math.round(t.klaimIklan * 100)}%`;
-    klaim = `<small class="klaim-iklan">Iklan mengklaim <strong>${pct(akhir)}</strong> penjualan toko minggu ${labelMinggu(akhir.mulai)}–${labelMinggu(akhir.selesai)} (awal periode ${pct(awal)}). Mendekati 100% = iklan cuma menempel pada penjualan yang memang terjadi.</small>`;
+    klaim = `<small class="klaim-iklan">Rasio pcs atribusi iklan terhadap pcs toko <strong>${pct(akhir)}</strong> minggu ${labelMinggu(akhir.mulai)}–${labelMinggu(akhir.selesai)} (awal periode ${pct(awal)}). Ini bukan ukuran tambahan penjualan. Uji pengurangan iklan untuk menilai dampaknya.</small>`;
   }
   aturanEl.innerHTML = `<span>${escapeHtml(aturan.teks)}</span>` +
     (aturan.detail ? `<small>${escapeHtml(aturan.detail)}</small>` : '') + klaim;
@@ -1616,7 +1623,7 @@ function renderRingkasanIklan(r) {
   const rasioPersen = (r.rasioPencairan * 100).toFixed(1).replace('.', ',');
   const catatan = document.getElementById('catatanRasioIklan');
   const periode = dataIklan.periode ? `${dariApi() ? 'Data iklan' : 'Periode file'}: <strong>${escapeHtml(dataIklan.periode)}</strong> · ${r.jumlahKampanye} kampanye, ${r.jumlahProduk} produk. ` : '';
-  const cairPersen = Math.round((r.tingkatCair || 0.85) * 100);
+  const cairPersen = Math.round((r.tingkatCair ?? 0.85) * 100);
   const sumberCair = {
     pengaturan: ' — angka yang diisi sendiri di bagian "Semua produk &amp; rincian".',
     terukur: ' — diukur dari status pesanan Shopee toko ini (90–14 hari lalu); tiap produk memakai angkanya sendiri kalau pesanannya cukup.',
@@ -1758,7 +1765,7 @@ function barisProdukIklan(p, kampanyePerProduk) {
 function barisRincianIklan(p, kampanyePerProduk, colspan) {
   const hppTampil = p.hpp === null ? 'belum diisi' : formatRupiah(p.hpp);
   const kotak = (label, nilai, ket) => `<div><div class="label-ringkasan">${label}</div><div class="nilai">${nilai}${ket ? ` <small>${ket}</small>` : ''}</div></div>`;
-  const cairPersen = Math.round(((dataIklan && dataIklan.ringkasan.tingkatCair) || 0.85) * 100);
+  const cairPersen = Math.round(((dataIklan && dataIklan.ringkasan.tingkatCair) ?? 0.85) * 100);
   const dibayar = !p.kampanyeTerukur
     ? [`≈ ${cairPersen}%`, 'perkiraan (belum ada kampanye yang bisa diukur dari data penjualan)']
     : p.dibayarMaksTerukur < p.terjualLangsungTerukur
@@ -1927,7 +1934,7 @@ function catatanKeputusan(b) {
     catatan.push(`Berakhir ${formatTanggalPendek(b.berakhir)} — kalau lanjut, ubah Periode jadi Tidak Terbatas; jangan buat iklan baru.`);
   }
   if (b.target !== null && b.batasShopee !== null && b.target > b.batasShopee && b.keputusan !== 'jeda') {
-    catatan.push(`Target ${formatRoas(b.target)} di atas batas Shopee (${formatRoas(b.batasShopee)}) — iklan bisa jarang tayang.`);
+    catatan.push(`Target ${formatRoas(b.target)} melewati panduan Shopee (${formatRoas(b.batasShopee)}) — iklan bisa jarang tayang. Ini bukan batas wajib.`);
   }
   return catatan.map((t) => `<small class="catatan-keputusan">${escapeHtml(t)}</small>`).join('');
 }
@@ -1937,7 +1944,7 @@ function kalimatKeputusan(b) {
   switch (b.keputusan) {
     case 'isi-hpp': return 'Isi HPP di Kalkulator Margin.';
     case 'jeda': return b.diAtasBatas && b.p.aksi !== 'jeda'
-      ? `Jeda — butuh target ≥ ${f(b.minimal)}, Shopee maks ${f(b.batasShopee)}.`
+      ? `Jeda sesuai aturan toko — saran target ${f(b.minimal)} melewati panduan Shopee ${f(b.batasShopee)}.`
       : b.p.tindakan;
     case 'tunggu': case 'toko': return b.p.tindakan;
     case 'naikkan': return b.target === null ? `Ganti ke GMV Max ROAS, target ${f(b.minimal)}.` : `Ubah Target ROAS ${f(b.target)} → ${f(b.minimal)}.`;

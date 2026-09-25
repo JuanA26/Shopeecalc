@@ -624,7 +624,7 @@ app.put('/api/iklan/setelan/:idProduk', requireLogin, (req, res) => {
   res.json(db.prepare('SELECT id_produk, target_roas, modal_harian, updated_at, updated_by FROM iklan_setelan WHERE id_produk = ?').get(idProduk));
 });
 
-// ---------- SEMENTARA: probe API Iklan (2026-09-25) — HAPUS setelah hasilnya dicatat ----------
+// ---------- SEMENTARA: probe API Iklan putaran 2 (2026-09-25) — HAPUS setelah hasilnya dicatat ----------
 // Sekali buka untuk melihat bentuk respons asli endpoint Ads (token produksi hanya ada di
 // Render). Hanya endpoint baca-saja dari ENDPOINT_BACA_SAJA; hanya metrik iklan, tanpa data
 // pembeli. Daftar panjang dipotong (jumlah + beberapa contoh) supaya hasilnya bisa ditempel.
@@ -649,74 +649,89 @@ app.get('/api/iklan/probe', requireLogin, async (req, res) => {
   };
   const r = (x) => (x && x.response) || {};
 
-  await coba('gmsEligibility', () => panggil('/api/v2/ads/check_create_gms_product_campaign_eligibility'));
-
+  // Putaran 2: putaran 1 hanya membaca 100 ID kampanye TERLAMA (2022–2024, semua closed). Iklan
+  // GMV Max ROAS per produk yang berjalan = kampanye level produk, jadi baca setelan SEMUA
+  // kampanye (maks 100 per panggilan), ambil yang masih hidup atau selesai < 90 hari lalu.
   const daftar = await coba('campaignIdList', () =>
     panggil('/api/v2/ads/get_product_level_campaign_id_list', { query: { ad_type: 'all', offset: '0', limit: '5000' } }));
   const semuaId = (r(daftar).campaign_list || []).map((c) => c.campaign_id);
-  hasil.campaignIdList = { ...daftar, response: { ...r(daftar), campaign_list: potong(r(daftar).campaign_list, 10) } };
-  const id100 = semuaId.slice(0, 100).join(',');
+  hasil.campaignIdList = { error: daftar.error, jumlah: semuaId.length, has_next_page: r(daftar).has_next_page, pertama: semuaId[0], terakhir: semuaId[semuaId.length - 1] };
 
-  if (id100) {
-    const setelan = await coba('campaignSettings', () =>
-      panggil('/api/v2/ads/get_product_level_campaign_setting_info', { query: { info_type_list: '1,3,4', campaign_id_list: id100 } }));
-    const list = r(setelan).campaign_list || [];
-    // Ringkas: semua kampanye, tanpa daftar keyword manual.
-    hasil.campaignSettings = {
-      error: setelan.error, message: setelan.message, warning: setelan.warning,
-      jumlah: list.length,
-      ringkas: list.map((c) => ({
-        id: c.campaign_id,
-        ...c.common_info,
-        roas_target: c.auto_bidding_info && c.auto_bidding_info.roas_target,
-        auto_products: potong(c.auto_product_ads_info, 5),
-      })),
-    };
-    const harian = await coba('productCampaignDaily', () =>
-      panggil('/api/v2/ads/get_product_campaign_daily_performance', { query: { start_date: tgl(28), end_date: tgl(1), campaign_id_list: id100 } }));
-    const kamp = (Array.isArray(harian.response) ? harian.response : []).flatMap((s) => s.campaign_list || []);
-    hasil.productCampaignDaily = {
-      error: harian.error, message: harian.message, warning: harian.warning,
-      jumlahKampanye: kamp.length,
-      contoh: kamp.slice(0, 3).map((c) => ({ ...c, metrics_list: potong(c.metrics_list, 3) })),
-      perKampanye: kamp.map((c) => ({
-        id: c.campaign_id, ad_type: c.ad_type, ad_name: c.ad_name, hari: (c.metrics_list || []).length,
-        expense: (c.metrics_list || []).reduce((s, m) => s + (m.expense || 0), 0),
-      })),
-    };
+  const semuaSetelan = [];
+  const galatSetelan = [];
+  for (let i = 0; i < semuaId.length; i += 100) {
+    try {
+      const x = await panggil('/api/v2/ads/get_product_level_campaign_setting_info', {
+        query: { info_type_list: '1,3,4', campaign_id_list: semuaId.slice(i, i + 100).join(',') },
+      });
+      if (x.error) galatSetelan.push({ i, error: x.error, message: x.message });
+      semuaSetelan.push(...(r(x).campaign_list || []));
+    } catch (err) { galatSetelan.push({ i, gagalDiServer: err.message }); }
   }
-
-  const toko = await coba('allCpcDaily', () =>
-    panggil('/api/v2/ads/get_all_cpc_ads_daily_performance', { query: { start_date: tgl(28), end_date: tgl(1) } }));
-  hasil.allCpcDaily = { ...toko, response: potong(toko.response, 5) };
-
-  await coba('gmsCampaign28Hari', () =>
-    panggil('/api/v2/ads/get_gms_campaign_performance', { method: 'POST', body: { start_date: tgl(28), end_date: tgl(1) } }));
-  // Uji batas rentang: dokumentasi bilang 3 bulan di parameter tapi 1 bulan di daftar error.
-  await coba('gmsCampaign60Hari', () =>
-    panggil('/api/v2/ads/get_gms_campaign_performance', { method: 'POST', body: { start_date: tgl(60), end_date: tgl(1) } }));
-
-  const item = await coba('gmsItem28Hari', () =>
-    panggil('/api/v2/ads/get_gms_item_performance', { method: 'POST', body: { start_date: tgl(28), end_date: tgl(1), offset: 0, limit: 100 } }));
-  const itemList = r(item).result_list || [];
-  hasil.gmsItem28Hari = {
-    ...item,
-    response: { ...r(item), result_list: potong(itemList, 5) },
-    ringkasSemua: itemList.map((x) => ({ item_id: x.item_id, expense: x.report && x.report.expense, direct_roi: x.report && x.report.direct_roi, broad_roi: x.report && x.report.broad_roi })),
+  const batas90 = Date.now() / 1000 - 90 * 86400;
+  const perStatus = {};
+  for (const c of semuaSetelan) {
+    const ci = c.common_info || {};
+    const k = [ci.ad_type, ci.campaign_status, ci.bidding_method, ci.campaign_placement].join('/');
+    perStatus[k] = (perStatus[k] || 0) + 1;
+  }
+  const baru = semuaSetelan.filter((c) => {
+    const ci = c.common_info || {};
+    const akhir = ci.campaign_duration && ci.campaign_duration.end_time;
+    return !['closed', 'ended', 'deleted'].includes(ci.campaign_status) || (akhir > 0 && akhir >= batas90);
+  });
+  hasil.campaignSettings = {
+    jumlahDibaca: semuaSetelan.length,
+    galat: galatSetelan,
+    perStatus,
+    jumlahBaru: baru.length,
+    baru: baru.map((c) => ({
+      id: c.campaign_id,
+      ...c.common_info,
+      roas_target: c.auto_bidding_info && c.auto_bidding_info.roas_target,
+      auto_products: potong(c.auto_product_ads_info, 5),
+    })),
   };
 
-  await coba('gmsDeletedItems', () =>
-    panggil('/api/v2/ads/list_gms_user_deleted_item', { method: 'POST', body: { offset: 0, limit: 100 } }));
-
-  const contohItem = itemList.slice(0, 3).map((x) => x.item_id);
-  hasil.recommendedRoi = [];
-  for (const itemId of contohItem) {
+  // Harian 28 hari untuk kampanye yang baru/berjalan.
+  const idBaru = baru.map((c) => c.campaign_id);
+  const kamp = [];
+  const galatHarian = [];
+  for (let i = 0; i < idBaru.length; i += 100) {
     try {
-      hasil.recommendedRoi.push({ itemId, ...(await panggil('/api/v2/ads/get_product_recommended_roi_target', {
-        query: { reference_id: crypto.randomUUID(), item_id: String(itemId) },
-      })) });
-    } catch (err) { hasil.recommendedRoi.push({ itemId, gagalDiServer: err.message }); }
+      const x = await panggil('/api/v2/ads/get_product_campaign_daily_performance', {
+        query: { start_date: tgl(28), end_date: tgl(1), campaign_id_list: idBaru.slice(i, i + 100).join(',') },
+      });
+      if (x.error) galatHarian.push({ i, error: x.error, message: x.message, warning: x.warning });
+      kamp.push(...(Array.isArray(x.response) ? x.response : []).flatMap((s) => s.campaign_list || []));
+    } catch (err) { galatHarian.push({ i, gagalDiServer: err.message }); }
   }
+  const jumlahkan = (ms, f) => (ms || []).reduce((s, m) => s + (Number(m[f]) || 0), 0);
+  hasil.productCampaignDaily = {
+    galat: galatHarian,
+    jumlahKampanye: kamp.length,
+    contohLengkap: kamp.slice(0, 1).map((c) => ({ ...c, metrics_list: potong(c.metrics_list, 2) })),
+    perKampanye: kamp.map((c) => ({
+      id: c.campaign_id, ad_type: c.ad_type, placement: c.campaign_placement, ad_name: c.ad_name,
+      hari: (c.metrics_list || []).length,
+      expense: jumlahkan(c.metrics_list, 'expense'),
+      direct_gmv: jumlahkan(c.metrics_list, 'direct_gmv'),
+      broad_gmv: jumlahkan(c.metrics_list, 'broad_gmv'),
+      direct_order: jumlahkan(c.metrics_list, 'direct_order'),
+      direct_order_amount: jumlahkan(c.metrics_list, 'direct_order_amount'),
+    })),
+  };
+
+  // Total toko per hari, semua 28 baris (ringkas) — untuk dicocokkan dengan jumlah per kampanye.
+  const toko = await coba('allCpcDaily', () =>
+    panggil('/api/v2/ads/get_all_cpc_ads_daily_performance', { query: { start_date: tgl(28), end_date: tgl(1) } }));
+  hasil.allCpcDaily = {
+    error: toko.error,
+    baris: (Array.isArray(toko.response) ? toko.response : []).map((d) => ({
+      date: d.date, expense: d.expense, direct_gmv: d.direct_gmv, broad_gmv: d.broad_gmv,
+      direct_order: d.direct_order, direct_item_sold: d.direct_item_sold,
+    })),
+  };
 
   res.type('application/json').send(JSON.stringify(hasil, null, 2));
 });

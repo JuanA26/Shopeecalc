@@ -20,6 +20,7 @@ const DETIK_TUMPANG_ORDER = 60 * 60; // sinkron pesanan berikutnya mundur 1 jam 
 const PARALEL = 4; // jumlah panggilan API yang boleh jalan bersamaan (jauh di bawah batas laju Shopee)
 const DETIK_SEHARI = 86400;
 const BATAS_ULANG = 200; // maksimal pesanan dari tabel sinkron_ulang yang dicoba lagi per sinkron (per jenis)
+const BATAS_PERCOBAAN = 10; // setelah ini dianggap "macet": tetap dicoba (paling belakang), tapi tidak lagi "menunggu"
 
 // Antrean ambil-ulang (tabel sinkron_ulang, db.js): pesanan yang pengambilannya tidak lengkap
 // dicatat, lalu dicoba lagi di sinkron berikutnya sampai berhasil.
@@ -44,6 +45,16 @@ function antreanUlang(db, shopId, jenis) {
     hapus: (sn) => buang.run(shopId, sn, jenis),
     sisa: () => hitung.get(shopId, jenis).n,
   };
+}
+
+// Isi antrean untuk halaman: `menunggu` masih dikerjakan bertahap; `macet` sudah gagal
+// ≥ BATAS_PERCOBAAN kali (mis. Shopee tidak pernah mengembalikan datanya). Yang macet tetap
+// dicoba tiap sinkron, tapi tidak membuat status sinkron terus terlihat "belum selesai".
+function isiAntreanUlang(db, shopId) {
+  const r = db.prepare(
+    `SELECT SUM(percobaan < ?) AS menunggu, SUM(percobaan >= ?) AS macet FROM sinkron_ulang WHERE shop_id = ?`
+  ).get(BATAS_PERCOBAAN, BATAS_PERCOBAAN, String(shopId));
+  return { menunggu: r.menunggu || 0, macet: r.macet || 0 };
 }
 
 // Tanggal WIB (GMT+7, zona waktu Shopee Indonesia & file Excel-nya) dari unix detik.
@@ -552,4 +563,4 @@ function bacaItemPesanan(db, shopId, dari, sampai, rasioPerkiraan) {
   );
 }
 
-module.exports = { modeEscrow, sinkronkan, bacaItemPesanan, rasioPencairanToko, tingkatCairTerukur, susunBarisPesanan, tanggalWib, HARI_AWAL_DEFAULT };
+module.exports = { modeEscrow, sinkronkan, bacaItemPesanan, rasioPencairanToko, tingkatCairTerukur, susunBarisPesanan, tanggalWib, isiAntreanUlang, HARI_AWAL_DEFAULT, BATAS_PERCOBAAN };

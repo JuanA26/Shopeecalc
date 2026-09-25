@@ -9,7 +9,7 @@ const bcrypt = require('bcryptjs');
 const db = require('./db');
 const { parseCsvLine, parseShopeeAdsCsv, hitungAnalisisIklan, RASIO_PENCAIRAN_DEFAULT, TINGKAT_CAIR_DEFAULT } = require('./analisisIklan');
 const shopeeApi = require('./shopeeApi');
-const { sinkronkan, bacaItemPesanan, rasioPencairanToko, tingkatCairTerukur, modeEscrow } = require('./sinkronShopee');
+const { sinkronkan, bacaItemPesanan, rasioPencairanToko, tingkatCairTerukur, modeEscrow, isiAntreanUlang } = require('./sinkronShopee');
 const { sinkronIklan, kampanyeDariDb } = require('./sinkronIklan');
 
 const app = express();
@@ -448,6 +448,7 @@ function statusSinkron() {
        UNION SELECT order_sn, waktu_pesanan AS tgl FROM api_pesanan WHERE shop_id = ?1 AND waktu_pesanan <> ''
      )`
   ).get(token.shop_id);
+  const antrean = isiAntreanUlang(db, token.shop_id);
   return {
     terhubung: true,
     env: shopeeApi.getEnv(),
@@ -459,7 +460,8 @@ function statusSinkron() {
     terakhirSelesai: s.terakhir_selesai || null,
     jumlahBaru: s.jumlah_baru ?? null,
     jumlahOrderBerubah: s.order_berubah ?? null,
-    ulangTertunda: db.prepare('SELECT COUNT(*) AS n FROM sinkron_ulang WHERE shop_id = ?').get(String(token.shop_id)).n,
+    ulangTertunda: antrean.menunggu,
+    ulangMacet: antrean.macet,
     modeEscrow: modeEscrow(),
     iklan: { status: s.iklan_status || null, pesan: s.iklan_pesan || null, terakhirSelesai: s.iklan_selesai || null, sampai: s.iklan_sampai || null },
     jumlahPesanan: agg.jumlah,

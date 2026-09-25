@@ -184,7 +184,6 @@ const tanggalDari = document.getElementById('tanggalDari');
 const tanggalSampai = document.getElementById('tanggalSampai');
 const tombolTampilkan = document.getElementById('tombolTampilkan');
 const tombolSinkron = document.getElementById('tombolSinkron');
-const tombolPeriksaUlang = document.getElementById('tombolPeriksaUlang');
 const teksStatusSinkron = document.getElementById('statusSinkron');
 const pesanErrorSinkron = document.getElementById('pesanErrorSinkron');
 const pesanLoadingSinkron = document.getElementById('pesanLoadingSinkron');
@@ -262,8 +261,6 @@ function renderStatusSinkron(s) {
   statusSinkronTerakhir = s;
   const terhubung = !!(s && s.terhubung);
   tombolSinkron.classList.toggle('tersembunyi', !terhubung);
-  document.getElementById('pemulihanSinkron').classList.toggle('tersembunyi', !terhubung);
-  tombolPeriksaUlang.disabled = !terhubung || !!s.sedangBerjalan || !!s.ulangTertunda;
   document.getElementById('tautanHubungkan').classList.toggle('tersembunyi', terhubung);
   tombolTampilkan.disabled = !terhubung;
   if (!terhubung) {
@@ -279,6 +276,7 @@ function renderStatusSinkron(s) {
   if (s.jumlahPesanan) bagian.push(`${s.jumlahPesanan.toLocaleString('id-ID')} pesanan tersimpan (${formatTanggalPendek(s.tanggalTerlama)} – ${formatTanggalPendek(s.tanggalTerbaru)})`);
   bagian.push('otomatis tiap 30 menit');
   if (s.ulangTertunda) bagian.push(`${s.ulangTertunda} pemeriksaan menunggu — dilanjutkan otomatis`);
+  if (s.ulangMacet) bagian.push(`${s.ulangMacet} pesanan belum bisa diperiksa ulang — tetap dicoba otomatis`);
   teksStatusSinkron.textContent = bagian.join(' · ');
   tombolSinkron.disabled = !!s.sedangBerjalan;
   tampilkanErrorSinkron(s.status === 'gagal' && s.pesan ? `Sinkron terakhir gagal: ${s.pesan}` : '');
@@ -364,9 +362,8 @@ async function muatStatusSinkron() {
   }
 }
 
-async function sinkronSekarang(opsi = {}) {
+async function sinkronSekarang() {
   tombolSinkron.disabled = true;
-  tombolPeriksaUlang.disabled = true;
   sedangMengikutiSinkron = true; // pemeriksa semenit tidak perlu ikut memantau
   tampilkanErrorSinkron('');
   renderProgres({ sedangBerjalan: true, progres: null });
@@ -379,7 +376,7 @@ async function sinkronSekarang(opsi = {}) {
     } catch (_) { /* abaikan, coba lagi di putaran berikutnya */ }
   }, 1500);
   try {
-    const hasil = await apiFetch('/api/sinkron', { method: 'POST', body: JSON.stringify(opsi) });
+    const hasil = await apiFetch('/api/sinkron', { method: 'POST', body: '{}' });
     pantau = false; clearInterval(penjadwal);
     renderStatusSinkron(hasil);
     await muatDataPenjualan();
@@ -393,11 +390,9 @@ async function sinkronSekarang(opsi = {}) {
     pantau = false; clearInterval(penjadwal);
     sedangMengikutiSinkron = false;
     tombolSinkron.disabled = false;
-    tombolPeriksaUlang.disabled = !statusSinkronTerakhir?.terhubung || !!statusSinkronTerakhir?.sedangBerjalan || !!statusSinkronTerakhir?.ulangTertunda;
   }
 }
 tombolSinkron.addEventListener('click', () => sinkronSekarang());
-tombolPeriksaUlang.addEventListener('click', () => sinkronSekarang({ hariMundur: 90 }));
 
 async function muatDataPenjualanIklan() {
   const sampai = hariIniWib();
@@ -1892,13 +1887,13 @@ function keputusanBerjalan() {
   const perluKurangi = !!(aturanTerakhir && aturanTerakhir.kelas === 'aturan-kurangi');
   // Vonis per produk (analisisIklan.js) sudah memakai ROAS LANGSUNG: yang di bawah minimum →
   // aksi 'kurangi'. Tambahan dari aturan toko mingguan: kalau toko bilang "kurangi" padahal
-  // semua iklan lolos hitungan langsung, potong 3 dengan untung ketat terkecil.
+  // semua iklan lolos hitungan langsung, potong 3 dengan untung ketat terkecil. (Iklan yang lolos
+  // ROAS langsung ≥ minimum tidak pernah punya untung langsung < 0, jadi tidak perlu cabang "yang minus".)
   let dipotong = new Set();
   if (perluKurangi && !berjalan.some((p) => p.aksi === 'kurangi')) {
     const dinilai = berjalan.filter((p) => !['jeda', 'isi-hpp', 'tunggu', 'toko'].includes(p.aksi) && metrikBerjalan(p).untungLangsung !== null)
       .sort((a, b) => metrikBerjalan(a).untungLangsung - metrikBerjalan(b).untungLangsung);
-    const minus = dinilai.filter((p) => metrikBerjalan(p).untungLangsung < 0);
-    dipotong = new Set((minus.length ? minus : dinilai.slice(0, 3)).map((p) => p.idProduk));
+    dipotong = new Set(dinilai.slice(0, 3).map((p) => p.idProduk));
   }
   let modalSekarang = 0, modalSaran = 0, belumDiisi = 0, adaModal = false;
   for (const p of berjalan) {

@@ -70,9 +70,9 @@ Two cards: Kalkulator Margin (profit for the period chosen there) and Analisis I
 - **Sync:**
   - Runs every 30 minutes and only downloads new or changed orders.
   - "Sinkron Sekarang" forces it; a progress bar shows the steps.
-  - **Periksa data lama → Periksa ulang 90 hari** rechecks stored orders and payouts in that window.
-    Recovery runs in batches (up to 200 queued orders per type per sync); pending checks are shown and
-    continue automatically. Failed checks rotate so later records can still recover.
+  - Pending retry checks continue automatically in batches. Failed checks rotate so later records
+    can still recover. After 10 failed attempts an order is listed as "belum bisa diperiksa ulang":
+    it is still retried every sync, but no longer keeps the sync looking unfinished.
   - If it keeps ending red, read the message. The app renews Shopee's token itself; if Shopee refuses,
     authorize again at `/auth/shopee/authorize` (saved data is kept).
 
@@ -136,8 +136,8 @@ The ads CSV from Seller Centre can still be uploaded under "Cadangan" if the aut
 ## 5. Tests
 
 Run `npm test` for the regression tests (profit and break-even maths, paid-order rate with partial
-returns, payout split, return deductions, ad-only weeks, retry rotation and historical recovery against
-a mock Shopee). No Shopee credentials are needed.
+returns, payout split, return deductions, ad-only weeks, retry rotation, stuck retries and historical
+recovery against a mock Shopee). No Shopee credentials are needed.
 The calculator excludes business overhead unless it is already part of HPP/payout deductions.
 
 ## 6. Project structure

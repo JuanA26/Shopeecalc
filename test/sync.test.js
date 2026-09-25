@@ -130,3 +130,21 @@ test('an order missing from get_order_detail is retried by order_sn after its wi
   assert.deepEqual(antrean('s2', 'order'), []);
   assert.equal(kedua.orderTerlewat, 0);
 });
+
+test('orders that keep failing become "stuck": still retried, but no longer counted as waiting', async () => {
+  const { isiAntreanUlang, BATAS_PERCOBAAN } = require('../sinkronShopee');
+  db.prepare("INSERT INTO sinkron_ulang(shop_id,order_sn,jenis) VALUES ('stuck','GONE','order')").run();
+  const seen = [];
+  const api = mockShopee({ orderList: [], escrowList: [], escrowDetail: {}, orderDetail: {} });
+  const panggil = (p, o) => {
+    if (p.endsWith('/order/get_order_detail')) seen.push(...o.query.order_sn_list.split(','));
+    return api(p, o);
+  };
+  assert.deepEqual(isiAntreanUlang(db, 'stuck'), { menunggu: 1, macet: 0 });
+  for (let i = 1; i < BATAS_PERCOBAAN; i++) await sinkronkan({ db, panggil, shopId: 'stuck' });
+  assert.deepEqual(isiAntreanUlang(db, 'stuck'), { menunggu: 0, macet: 1 });
+  const sebelum = seen.length;
+  await sinkronkan({ db, panggil, shopId: 'stuck' });
+  assert.equal(seen.length, sebelum + 1); // still retried
+  assert.deepEqual(antrean('stuck', 'order'), ['GONE']);
+});

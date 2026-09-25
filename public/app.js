@@ -261,12 +261,7 @@ function renderStatusSinkron(s) {
     return;
   }
   const bagian = [];
-  if (s.sedangBerjalan) {
-    const p = s.progres;
-    bagian.push(p && p.total
-      ? `Sedang mengambil ${p.tahap === 'dana' ? 'rincian dana cair' : 'pesanan'} dari Shopee: ${p.selesai.toLocaleString('id-ID')} dari ${p.total.toLocaleString('id-ID')}`
-      : 'Sedang mengambil data dari Shopee...');
-  }
+  if (s.sedangBerjalan) bagian.push('Sedang mengambil data dari Shopee...');
   else if (s.terakhirSelesai) {
     const waktu = new Date(s.terakhirSelesai).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     bagian.push(s.status === 'gagal' ? `Sinkron terakhir gagal (${waktu})` : `Terakhir diperbarui ${waktu}`);
@@ -276,6 +271,69 @@ function renderStatusSinkron(s) {
   teksStatusSinkron.textContent = bagian.join(' · ');
   tombolSinkron.disabled = !!s.sedangBerjalan;
   tampilkanErrorSinkron(s.status === 'gagal' && s.pesan ? `Sinkron terakhir gagal: ${s.pesan}` : '');
+  renderProgres(s);
+}
+
+// ====== Progress bar sinkron ======
+// Dua langkah jadi satu bar 0–100%: langkah 1 (pesanan) = 0–50%, langkah 2 (rincian dana cair)
+// = 50–100%. Selama jumlahnya belum diketahui (server masih mendaftar pesanan), bar bergerak
+// bolak-balik. Setelah selesai: hijau "Selesai" beberapa detik lalu menghilang; gagal: merah.
+let progresTadiBerjalan = false;
+let jedaPudarProgres = null;
+function renderProgres(s) {
+  const el = document.getElementById('progresSinkron');
+  const isi = document.getElementById('progresIsi');
+  const trek = document.getElementById('progresTrek');
+  const label = document.getElementById('progresLabel');
+  const angka = document.getElementById('progresAngka');
+  const lPesanan = document.getElementById('langkahPesanan');
+  const lDana = document.getElementById('langkahDana');
+
+  if (s && s.sedangBerjalan) {
+    clearTimeout(jedaPudarProgres);
+    progresTadiBerjalan = true;
+    el.classList.remove('tersembunyi', 'selesai', 'gagal', 'memudar');
+    const p = s.progres || { tahap: 'pesanan', selesai: 0, total: null };
+    const idx = p.tahap === 'dana' ? 1 : 0;
+    lPesanan.className = 'langkah-progres ' + (idx === 0 ? 'aktif' : 'beres');
+    lDana.className = 'langkah-progres' + (idx === 1 ? ' aktif' : '');
+    const namaLangkah = idx === 0 ? 'Mengambil pesanan' : 'Mengambil rincian dana cair';
+    if (p.total === null || p.total === undefined) {
+      el.classList.add('tak-tentu');
+      label.textContent = `Langkah ${idx + 1} dari 2 · ${idx === 0 ? 'Mencari pesanan di Shopee...' : 'Mencari pesanan yang dananya cair...'}`;
+      angka.textContent = '';
+      trek.removeAttribute('aria-valuenow');
+      return;
+    }
+    el.classList.remove('tak-tentu');
+    const persen = Math.round(((idx + (p.total ? p.selesai / p.total : 1)) / 2) * 100);
+    isi.style.width = `${persen}%`;
+    trek.setAttribute('aria-valuenow', String(persen));
+    label.textContent = `Langkah ${idx + 1} dari 2 · ${namaLangkah}`;
+    angka.textContent = p.total
+      ? `${p.selesai.toLocaleString('id-ID')} / ${p.total.toLocaleString('id-ID')} · ${persen}%`
+      : `tidak ada yang baru · ${persen}%`;
+    return;
+  }
+
+  if (!progresTadiBerjalan) return; // tidak sedang (dan tidak baru saja) sinkron: biarkan tersembunyi
+  progresTadiBerjalan = false;
+  const gagal = s && s.status === 'gagal';
+  el.classList.remove('tak-tentu', 'memudar', 'tersembunyi');
+  el.classList.add(gagal ? 'gagal' : 'selesai');
+  isi.style.width = '100%';
+  trek.setAttribute('aria-valuenow', '100');
+  lPesanan.className = 'langkah-progres beres';
+  lDana.className = 'langkah-progres' + (gagal ? '' : ' beres');
+  label.textContent = gagal ? '✕ Gagal mengambil data — lihat pesan di bawah' : '✓ Selesai — data sudah terbaru';
+  angka.textContent = '';
+  clearTimeout(jedaPudarProgres);
+  if (!gagal) {
+    jedaPudarProgres = setTimeout(() => {
+      el.classList.add('memudar');
+      jedaPudarProgres = setTimeout(() => el.classList.add('tersembunyi'), 600);
+    }, 3500);
+  }
 }
 
 async function muatStatusSinkron() {
@@ -288,18 +346,31 @@ async function muatStatusSinkron() {
 
 async function sinkronSekarang() {
   tombolSinkron.disabled = true;
+  sedangMengikutiSinkron = true; // pemeriksa semenit tidak perlu ikut memantau
   tampilkanErrorSinkron('');
-  tampilkanLoadingSinkron('Mengambil data terbaru dari Shopee...');
+  renderProgres({ sedangBerjalan: true, progres: null });
+  // Pantau kemajuan selama permintaan sinkron berjalan (respons POST baru datang setelah selesai).
+  let pantau = true;
+  const penjadwal = setInterval(async () => {
+    try {
+      const s = await apiFetch('/api/sinkron/status');
+      if (pantau && s.sedangBerjalan) renderStatusSinkron(s);
+    } catch (_) { /* abaikan, coba lagi di putaran berikutnya */ }
+  }, 1500);
   try {
-    renderStatusSinkron(await apiFetch('/api/sinkron', { method: 'POST', body: '{}' }));
+    const hasil = await apiFetch('/api/sinkron', { method: 'POST', body: '{}' });
+    pantau = false; clearInterval(penjadwal);
+    renderStatusSinkron(hasil);
     await muatDataPenjualan();
     muatDataPenjualanIklan();
   } catch (err) {
+    pantau = false; clearInterval(penjadwal);
+    await muatStatusSinkron(); // status "gagal" → bar merah
     tampilkanErrorSinkron(err.message);
-    muatStatusSinkron();
     await muatDataPenjualanDiam(); // tetap tampilkan data yang sudah tersimpan, pesan error dibiarkan
   } finally {
-    tampilkanLoadingSinkron('');
+    pantau = false; clearInterval(penjadwal);
+    sedangMengikutiSinkron = false;
     tombolSinkron.disabled = false;
   }
 }
@@ -327,20 +398,36 @@ async function mulaiDataOtomatis() {
   else if (!s.jumlahPesanan) await sinkronSekarang();
   else await muatDataPenjualan();
   muatDataPenjualanIklan();
+  // Sinkron terjadwal (tiap 30 menit di server) bisa mulai saat halaman sedang dibuka: cek
+  // sekali semenit, kalau sedang jalan tampilkan progress bar dan muat ulang datanya setelahnya.
+  if (!pemeriksaSinkron) {
+    pemeriksaSinkron = setInterval(async () => {
+      if (sedangMengikutiSinkron || !statusSinkronTerakhir || !statusSinkronTerakhir.terhubung) return;
+      await muatStatusSinkron();
+      if (statusSinkronTerakhir && statusSinkronTerakhir.sedangBerjalan) { await ikutiSinkronBerjalan(); muatDataPenjualanIklan(); }
+    }, 60 * 1000);
+  }
 }
+let pemeriksaSinkron = null;
+let sedangMengikutiSinkron = false;
 
 // Sinkron terjadwal sedang jalan di server (bisa belasan menit untuk yang pertama): tampilkan
 // dulu data yang sudah tersimpan, perbarui status tiap 5 detik & data tiap 30 detik, lalu
 // muat ulang sekali lagi setelah selesai. Pesanan terbaru diambil duluan (sinkronShopee.js).
 async function ikutiSinkronBerjalan() {
-  if (statusSinkronTerakhir.jumlahPesanan) await muatDataPenjualanDiam();
-  let putaran = 0;
-  while (statusSinkronTerakhir && statusSinkronTerakhir.sedangBerjalan) {
-    await new Promise((r) => setTimeout(r, 5000));
-    await muatStatusSinkron();
-    if (++putaran % 6 === 0) await muatDataPenjualanDiam();
+  sedangMengikutiSinkron = true;
+  try {
+    if (statusSinkronTerakhir.jumlahPesanan) await muatDataPenjualanDiam();
+    let putaran = 0;
+    while (statusSinkronTerakhir && statusSinkronTerakhir.sedangBerjalan) {
+      await new Promise((r) => setTimeout(r, 2000));
+      await muatStatusSinkron();
+      if (++putaran % 15 === 0) await muatDataPenjualanDiam(); // data tiap ±30 detik
+    }
+    await muatDataPenjualan();
+  } finally {
+    sedangMengikutiSinkron = false;
   }
-  await muatDataPenjualan();
 }
 
 // Muat data tanpa menampilkan pesan "belum ada pesanan" — dipakai selama sinkron masih jalan,

@@ -186,6 +186,7 @@ async function daftarOrderBerubah(panggil, dari, sampai) {
 
 // Langkah pesanan (per tanggal dibuat): simpan status + barang semua pesanan yang berubah.
 async function sinkronOrder({ db, panggil, shopId, dari, sampai, onProgres }) {
+  if (onProgres) onProgres({ tahap: 'pesanan', selesai: 0, total: null }); // total belum diketahui: sedang mendaftar
   const daftar = await daftarOrderBerubah(panggil, dari, sampai);
   const simpanOrder = db.prepare(
     `INSERT INTO api_order (order_sn, shop_id, tanggal_pesanan, create_time, update_time, status) VALUES (?, ?, ?, ?, ?, ?)
@@ -246,6 +247,7 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
   else if (state.sampai_ts) dari = state.sampai_ts - HARI_TUMPANG_TINDIH * DETIK_SEHARI;
   else dari = sekarang - HARI_AWAL_DEFAULT * DETIK_SEHARI;
 
+  if (onProgres) onProgres({ tahap: 'dana', selesai: 0, total: null });
   const escrow = await daftarEscrow(panggil, dari, sekarang);
   const sudahAda = db.prepare('SELECT 1 FROM api_pesanan WHERE order_sn = ?');
   // Terbaru dulu: sinkron pertama (90 hari) bisa belasan menit, jadi periode yang paling sering

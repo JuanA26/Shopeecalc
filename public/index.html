@@ -153,6 +153,19 @@
         </button>
         <a href="/auth/shopee/authorize" id="tautanHubungkan" class="tombol tombol-utama tersembunyi">Hubungkan Toko Shopee</a>
       </div>
+      <div id="progresSinkron" class="progres-sinkron tersembunyi" aria-live="polite">
+        <div class="progres-atas">
+          <span id="progresLabel">Menghubungi Shopee...</span>
+          <span id="progresAngka" class="progres-angka"></span>
+        </div>
+        <div class="progres-trek" id="progresTrek" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Kemajuan mengambil data dari Shopee">
+          <div class="progres-isi" id="progresIsi"></div>
+        </div>
+        <div class="progres-langkah">
+          <span id="langkahPesanan" class="langkah-progres"><span class="titik-langkah"></span>1. Pesanan</span>
+          <span id="langkahDana" class="langkah-progres"><span class="titik-langkah"></span>2. Rincian dana cair</span>
+        </div>
+      </div>
       <p id="pesanErrorSinkron" class="pesan-error tersembunyi"></p>
       <p id="pesanLoadingSinkron" class="pesan-loading tersembunyi"><span class="spinner"></span> <span id="teksLoadingSinkron">Memuat data...</span></p>
     </div>

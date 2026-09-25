@@ -494,6 +494,30 @@ input[type="date"] {
 }
 .baris-status-sinkron .keterangan { font-size: 0.84rem; }
 .teks-varian { font-size: 0.78rem; }
+
+/* Progress bar sinkron Shopee */
+.progres-sinkron { margin-top: 12px; }
+.progres-atas { display: flex; justify-content: space-between; gap: 10px; font-size: 0.84rem; font-weight: 600; color: var(--teks-judul); margin-bottom: 6px; }
+.progres-angka { color: var(--abu-teks); font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.progres-trek { position: relative; height: 8px; border-radius: 999px; background: #e9edf2; overflow: hidden; }
+.progres-isi { height: 100%; width: 0; border-radius: 999px; background: var(--oranye); transition: width 0.4s ease, background-color 0.3s; }
+/* Total belum diketahui (sedang mendaftar pesanan): garis bergerak bolak-balik */
+.progres-sinkron.tak-tentu .progres-isi { width: 35% !important; animation: progres-geser 1.2s ease-in-out infinite alternate; }
+@keyframes progres-geser { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+.progres-sinkron.selesai .progres-isi { background: var(--hijau); }
+.progres-sinkron.gagal .progres-isi { background: var(--merah); }
+.progres-sinkron.selesai .progres-atas { color: var(--hijau); }
+.progres-sinkron.gagal .progres-atas { color: var(--merah); }
+.progres-sinkron.memudar { opacity: 0; transition: opacity 0.6s; }
+.progres-langkah { display: flex; gap: 16px; margin-top: 7px; font-size: 0.78rem; color: var(--abu-teks); flex-wrap: wrap; }
+.langkah-progres { display: inline-flex; align-items: center; gap: 6px; }
+.titik-langkah { width: 8px; height: 8px; border-radius: 50%; background: #d5dae1; }
+.langkah-progres.aktif { color: var(--teks-judul); font-weight: 600; }
+.langkah-progres.aktif .titik-langkah { background: var(--oranye); box-shadow: 0 0 0 3px rgba(238, 77, 45, 0.18); }
+.langkah-progres.beres .titik-langkah { background: var(--hijau); }
+@media (prefers-reduced-motion: reduce) {
+  .progres-sinkron.tak-tentu .progres-isi { animation: none; transform: none; width: 100% !important; opacity: 0.35; }
+}
 /* Catatan di bawah kartu ringkasan: berapa bagian yang masih perkiraan (dana belum cair) */
 .tanda-kira { font-size: 0.6em; font-weight: 600; vertical-align: 0.35em; margin-right: 3px; opacity: 0.8; }
 .catatan-perkiraan { font-size: 0.84rem; color: var(--abu-teks); margin: -6px 0 16px; }
@@ -574,7 +598,7 @@ input[type="date"] {
 /* ---------- Ringkasan (stat tiles) ---------- */
 .grid-ringkasan {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(225px, 1fr));
   gap: 12px;
   margin-bottom: 18px;
 }

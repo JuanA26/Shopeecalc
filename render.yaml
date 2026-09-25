@@ -21,3 +21,15 @@ services:
       # Format: "username1:password1,username2:password2" (boleh 1 orang atau lebih).
       - key: ADMIN_ACCOUNTS
         sync: false
+      # ---- Shopee Open Platform API (§10/§19/§20 PROJECT_NOTES.md) ----
+      # Isi ketiganya di dashboard Render SETELAH App di-Go Live disetujui (jangan sebelum —
+      # Live Partner ID/Key cuma valid untuk environment production, bukan sandbox testing).
+      - key: SHOPEE_ENV
+        value: production
+      - key: SHOPEE_PARTNER_ID
+        sync: false
+      - key: SHOPEE_PARTNER_KEY
+        sync: false
+      # Harus SAMA PERSIS dengan Live Redirect URL Domain yang didaftarkan di Console.
+      - key: SHOPEE_REDIRECT_URL
+        value: https://shopee-margin-calc.onrender.com/auth/shopee/callback

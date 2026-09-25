@@ -232,6 +232,8 @@ a.tombol { display: inline-flex; text-decoration: none; }
 }
 .titik-kuning { background: #f59e0b; }
 .titik-oranye { background: var(--oranye); }
+.titik-merah { background: var(--merah); }
+.titik-hijau { background: var(--hijau); }
 
 /* ---------- Header: logo + nav + user dalam SATU bar ---------- */
 .header-app {
@@ -540,9 +542,26 @@ a.tombol { display: inline-flex; text-decoration: none; }
 /* Kartu utama "Total Untung": garis oranye di atas + angka oranye, sedikit lebih besar. */
 .kartu-utama { border-top: 3px solid var(--oranye); }
 .kartu-utama .angka-ringkasan { color: var(--oranye); font-size: 1.7rem; }
+/* Angka minus (mis. untung setelah iklan negatif) selalu merah, juga di kartu utama/widget. */
+.angka-ringkasan.angka-negatif { color: var(--merah) !important; }
 /* Kartu peringatan (belum ada HPP): garis kuning tipis di atas, angka tetap netral. */
 .kartu-peringatan { border-top: 3px solid #f59e0b; }
 .kartu-netral { border-top: 3px solid #cbd2dc; }
+/* Kartu "Iklan Rugi": garis merah di atas, angka tetap netral (sama pola dengan kartu peringatan). */
+.kartu-merah { border-top: 3px solid var(--merah); }
+
+/* Catatan di atas tabel HPP: berapa produk belum ada HPP & nilainya */
+.catatan-belum-hpp {
+  margin: -6px 0 12px;
+  padding: 8px 12px;
+  background: var(--kuning-muda);
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-kecil);
+  color: var(--kuning);
+  font-size: 0.85rem;
+}
+.catatan-belum-hpp strong { color: #92400e; }
+.kolom-terjual { white-space: nowrap; }
 
 /* ---------- Tabel ---------- */
 .baris-filter { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -592,6 +611,7 @@ a.tombol { display: inline-flex; text-decoration: none; }
 table { width: 100%; border-collapse: collapse; font-size: 0.74rem; table-layout: fixed; }
 #tabelData { min-width: 1040px; }
 #tabelHpp { min-width: 700px; }
+#tabelIklan { min-width: 860px; }
 thead th {
   text-align: left;
   background: var(--abu-terang);
@@ -627,7 +647,7 @@ tbody tr:nth-child(even) td { background: #fafbfc; }
 .kolom-tengah { text-align: center !important; }
 .kolom-id { font-family: inherit; color: var(--abu-teks); }
 
-/* Header kolom yang bisa diurutkan: klik untuk urutkan naik/turun. Ikon chevron kecil
+/* Header kolom yang bisa diurutkan (tabel Data & tabel Iklan): klik untuk urutkan naik/turun. Ikon chevron kecil
    hanya muncul jelas di kolom yang sedang aktif diurutkan. */
 .th-urut { cursor: pointer; user-select: none; }
 .th-urut:hover { background: var(--abu-hover); color: var(--teks-judul); }
@@ -739,6 +759,245 @@ tbody tr.baris-dikembalikan:hover td { background: var(--abu-hover); }
 }
 .tombol-reset-jumlah:hover { color: var(--oranye); }
 
+/* ---------- Analisis Iklan ---------- */
+/* Catatan kecil di atas kartu ringkasan: periode file + rasio pencairan yang dipakai. */
+.catatan-info {
+  margin: -6px 0 14px;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-kecil);
+  font-size: 0.84rem;
+}
+.catatan-info strong { color: var(--teks-judul); }
+.catatan-info.catatan-default { background: var(--kuning-muda); border-color: #fde68a; color: var(--kuning); }
+.catatan-info.catatan-default strong { color: #92400e; }
+.keterangan-tabel { margin: -4px 0 12px; font-size: 0.82rem; }
+
+/* Baris produk: hijau = untung (langsung), merah = rugi / margin tipis, kuning = belum HPP
+   (kelas .baris-peringatan yang sudah ada). Klik baris untuk buka rincian kampanye. */
+#tabelIklan tbody tr.baris-produk { cursor: pointer; }
+tbody tr.baris-untung td { background: var(--hijau-muda); }
+tbody tr.baris-untung:hover td { background: #dcfce7; }
+tbody tr.baris-rugi td { background: var(--merah-muda); }
+tbody tr.baris-rugi:hover td { background: #fee2e2; }
+tbody tr.baris-ragu td { background: #eff6ff; }
+tbody tr.baris-ragu:hover td { background: #dbeafe; }
+.pill-biru { color: #1d4ed8; background: #dbeafe; }
+.titik-biru { background: #2563eb; }
+
+/* Kolom "Di Seller Centre": pill aksi tebal di atas, kalimatnya di bawah. */
+.pill-aksi { font-size: 0.66rem; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 3px; }
+/* Untung setelah iklan: angka langsung (utama) + versi Shopee kecil di bawahnya. */
+.untung-dua { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
+.untung-dua .versi-shopee { font-size: 0.64rem; color: var(--abu-teks); font-weight: 400; white-space: nowrap; }
+
+/* Kartu "Yang Perlu Dilakukan di Seller Centre": satu kolom per tindakan. */
+.grid-tindakan { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; align-items: start; }
+.kolom-tindakan-grup { border: 1px solid var(--border); border-radius: var(--radius-kecil); padding: 12px 14px; background: #fff; border-top-width: 3px; }
+.kolom-tindakan-grup.grup-jeda { border-top-color: var(--merah); }
+.kolom-tindakan-grup.grup-ubah-target { border-top-color: #2563eb; }
+.kolom-tindakan-grup.grup-biarkan { border-top-color: var(--hijau); }
+.kolom-tindakan-grup.grup-coba { border-top-color: var(--oranye); }
+.kolom-tindakan-grup.grup-isi-hpp { border-top-color: #f59e0b; }
+.kolom-tindakan-grup h3 { margin: 0 0 2px; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; }
+.kolom-tindakan-grup h3 .jumlah { margin-left: auto; font-size: 0.72rem; color: var(--abu-teks); font-weight: 600; }
+.kolom-tindakan-grup .ket { margin: 0 0 8px; font-size: 0.78rem; color: var(--abu-teks); line-height: 1.4; }
+.daftar-tindakan { list-style: none; margin: 0; padding: 0; font-size: 0.8rem; }
+.daftar-tindakan li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 5px 0; border-bottom: 1px dashed var(--border-lemah); }
+.daftar-tindakan li:last-child { border-bottom: none; }
+.daftar-tindakan .nama-singkat { color: var(--teks-judul); min-width: 0; line-height: 1.3; }
+.daftar-tindakan .nama-singkat small { display: block; color: var(--abu-teks); font-size: 0.68rem; }
+.daftar-tindakan .nilai { flex-shrink: 0; font-weight: 600; white-space: nowrap; }
+.daftar-tindakan .nilai small { font-weight: 400; color: var(--abu-teks); }
+.daftar-tindakan .kosong { color: var(--abu-teks); font-style: italic; }
+
+/* Nama produk + ID kecil di bawahnya + pill mode bidding. */
+.produk-iklan { display: flex; flex-direction: column; gap: 2px; }
+.produk-iklan .nama { color: var(--teks-judul); font-weight: 500; white-space: normal; line-height: 1.35; word-break: break-word; }
+.produk-iklan .sub { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; color: var(--abu-teks); font-size: 0.68rem; }
+.panah-baris { display: inline-block; width: 11px; height: 11px; margin-right: 4px; color: var(--abu-teks); transition: transform 0.15s; vertical-align: -1px; }
+tr.terbuka .panah-baris { transform: rotate(90deg); }
+
+/* Judul kolom tabel iklan dua kata ("ROAS Langsung", "Untung Setelah Iklan"): boleh dua baris. */
+#tabelIklan > thead th { white-space: normal; line-height: 1.25; vertical-align: bottom; }
+/* Sel dengan teks pengganti ("tidak mungkin") boleh turun baris. */
+#tabelIklan td.sel-lunak { white-space: normal; line-height: 1.3; }
+
+/* Kolom Tindakan: kalimat, boleh turun baris. */
+#tabelIklan td.kolom-tindakan { white-space: normal; line-height: 1.4; color: var(--teks-judul); }
+#tabelIklan td.tindakan-rugi { color: #991b1b; font-weight: 500; }
+#tabelIklan td.tindakan-untung { color: #166534; }
+#tabelIklan td.tindakan-hpp { color: #92400e; }
+
+/* Rincian kampanye di bawah baris produk: tabel kecil di dalam satu sel lebar. */
+#tabelIklan tr.baris-detail > td { background: var(--abu-terang); padding: 8px 12px 12px 34px; white-space: normal; }
+#tabelIklan tr.baris-detail:hover > td { background: var(--abu-terang); }
+.tabel-detail { width: 100%; min-width: 0; border-collapse: collapse; font-size: 0.72rem; table-layout: auto; background: #fff; border: 1px solid var(--border); }
+.tabel-detail thead th { position: static; background: #fff; border-bottom: 1px solid var(--border); font-size: 0.62rem; }
+.tabel-detail tbody td { padding: 5px 8px; white-space: nowrap; background: #fff; }
+.tabel-detail tbody tr:nth-child(even) td { background: #fff; }
+.tabel-detail tbody tr:hover td { background: var(--abu-hover); }
+.tabel-detail .nama-kampanye { white-space: normal; min-width: 200px; max-width: 420px; line-height: 1.3; }
+
+/* Baris judul grup di tabel iklan: "Sedang berjalan (9)" / "Sudah berakhir (36)". */
+#tabelIklan tr.baris-grup td {
+  background: var(--abu-terang) !important;
+  color: var(--teks-judul);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 7px 10px;
+  border-top: 1px solid var(--border);
+}
+#tabelIklan tr.baris-grup.grup-berakhir td { color: var(--abu-teks); }
+#tabelIklan tr.baris-grup td .pill { margin-left: 8px; text-transform: none; letter-spacing: 0; }
+#tabelIklan tr.baris-grup.bisa-dilipat { cursor: pointer; }
+#tabelIklan tr.baris-grup.bisa-dilipat:hover td { background: var(--abu-hover) !important; }
+#tabelIklan tr.baris-grup .panah-baris.buka { transform: rotate(90deg); }
+#tabelIklan tr.baris-grup .petunjuk-lipat { margin-left: 8px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--abu-teks); font-size: 0.7rem; }
+
+/* Rincian di dalam baris (dropdown): kotak angka kecil, lalu tabel kampanye. */
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px 14px;
+  margin-bottom: 10px;
+}
+.detail-grid > div { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-kecil); padding: 7px 10px; }
+.detail-grid .label-ringkasan { margin-bottom: 2px; font-size: 0.62rem; }
+.detail-grid .nilai { font-weight: 600; color: var(--teks-judul); font-size: 0.82rem; }
+.detail-grid .nilai { white-space: normal; }
+.detail-grid .nilai small { display: block; margin-top: 1px; font-weight: 400; color: var(--abu-teks); line-height: 1.35; }
+.detail-judul { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--abu-teks); margin: 0 0 6px; }
+
+/* Kartu yang bisa dibuka-tutup (details/summary) */
+.kartu-details { padding: 0; }
+.kartu-details summary {
+  cursor: pointer;
+  padding: 14px 20px;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--teks-judul);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.kartu-details summary::-webkit-details-marker { display: none; }
+.kartu-details summary::before {
+  content: '';
+  width: 7px; height: 7px;
+  border-right: 2px solid var(--abu-teks); border-bottom: 2px solid var(--abu-teks);
+  transform: rotate(-45deg); transition: transform 0.15s; margin-right: 2px;
+}
+.kartu-details[open] summary::before { transform: rotate(45deg); }
+.kartu-details .daftar-catatan { padding: 0 20px 16px 38px; }
+
+/* Daftar "Coba iklankan": dua kolom di layar lebar */
+.daftar-coba { columns: 2; column-gap: 28px; }
+.daftar-coba li { break-inside: avoid; }
+@media (max-width: 700px) { .daftar-coba { columns: 1; } }
+/* Tabel mingguan tetap tabel biasa di HP (5 kolom pendek, muat digeser). */
+@media (max-width: 700px) {
+  .tabel-mingguan-bungkus { overflow-x: auto !important; border: 1px solid var(--border) !important; border-radius: var(--radius-kecil) !important; }
+  #tabelMingguan { min-width: 520px; font-size: 0.78rem; }
+  .aturan-mingguan { font-size: 0.88rem; }
+  /* Grafik: geser ke samping di HP daripada mengecil sampai tidak terbaca. */
+  .grafik-mingguan { overflow-x: auto; }
+  .grafik-mingguan svg { min-width: 600px; }
+}
+
+/* Untung Toko per Minggu: satu kalimat aturan + grafik batang SVG + tabel kecil. */
+.aturan-mingguan {
+  margin: -4px 0 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-kecil);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--teks-judul);
+  background: var(--abu-terang);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.aturan-mingguan.aturan-kurangi { background: var(--merah-muda); border-color: #fecaca; color: #991b1b; }
+.aturan-mingguan.aturan-aman { background: var(--hijau-muda); border-color: #bbf0cd; color: #166534; }
+.aturan-mingguan .pill { font-size: 0.72rem; white-space: normal; line-height: 1.4; padding: 3px 10px; }
+.aturan-mingguan small { font-weight: 400; color: var(--abu-teks); }
+.grafik-mingguan { margin-bottom: 12px; }
+.grafik-mingguan svg { width: 100%; height: auto; display: block; font-family: inherit; }
+.grafik-mingguan .batang-untung { fill: var(--hijau); }
+.grafik-mingguan .batang-rugi { fill: var(--merah); }
+.grafik-mingguan .batang-iklan { fill: #cbd2dc; }
+.grafik-mingguan .batang-belum { opacity: 0.35; }
+.grafik-mingguan text { fill: var(--abu-teks); font-size: 11px; }
+.grafik-mingguan text.nilai { fill: var(--teks-judul); font-weight: 600; }
+.grafik-mingguan .sumbu { stroke: var(--border); }
+.legenda-grafik { display: flex; gap: 14px; font-size: 0.74rem; color: var(--abu-teks); margin-top: 4px; }
+.legenda-grafik span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--hijau); }
+.legenda-grafik span.leg-iklan::before { background: #cbd2dc; }
+#tabelMingguan tbody tr.minggu-belum td { color: var(--abu-teks); font-style: italic; }
+#tabelMingguan tbody tr.minggu-terakhir td { font-weight: 600; }
+
+/* Untung per produk: dua baris pendek (Shopee / ketat). */
+.untung-dua { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.3; }
+.untung-dua span small { font-weight: 400; color: var(--abu-teks); margin-right: 4px; }
+
+/* Tabel keputusan (iklan yang sedang berjalan): kotak isian kecil untuk Modal Harian &
+   Target ROAS yang terpasang, panah ke saran, pill keputusan. */
+#tabelKeputusan { min-width: 700px; }
+#tabelKeputusan > thead th small { display: block; text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 0.62rem; color: var(--abu-teks); }
+#tabelKeputusan > thead th { white-space: normal; line-height: 1.25; vertical-align: bottom; }
+#tabelKeputusan tbody tr.baris-produk { cursor: pointer; }
+.sel-setelan { display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.sel-setelan input {
+  width: 74px; padding: 4px 6px; font-size: 0.8rem; font-family: inherit; text-align: right;
+  border: 1px solid var(--border); border-radius: 6px; -moz-appearance: textfield; appearance: textfield;
+}
+.sel-setelan input::-webkit-inner-spin-button, .sel-setelan input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.sel-setelan input.kosong { border-color: #f5c26b; background: var(--kuning-muda); }
+.sel-setelan input.terlalu-rendah { border-color: var(--merah); color: var(--merah); }
+.sel-setelan .panah { color: var(--abu-teks); }
+.sel-setelan .saran { font-weight: 700; color: var(--teks-judul); }
+.sel-setelan .saran.turun { color: #c2410c; }
+.sel-setelan .saran.nol { color: var(--merah); }
+.sel-setelan .min { color: var(--abu-teks); font-size: 0.72rem; }
+.sel-setelan .ok { color: var(--hijau); font-weight: 700; }
+.sel-setelan .prefix { color: var(--abu-teks); font-size: 0.72rem; }
+tbody tr.baris-kurangi td { background: #fff7ed; }
+tbody tr.baris-kurangi:hover td { background: #ffedd5; }
+.pill-oranye { color: #c2410c; background: #ffedd5; }
+.titik-oranye-tua { background: #ea580c; }
+.titik-abu { background: #9ca3af; }
+/* Tabel keputusan: ROAS Langsung di bawah minimum → merah, supaya "Lanjut" tidak terbaca "pasti untung". */
+#tabelKeputusan .produk-iklan .sub .roas-rendah { color: var(--merah); font-weight: 600; }
+/* Baris "iklan mengklaim N% penjualan" di bawah aturan mingguan. */
+.aturan-mingguan .klaim-iklan { display: block; margin-top: 4px; }
+.aturan-mingguan .klaim-iklan strong { color: inherit; }
+/* Pengaturan "tingkat pesanan iklan dibayar" di bagian Semua produk & rincian. */
+.pengaturan-iklan { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 14px; margin-bottom: 12px; background: var(--abu-hover); border-radius: 10px; font-size: 0.86rem; }
+.pengaturan-iklan label { font-weight: 600; color: var(--teks-judul); }
+.pengaturan-iklan .sel-setelan input { width: 64px; }
+.pengaturan-iklan small { flex-basis: 100%; color: var(--abu-teks); line-height: 1.45; }
+#tabelKeputusan td.kolom-tindakan { white-space: normal; line-height: 1.4; }
+
+/* details di dalam kartu (grafik mingguan, cara membaca) */
+.details-dalam { margin-top: 4px; }
+.details-dalam > summary { cursor: pointer; font-size: 0.86rem; font-weight: 600; color: var(--abu-teks); padding: 6px 0; list-style: none; display: flex; align-items: center; gap: 8px; }
+.details-dalam > summary::-webkit-details-marker { display: none; }
+.details-dalam > summary::before { content: ''; width: 6px; height: 6px; border-right: 2px solid var(--abu-teks); border-bottom: 2px solid var(--abu-teks); transform: rotate(-45deg); transition: transform 0.15s; }
+.details-dalam[open] > summary::before { transform: rotate(45deg); }
+.details-dalam > *:not(summary) { margin-top: 10px; }
+.kartu-details .isi-details { padding: 0 20px 16px; }
+.kartu-details .isi-details .daftar-catatan { padding: 0 0 0 18px; }
+
+/* Kartu catatan "Cara membaca tabel ini" */
+.kartu-catatan h2 { margin-bottom: 8px; }
+.daftar-catatan { margin: 0; padding-left: 18px; font-size: 0.86rem; color: var(--teks); line-height: 1.55; }
+.daftar-catatan li { margin-bottom: 4px; }
+.daftar-catatan strong { color: var(--teks-judul); }
+
 @media (max-width: 640px) {
   :root { font-size: 15px; }
 }
@@ -747,13 +1006,13 @@ tbody tr.baris-dikembalikan:hover td { background: var(--abu-hover); }
    dengan label di depan masing-masing (dari atribut data-label yang ditulis di app.js). */
 @media (max-width: 700px) {
   .tabel-scroll { overflow-x: visible; border: none; border-radius: 0; }
-  #tabelData, #tabelHpp { table-layout: auto; font-size: 0.88rem; min-width: 0; }
-  #tabelData colgroup, #tabelHpp colgroup { display: none; }
-  #tabelData thead, #tabelHpp thead { display: none; }
-  #tabelData tr, #tabelHpp tr { display: block; width: 100% !important; }
-  #tabelData tbody, #tabelHpp tbody { display: block; }
+  #tabelData, #tabelHpp, :is(#tabelIklan, #tabelKeputusan) { table-layout: auto; font-size: 0.88rem; min-width: 0; }
+  #tabelData colgroup, #tabelHpp colgroup, :is(#tabelIklan, #tabelKeputusan) colgroup { display: none; }
+  #tabelData thead, #tabelHpp thead, :is(#tabelIklan, #tabelKeputusan) > thead { display: none; }
+  #tabelData tr, #tabelHpp tr, :is(#tabelIklan, #tabelKeputusan) > tbody > tr { display: block; width: 100% !important; }
+  #tabelData tbody, #tabelHpp tbody, :is(#tabelIklan, #tabelKeputusan) > tbody { display: block; }
 
-  #tabelData tbody tr, #tabelHpp tbody tr {
+  #tabelData tbody tr, #tabelHpp tbody tr, :is(#tabelIklan, #tabelKeputusan) > tbody > tr {
     display: block;
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -762,13 +1021,23 @@ tbody tr.baris-dikembalikan:hover td { background: var(--abu-hover); }
     background: #fff;
     box-shadow: var(--bayangan);
   }
-  #tabelData tbody tr td, #tabelHpp tbody tr td,
-  #tabelData tbody tr:nth-child(even) td, #tabelHpp tbody tr:nth-child(even) td,
-  #tabelData tbody tr:hover td, #tabelHpp tbody tr:hover td { background: transparent; }
+  #tabelData tbody tr td, #tabelHpp tbody tr td, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td,
+  #tabelData tbody tr:nth-child(even) td, #tabelHpp tbody tr:nth-child(even) td, :is(#tabelIklan, #tabelKeputusan) > tbody > tr:nth-child(even) > td,
+  #tabelData tbody tr:hover td, #tabelHpp tbody tr:hover td, :is(#tabelIklan, #tabelKeputusan) > tbody > tr:hover > td { background: transparent; }
   #tabelData tbody tr.baris-peringatan, #tabelHpp tbody tr.baris-peringatan { background: var(--kuning-muda); }
   #tabelData tbody tr.baris-dikembalikan { background: var(--abu-terang); }
+  :is(#tabelIklan, #tabelKeputusan) > tbody > tr.baris-peringatan { background: var(--kuning-muda); }
+  :is(#tabelIklan, #tabelKeputusan) > tbody > tr.baris-untung { background: var(--hijau-muda); }
+  :is(#tabelIklan, #tabelKeputusan) > tbody > tr.baris-rugi { background: var(--merah-muda); }
+  :is(#tabelIklan, #tabelKeputusan) > tbody > tr.baris-ragu { background: #eff6ff; }
+  #tabelKeputusan > tbody > tr.baris-kurangi { background: #fff7ed; }
+  .sel-setelan { justify-content: flex-end; }
+  :is(#tabelIklan, #tabelKeputusan) > tbody > tr.baris-grup { border: none; box-shadow: none; background: transparent; padding: 4px 0; margin-bottom: 4px; }
+  :is(#tabelIklan, #tabelKeputusan) > tbody > tr.baris-grup > td { background: transparent !important; border: none; padding: 0; }
+  :is(#tabelIklan, #tabelKeputusan) > tbody > tr.baris-grup > td::before { content: none; }
+  .untung-dua { align-items: flex-end; }
 
-  #tabelData td, #tabelHpp td {
+  #tabelData td, #tabelHpp td, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
@@ -781,9 +1050,9 @@ tbody tr.baris-dikembalikan:hover td { background: var(--abu-hover); }
     white-space: normal;
     text-align: right;
   }
-  #tabelData tr td:last-child, #tabelHpp tr td:last-child { border-bottom: none; }
+  #tabelData tr td:last-child, #tabelHpp tr td:last-child, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td:last-child { border-bottom: none; }
 
-  #tabelData td::before, #tabelHpp td::before {
+  #tabelData td::before, #tabelHpp td::before, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td::before {
     content: attr(data-label);
     font-weight: 600;
     color: var(--abu-teks);
@@ -793,17 +1062,17 @@ tbody tr.baris-dikembalikan:hover td { background: var(--abu-hover); }
     text-align: left;
   }
   /* Kartu tanpa judul kosong (misalnya kolom tombol Hapus) tidak perlu label. */
-  #tabelData td[data-label=""]::before, #tabelHpp td[data-label=""]::before { content: none; }
+  #tabelData td[data-label=""]::before, #tabelHpp td[data-label=""]::before, :is(#tabelIklan, #tabelKeputusan) td[data-label=""]::before { content: none; }
 
   /* Nama Produk, HPP, & Total Penghasilan butuh lebar penuh: label di atas, bukan di samping. */
-  #tabelData td.kolom-nama, #tabelHpp td.kolom-nama,
+  #tabelData td.kolom-nama, #tabelHpp td.kolom-nama, :is(#tabelIklan, #tabelKeputusan) td.kolom-nama, :is(#tabelIklan, #tabelKeputusan) td.kolom-tindakan,
   #tabelData td.kolom-hpp, #tabelHpp td.kolom-hpp,
   #tabelData td.kolom-total {
     display: block;
     max-width: none;
     text-align: left;
   }
-  #tabelData td.kolom-nama::before, #tabelHpp td.kolom-nama::before,
+  #tabelData td.kolom-nama::before, #tabelHpp td.kolom-nama::before, :is(#tabelIklan, #tabelKeputusan) td.kolom-nama::before, :is(#tabelIklan, #tabelKeputusan) td.kolom-tindakan::before,
   #tabelData td.kolom-hpp::before, #tabelHpp td.kolom-hpp::before,
   #tabelData td.kolom-total::before {
     display: block;
@@ -813,4 +1082,12 @@ tbody tr.baris-dikembalikan:hover td { background: var(--abu-hover); }
   #tabelData td.kolom-total .pill { margin-left: 6px; margin-top: 0; }
   .sel-jumlah { align-items: flex-end; }
   .input-hpp-tabel { max-width: none; }
+  /* Tabel iklan jadi blok penuh supaya tabel rincian di dalamnya (min-width 640px) tidak
+     melebarkan seluruh tabel luar melebihi layar — geser horizontalnya cukup di sel rincian. */
+  :is(#tabelIklan, #tabelKeputusan) { display: block; width: 100%; }
+  /* Rincian kampanye di HP: tabel kecil biasa yang bisa digeser, bukan kartu bertumpuk. */
+  :is(#tabelIklan, #tabelKeputusan) tr.baris-detail { padding: 6px 8px; }
+  :is(#tabelIklan, #tabelKeputusan) tr.baris-detail > td { display: block; padding: 0; overflow-x: auto; text-align: left; }
+  :is(#tabelIklan, #tabelKeputusan) tr.baris-detail > td::before { content: none; }
+  .tabel-detail { min-width: 640px; }
 }

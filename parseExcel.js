@@ -2,7 +2,11 @@
 // menjadi daftar baris per-produk yang siap dihitung margin-nya.
 const XLSX = require('xlsx');
 
-const SHEET_NAME = 'Penghasilan';
+// Nama sheet data utama. Untuk rentang tanggal panjang (>~10.000 baris) Shopee
+// memecahnya jadi beberapa sheet: "Penghasilan - 1", "Penghasilan - 2", dst. —
+// semuanya dibaca lalu digabung (lihat cariSheetPenghasilan()).
+const SHEET_PREFIX = 'Penghasilan';
+const SHEET_BIAYA = 'Seller Fee'; // rincian biaya per pesanan (ada di file rentang panjang)
 const HEADER_ROW = 3; // baris ke-3 (index 2) berisi nama kolom asli dari Shopee
 
 // Nama kolom yang kita butuhkan dari file Shopee, dan nama field internal kita.
@@ -58,18 +62,21 @@ function hitungJumlahPcsPerBaris(items) {
   }
 }
 
-function parseShopeeIncomeFile(buffer) {
-  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false });
+// Semua sheet yang namanya "Penghasilan" atau "Penghasilan - N", diurutkan sesuai N
+// supaya urutan baris di hasil gabungan sama seperti di file aslinya.
+function cariSheetPenghasilan(workbook) {
+  return workbook.SheetNames
+    .map((nama) => {
+      const m = nama.trim().match(new RegExp(`^${SHEET_PREFIX}(?:\\s*-\\s*(\\d+))?$`, 'i'));
+      return m ? { nama, urutan: m[1] ? Number(m[1]) : 0 } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.urutan - b.urutan)
+    .map((x) => x.nama);
+}
 
-  if (!workbook.SheetNames.includes(SHEET_NAME)) {
-    const err = new Error(
-      `Sheet "${SHEET_NAME}" tidak ditemukan di file ini. Sheet yang ada: ${workbook.SheetNames.join(', ')}`
-    );
-    err.userFacing = true;
-    throw err;
-  }
-
-  const sheet = workbook.Sheets[SHEET_NAME];
+// Membaca satu sheet Penghasilan menjadi daris baris item (belum dihitung jumlah pcs-nya).
+function bacaSheetPenghasilan(sheet, namaSheet) {
   const rows = XLSX.utils.sheet_to_json(sheet, {
     header: 1, // array-of-arrays, biar kita kontrol posisi header sendiri
     raw: true,
@@ -77,7 +84,7 @@ function parseShopeeIncomeFile(buffer) {
   });
 
   if (rows.length < HEADER_ROW) {
-    const err = new Error('Format file tidak dikenali (baris header tidak ditemukan).');
+    const err = new Error(`Format file tidak dikenali (baris header tidak ditemukan di sheet "${namaSheet}").`);
     err.userFacing = true;
     throw err;
   }
@@ -92,7 +99,7 @@ function parseShopeeIncomeFile(buffer) {
   const missing = Object.values(COLUMNS).filter((f) => !(f in colIndexByField));
   if (missing.length) {
     const err = new Error(
-      `Ada kolom yang tidak ditemukan di file ini (mungkin format Shopee berubah): ${missing.join(', ')}`
+      `Ada kolom yang tidak ditemukan di sheet "${namaSheet}" (mungkin format Shopee berubah): ${missing.join(', ')}`
     );
     err.userFacing = true;
     throw err;
@@ -138,6 +145,75 @@ function parseShopeeIncomeFile(buffer) {
     });
   }
 
+  return items;
+}
+
+// Sheet "Seller Fee" (hanya ada di file rentang panjang): satu baris per pesanan dengan
+// rincian biaya yang dipotong Shopee, dikelompokkan jadi 5 kategori. Angkanya NEGATIF di
+// file (potongan) — kita simpan sebagai angka positif "biaya". Dipakai nanti untuk melihat
+// biaya per kategori (Gratis Ongkir XTRA, Promo XTRA, dll) — kalau sheet-nya tidak ada,
+// hasilnya map kosong dan tidak apa-apa.
+const KOLOM_BIAYA = {
+  'No. Pesanan': 'noPesanan',
+  'Biaya Platform': 'platform',
+  'Biaya Gratis Ongkir XTRA': 'gratisOngkirXtra',
+  'Biaya Layanan': 'layanan',
+  'Biaya Promosi': 'promosi',
+  'Biaya Lainnya': 'lainnya',
+};
+
+function bacaSheetBiaya(workbook) {
+  const biayaPerPesanan = new Map();
+  const sheet = workbook.Sheets[SHEET_BIAYA];
+  if (!sheet) return biayaPerPesanan;
+
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  // Baris header tidak selalu di posisi yang sama (baris 1 biasanya kosong) — cari
+  // baris pertama yang memuat "No. Pesanan".
+  const idxHeader = rows.findIndex((r) => r.some((c) => String(c).trim() === 'No. Pesanan'));
+  if (idxHeader === -1) return biayaPerPesanan;
+
+  const colIndexByField = {};
+  rows[idxHeader].forEach((headerText, idx) => {
+    const field = KOLOM_BIAYA[String(headerText).trim()];
+    if (field) colIndexByField[field] = idx;
+  });
+  if (!('noPesanan' in colIndexByField)) return biayaPerPesanan;
+
+  for (const row of rows.slice(idxHeader + 1)) {
+    const noPesanan = String(row[colIndexByField.noPesanan] || '').trim();
+    if (!noPesanan) continue;
+    const ambil = (field) => (field in colIndexByField ? Math.abs(Number(row[colIndexByField[field]]) || 0) : 0);
+    biayaPerPesanan.set(noPesanan, {
+      platform: ambil('platform'),
+      gratisOngkirXtra: ambil('gratisOngkirXtra'),
+      layanan: ambil('layanan'),
+      promosi: ambil('promosi'),
+      lainnya: ambil('lainnya'),
+    });
+  }
+  return biayaPerPesanan;
+}
+
+// Membaca seluruh workbook: gabungan semua sheet Penghasilan + (kalau ada) rincian biaya.
+// Mengembalikan { items, biayaPerPesanan }.
+function parseShopeeIncomeWorkbook(buffer) {
+  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false });
+
+  const namaSheet = cariSheetPenghasilan(workbook);
+  if (namaSheet.length === 0) {
+    const err = new Error(
+      `Sheet "${SHEET_PREFIX}" tidak ditemukan di file ini. Sheet yang ada: ${workbook.SheetNames.join(', ')}`
+    );
+    err.userFacing = true;
+    throw err;
+  }
+
+  const items = [];
+  for (const nama of namaSheet) {
+    items.push(...bacaSheetPenghasilan(workbook.Sheets[nama], nama));
+  }
+
   if (items.length === 0) {
     const err = new Error(
       'Tidak ada data produk yang terbaca dari file ini. Pastikan ini file "Income" dari Shopee dengan sheet "Penghasilan".'
@@ -146,9 +222,16 @@ function parseShopeeIncomeFile(buffer) {
     throw err;
   }
 
+  // Jumlah pcs ditebak dari harga terkecil per produk di SELURUH file, jadi harus
+  // dijalankan setelah semua sheet digabung (bukan per sheet).
   hitungJumlahPcsPerBaris(items);
 
-  return items;
+  return { items, biayaPerPesanan: bacaSheetBiaya(workbook), sheetTerbaca: namaSheet };
 }
 
-module.exports = { parseShopeeIncomeFile };
+// Dipertahankan untuk kompatibilitas: hanya daftar item-nya.
+function parseShopeeIncomeFile(buffer) {
+  return parseShopeeIncomeWorkbook(buffer).items;
+}
+
+module.exports = { parseShopeeIncomeFile, parseShopeeIncomeWorkbook };

@@ -38,6 +38,26 @@ db.exec(`
   -- (persis kasus yang sedang dikoreksi fitur ini) — order_sn+id_produk saja tidak
   -- cukup unik untuk baris seperti itu, tapi harga_produk baris tsb (Rupiah, dari
   -- kolom "Harga Produk" Shopee) selalu beda antar baris dalam kasus ini.
+  -- Setelan iklan yang sedang dipasang orang tua di Seller Centre (Target ROAS & Modal
+  -- Harian) per produk. TIDAK ada di file ekspor Shopee, jadi diketik sekali di halaman
+  -- Analisis Iklan supaya aplikasi bisa membandingkan "sekarang" vs "minimal/saran".
+  CREATE TABLE IF NOT EXISTS iklan_setelan (
+    id_produk TEXT PRIMARY KEY,
+    target_roas REAL,
+    modal_harian REAL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_by TEXT
+  );
+
+  -- Pengaturan toko yang cuma satu angka (bukan per produk), mis. 'tingkat_cair' =
+  -- bagian pesanan iklan yang benar-benar dibayar (0–1). Kunci → nilai teks.
+  CREATE TABLE IF NOT EXISTS pengaturan (
+    kunci TEXT PRIMARY KEY,
+    nilai TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_by TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS order_item_jumlah (
     order_sn TEXT NOT NULL,
     id_produk TEXT NOT NULL,
@@ -46,6 +66,20 @@ db.exec(`
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_by TEXT,
     PRIMARY KEY (order_sn, id_produk, harga_produk)
+  );
+
+  -- Token OAuth Shopee Open Platform (lihat shopeeApi.js + §10/§19 PROJECT_NOTES.md),
+  -- satu baris per shop_id. access_token berlaku 4 jam, refresh_token 30 hari — server.js
+  -- yang tanggung jawab refresh sebelum kedaluwarsa, disimpan di sini (bukan .env),
+  -- karena ini dinamis per toko dan berbeda antara environment sandbox/production.
+  CREATE TABLE IF NOT EXISTS shopee_token (
+    shop_id TEXT PRIMARY KEY,
+    env TEXT NOT NULL,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT NOT NULL,
+    expire_in INTEGER NOT NULL,
+    obtained_at INTEGER NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);
 

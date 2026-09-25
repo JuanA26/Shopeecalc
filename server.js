@@ -7,7 +7,9 @@ const multer = require('multer');
 const bcrypt = require('bcryptjs');
 
 const db = require('./db');
-const { parseShopeeIncomeFile } = require('./parseExcel');
+const { parseShopeeIncomeWorkbook } = require('./parseExcel');
+const { parseCsvLine, parseShopeeAdsCsv, hitungAnalisisIklan, RASIO_PENCAIRAN_DEFAULT, TINGKAT_CAIR_DEFAULT } = require('./analisisIklan');
+const shopeeApi = require('./shopeeApi');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -59,7 +61,9 @@ app.set('trust proxy', 1); // perlu kalau dideploy di belakang reverse proxy/htt
   }
 })();
 
-app.use(express.json());
+// Batas dinaikkan dari 100 kb bawaan: /api/iklan/hitung-ulang mengirim balik semua baris
+// kampanye (ratusan baris × ~0,5 kb) supaya tidak perlu unggah ulang file.
+app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use(
@@ -82,7 +86,9 @@ app.use(
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB
+  // fieldSize: field teks "produkIncome" (harga & penjualan harian per produk dari file
+  // Income, dikirim bersama CSV iklan) bisa beberapa ratus KB — default multer 1 MB.
+  limits: { fileSize: 25 * 1024 * 1024, fieldSize: 8 * 1024 * 1024 }, // 25 MB / 8 MB
 });
 
 // ---------- Auth middleware ----------
@@ -229,30 +235,7 @@ app.get('/api/hpp/export-csv', requireLogin, (req, res) => {
   res.send(csv);
 });
 
-// Baca satu baris CSV yang mungkin berisi field bertanda kutip (mendukung koma
-// di dalam nama produk yang dibungkus tanda kutip, sesuai format CSV standar).
-function parseCsvLine(line) {
-  const hasil = [];
-  let field = '';
-  let dalamKutip = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (dalamKutip) {
-      if (c === '"' && line[i + 1] === '"') { field += '"'; i++; }
-      else if (c === '"') { dalamKutip = false; }
-      else { field += c; }
-    } else if (c === '"') {
-      dalamKutip = true;
-    } else if (c === ',') {
-      hasil.push(field);
-      field = '';
-    } else {
-      field += c;
-    }
-  }
-  hasil.push(field);
-  return hasil;
-}
+// parseCsvLine() dipakai bersama dengan pembaca CSV iklan — lihat analisisIklan.js.
 
 // Impor massal dari file CSV dengan format yang sama dengan yang diunduh dari
 // versi statis (kolom: ID Produk, Nama Produk, Harga Modal (HPP), ...).
@@ -319,8 +302,10 @@ app.post('/api/upload', requireLogin, upload.single('file'), (req, res) => {
   }
 
   let items;
+  let biayaPerPesanan;
+  let sheetTerbaca;
   try {
-    items = parseShopeeIncomeFile(req.file.buffer);
+    ({ items, biayaPerPesanan, sheetTerbaca } = parseShopeeIncomeWorkbook(req.file.buffer));
   } catch (err) {
     console.error(err);
     const message = err.userFacing
@@ -395,6 +380,19 @@ app.post('/api/upload', requireLogin, upload.single('file'), (req, res) => {
     };
   });
 
+  // Total biaya yang dipotong Shopee per kategori (dari sheet "Seller Fee" — hanya ada di
+  // file rentang panjang; kalau tidak ada, semua nol dan jumlahPesanan = 0). Belum
+  // ditampilkan di UI, disiapkan untuk halaman biaya/iklan nanti.
+  const biayaPenjual = { platform: 0, gratisOngkirXtra: 0, layanan: 0, promosi: 0, lainnya: 0, jumlahPesanan: 0 };
+  for (const b of biayaPerPesanan.values()) {
+    biayaPenjual.platform += b.platform;
+    biayaPenjual.gratisOngkirXtra += b.gratisOngkirXtra;
+    biayaPenjual.layanan += b.layanan;
+    biayaPenjual.promosi += b.promosi;
+    biayaPenjual.lainnya += b.lainnya;
+    biayaPenjual.jumlahPesanan += 1;
+  }
+
   const ringkasan = {
     jumlahBaris: hasil.length,
     totalPenghasilan,
@@ -403,9 +401,317 @@ app.post('/api/upload', requireLogin, upload.single('file'), (req, res) => {
     marginRataRataPersen: totalPenghasilan !== 0 ? (totalUntung / totalPenghasilan) * 100 : null,
     jumlahBelumAdaHpp,
     jumlahDikembalikan,
+    // Rasio pencairan untuk halaman Analisis Iklan: Σ Total Penghasilan ÷ Σ Harga Produk
+    // (nilai jual sebelum potongan Shopee), tanpa baris yang dikembalikan — pesanan retur
+    // uangnya memang tidak cair, tapi barangnya juga kembali, jadi bukan "potongan".
+    totalHargaProduk: hasil.reduce((t, it) => t + (it.dikembalikan ? 0 : it.hargaProduk || 0), 0),
+    rasioPencairan: (() => {
+      const laku = hasil.filter((it) => !it.dikembalikan);
+      const harga = laku.reduce((t, it) => t + (it.hargaProduk || 0), 0);
+      return harga ? laku.reduce((t, it) => t + it.totalPenghasilan, 0) / harga : null;
+    })(),
+    sheetTerbaca,
+    biayaPenjual,
   };
 
   res.json({ items: hasil, ringkasan });
+});
+
+// ---------- Rute Analisis Iklan ----------
+// Ambil semua HPP tersimpan dalam bentuk Map<idProduk, { hpp, namaProduk }> untuk digabung
+// dengan data iklan. Nama produk dari tabel HPP lebih rapi daripada "Nama Iklan" Shopee.
+function petaHppUntukIklan() {
+  const rows = db.prepare('SELECT id_produk, nama_produk, hpp FROM product_hpp WHERE hpp IS NOT NULL').all();
+  return new Map(rows.map((r) => [r.id_produk, { hpp: r.hpp, namaProduk: r.nama_produk || '' }]));
+}
+
+// Rasio pencairan dikirim klien dari file Income yang sedang diunggah di sesi itu
+// (ringkasan.totalPenghasilan ÷ ringkasan.totalHargaProduk). Server tidak menyimpan
+// data penjualan, jadi kalau tidak ada, pakai default dan beri tahu klien sumbernya.
+function rasioDariPermintaan(nilaiMentah) {
+  const n = Number(nilaiMentah);
+  if (Number.isFinite(n) && n > 0 && n <= 1) return { rasio: n, sumberRasio: 'upload' };
+  return { rasio: RASIO_PENCAIRAN_DEFAULT, sumberRasio: 'default' };
+}
+
+// Harga & rasio pencairan per produk dari file Income di sesi klien: objek
+// { idProduk: { harga, rasio, pcs } }. Di multipart dikirim sebagai string JSON.
+function produkIncomeDariPermintaan(mentah) {
+  if (!mentah) return {};
+  try {
+    const obj = typeof mentah === 'string' ? JSON.parse(mentah) : mentah;
+    return obj && typeof obj === 'object' ? obj : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+// ---------- Pengaturan toko (satu angka per kunci) ----------
+const KUNCI_PENGATURAN = new Set(['tingkat_cair']);
+
+function bacaPengaturan(kunci) {
+  const row = db.prepare('SELECT nilai FROM pengaturan WHERE kunci = ?').get(kunci);
+  return row ? row.nilai : null;
+}
+
+// Tingkat pesanan iklan yang dibayar (0–1) dari pengaturan; kalau belum diisi pakai default.
+function tingkatCairSaatIni() {
+  const n = Number(bacaPengaturan('tingkat_cair'));
+  if (Number.isFinite(n) && n > 0 && n <= 1) return { tingkatCair: n, sumberTingkatCair: 'pengaturan' };
+  return { tingkatCair: TINGKAT_CAIR_DEFAULT, sumberTingkatCair: 'default' };
+}
+
+function opsiAnalisisIklan(tanggalLaporanIso, tanggalRilisTerakhir) {
+  const iso = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : '');
+  return { ...tingkatCairSaatIni(), tanggalLaporanIso: iso(tanggalLaporanIso), tanggalRilisTerakhir: iso(tanggalRilisTerakhir) };
+}
+
+app.get('/api/pengaturan', requireLogin, (req, res) => {
+  const rows = db.prepare('SELECT kunci, nilai FROM pengaturan').all();
+  res.json(Object.fromEntries(rows.map((r) => [r.kunci, r.nilai])));
+});
+
+// Simpan satu pengaturan; nilai null/kosong = hapus (kembali ke default).
+app.put('/api/pengaturan/:kunci', requireLogin, (req, res) => {
+  const kunci = String(req.params.kunci || '');
+  if (!KUNCI_PENGATURAN.has(kunci)) return res.status(400).json({ error: 'Pengaturan tidak dikenal.' });
+  const mentah = req.body ? req.body.nilai : null;
+  if (mentah === null || mentah === undefined || mentah === '') {
+    db.prepare('DELETE FROM pengaturan WHERE kunci = ?').run(kunci);
+    return res.json({ kunci, nilai: null });
+  }
+  const n = Number(mentah);
+  if (kunci === 'tingkat_cair' && !(Number.isFinite(n) && n > 0 && n <= 1)) {
+    return res.status(400).json({ error: 'Tingkat pesanan dibayar harus antara 1 dan 100 persen.' });
+  }
+  db.prepare(
+    `INSERT INTO pengaturan (kunci, nilai, updated_at, updated_by) VALUES (?, ?, datetime('now'), ?)
+     ON CONFLICT(kunci) DO UPDATE SET nilai = excluded.nilai, updated_at = excluded.updated_at, updated_by = excluded.updated_by`
+  ).run(kunci, String(n), req.session.username);
+  res.json({ kunci, nilai: String(n) });
+});
+
+// Unggah CSV "Data Keseluruhan Iklan" dari Seller Centre → analisis per produk + per kampanye.
+// Seperti /api/upload, semuanya diproses di memori — tidak ada yang disimpan ke database.
+app.post('/api/iklan/upload', requireLogin, upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'Tidak ada file yang diunggah.' });
+  }
+
+  let hasilParse;
+  try {
+    hasilParse = parseShopeeAdsCsv(req.file.buffer);
+  } catch (err) {
+    console.error(err);
+    const message = err.userFacing
+      ? err.message
+      : 'Gagal membaca file ini. Pastikan ini file CSV "Data Keseluruhan Iklan" asli dari Seller Centre Shopee.';
+    return res.status(400).json({ error: message });
+  }
+
+  const { rasio, sumberRasio } = rasioDariPermintaan(req.body && req.body.rasioPencairan);
+  const produkIncome = produkIncomeDariPermintaan(req.body && req.body.produkIncome);
+  const opsi = opsiAnalisisIklan(hasilParse.tanggalLaporanIso, req.body && req.body.tanggalRilisTerakhir);
+  const analisis = hitungAnalisisIklan(hasilParse.kampanye, petaHppUntukIklan(), rasio, produkIncome, opsi);
+  res.json({ ...analisis, sumberRasio, sumberTingkatCair: opsi.sumberTingkatCair, periode: hasilParse.periode, namaToko: hasilParse.namaToko, tanggalLaporanIso: hasilParse.tanggalLaporanIso });
+});
+
+// Hitung ulang dengan HPP terbaru dari database, tanpa unggah ulang file — dipakai klien
+// setelah pengguna mengisi HPP produk yang tadinya kuning ("belum ada HPP").
+app.post('/api/iklan/hitung-ulang', requireLogin, (req, res) => {
+  const kampanye = req.body && Array.isArray(req.body.kampanye) ? req.body.kampanye : null;
+  if (!kampanye || !kampanye.length) {
+    return res.status(400).json({ error: 'Tidak ada data kampanye untuk dihitung ulang.' });
+  }
+  const { rasio, sumberRasio } = rasioDariPermintaan(req.body.rasioPencairan);
+  const opsi = opsiAnalisisIklan(req.body.tanggalLaporanIso, req.body.tanggalRilisTerakhir);
+  const analisis = hitungAnalisisIklan(kampanye, petaHppUntukIklan(), rasio, produkIncomeDariPermintaan(req.body.produkIncome), opsi);
+  res.json({ ...analisis, sumberRasio, sumberTingkatCair: opsi.sumberTingkatCair, periode: req.body.periode || '', namaToko: req.body.namaToko || '', tanggalLaporanIso: req.body.tanggalLaporanIso || '' });
+});
+
+// ---------- Setelan iklan per produk (Target ROAS & Modal Harian yang dipasang di Seller Centre) ----------
+app.get('/api/iklan/setelan', requireLogin, (req, res) => {
+  res.json(db.prepare('SELECT id_produk, target_roas, modal_harian, updated_at, updated_by FROM iklan_setelan').all());
+});
+
+// Simpan salah satu / keduanya. Kirim null (atau kosong) untuk menghapus nilai.
+app.put('/api/iklan/setelan/:idProduk', requireLogin, (req, res) => {
+  const idProduk = String(req.params.idProduk || '').trim();
+  if (!idProduk) return res.status(400).json({ error: 'ID Produk wajib diisi.' });
+  const angkaAtauNull = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  };
+  const body = req.body || {};
+  const target = angkaAtauNull(body.targetRoas);
+  const modal = angkaAtauNull(body.modalHarian);
+  if (target === undefined || modal === undefined) {
+    return res.status(400).json({ error: 'Target ROAS dan Modal Harian harus berupa angka (tidak boleh minus).' });
+  }
+  const lama = db.prepare('SELECT target_roas, modal_harian FROM iklan_setelan WHERE id_produk = ?').get(idProduk) || {};
+  const targetBaru = 'targetRoas' in body ? target : lama.target_roas ?? null;
+  const modalBaru = 'modalHarian' in body ? modal : lama.modal_harian ?? null;
+  db.prepare(
+    `INSERT INTO iklan_setelan (id_produk, target_roas, modal_harian, updated_at, updated_by)
+     VALUES (?, ?, ?, datetime('now'), ?)
+     ON CONFLICT(id_produk) DO UPDATE SET
+       target_roas = excluded.target_roas,
+       modal_harian = excluded.modal_harian,
+       updated_at = excluded.updated_at,
+       updated_by = excluded.updated_by`
+  ).run(idProduk, targetBaru, modalBaru, req.session.username);
+  res.json(db.prepare('SELECT id_produk, target_roas, modal_harian, updated_at, updated_by FROM iklan_setelan WHERE id_produk = ?').get(idProduk));
+});
+
+// ---------- Shopee Open Platform API — OAuth + tes ambil data ----------
+// Lihat shopeeApi.js untuk signing/endpoint, §10/§19 PROJECT_NOTES.md (folder induk) untuk
+// konteks. Tahap sekarang: sandbox saja (SHOPEE_ENV=sandbox di .env, Test Partner ID/Key
+// dari App yang baru dibuat) — belum Go Live, jadi belum bisa ambil data toko asli.
+
+function redirectUriDariRequest(req) {
+  return process.env.SHOPEE_REDIRECT_URL || `${req.protocol}://${req.get('host')}/auth/shopee/callback`;
+}
+
+// Ambil access_token yang masih berlaku untuk satu shop_id, refresh dulu ke Shopee kalau
+// sudah (atau hampir) kedaluwarsa. Dilempar error kalau belum pernah otorisasi sama sekali.
+async function ambilTokenAktif(shopId) {
+  const baris = shopId
+    ? db.prepare('SELECT * FROM shopee_token WHERE shop_id = ?').get(String(shopId))
+    : db.prepare('SELECT * FROM shopee_token ORDER BY updated_at DESC LIMIT 1').get();
+  if (!baris) throw new Error('Belum ada toko yang diotorisasi. Buka /auth/shopee/authorize dulu.');
+
+  const umurDetik = Math.floor(Date.now() / 1000) - baris.obtained_at;
+  const masihSegar = umurDetik < baris.expire_in - 300; // beri jeda 5 menit sebelum benar-benar kedaluwarsa
+  if (masihSegar) return baris;
+
+  const hasil = await shopeeApi.refreshAccessToken({ refreshToken: baris.refresh_token, shopId: baris.shop_id });
+  if (hasil.error) throw new Error(`Gagal refresh token: ${hasil.error} — ${hasil.message || ''}`);
+
+  db.prepare(
+    `UPDATE shopee_token SET access_token = ?, refresh_token = ?, expire_in = ?, obtained_at = ?, updated_at = datetime('now')
+     WHERE shop_id = ?`
+  ).run(hasil.access_token, hasil.refresh_token, hasil.expire_in, Math.floor(Date.now() / 1000), baris.shop_id);
+
+  return { ...baris, access_token: hasil.access_token, refresh_token: hasil.refresh_token, expire_in: hasil.expire_in };
+}
+
+// Langkah 1: buka ini di browser (harus sudah login ke app dulu) untuk diarahkan ke halaman
+// otorisasi Shopee. Sandbox: login pakai Sandbox Shop Account (dibuat di Console > Test
+// Account-Sandbox v2), BUKAN akun Shopee asli.
+app.get('/auth/shopee/authorize', requireLogin, (req, res) => {
+  try {
+    const url = shopeeApi.buildAuthUrl(redirectUriDariRequest(req), req.session.userId);
+    res.redirect(url);
+  } catch (err) {
+    res.status(500).send(`Gagal bikin link otorisasi: ${err.message}`);
+  }
+});
+
+// Langkah 2: Shopee redirect balik ke sini dengan ?code=...&shop_id=... setelah seller
+// menyetujui otorisasi. Tukar code jadi access_token/refresh_token dan simpan per shop_id.
+app.get('/auth/shopee/callback', requireLogin, async (req, res) => {
+  const { code, shop_id: shopId } = req.query;
+  if (!code || !shopId) {
+    return res.status(400).send('Callback tidak lengkap — code atau shop_id tidak ada di URL.');
+  }
+  try {
+    const hasil = await shopeeApi.getAccessToken({ code: String(code), shopId: String(shopId) });
+    if (hasil.error) {
+      return res.status(400).send(`Shopee menolak tukar token: ${hasil.error} — ${hasil.message || ''}`);
+    }
+    db.prepare(
+      `INSERT INTO shopee_token (shop_id, env, access_token, refresh_token, expire_in, obtained_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(shop_id) DO UPDATE SET
+         env = excluded.env, access_token = excluded.access_token, refresh_token = excluded.refresh_token,
+         expire_in = excluded.expire_in, obtained_at = excluded.obtained_at, updated_at = excluded.updated_at`
+    ).run(String(shopId), shopeeApi.getEnv(), hasil.access_token, hasil.refresh_token, hasil.expire_in, Math.floor(Date.now() / 1000));
+    res.send(`Otorisasi berhasil untuk shop_id ${shopId} (environment: ${shopeeApi.getEnv()}). Token tersimpan — coba GET /api/shopee/test untuk tes ambil data.`);
+  } catch (err) {
+    res.status(500).send(`Gagal tukar code jadi token: ${err.message}`);
+  }
+});
+
+// Tes koneksi paling sederhana: ambil info toko (get_shop_info) pakai token yang tersimpan,
+// buat memastikan signing + auth flow beneran jalan sebelum coba endpoint yang lebih berat
+// (get_order_list / get_income_detail untuk data pesanan asli).
+app.get('/api/shopee/test', requireLogin, async (req, res) => {
+  try {
+    const token = await ambilTokenAktif(req.query.shopId);
+    const hasil = await shopeeApi.callShopApi('/api/v2/shop/get_shop_info', {
+      shopId: token.shop_id,
+      accessToken: token.access_token,
+    });
+    res.json({ env: shopeeApi.getEnv(), shopId: token.shop_id, hasil });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Langkah berikutnya setelah get_shop_info terbukti jalan: tarik pesanan beneran.
+// time_range_field=create_time, rentang default 15 hari terakhir (batas maksimum Shopee per
+// panggilan) — cukup untuk nemu pesanan tes yang baru dibuat di Console > Test Order.
+app.get('/api/shopee/orders', requireLogin, async (req, res) => {
+  try {
+    const token = await ambilTokenAktif(req.query.shopId);
+    const now = Math.floor(Date.now() / 1000);
+    const hariKeBelakang = Number(req.query.hari) || 15;
+    const hasil = await shopeeApi.callShopApi('/api/v2/order/get_order_list', {
+      shopId: token.shop_id,
+      accessToken: token.access_token,
+      query: {
+        time_range_field: 'create_time',
+        time_from: now - hariKeBelakang * 86400,
+        time_to: now,
+        page_size: 20,
+      },
+    });
+    res.json({ env: shopeeApi.getEnv(), shopId: token.shop_id, hasil });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Isi asli pesanan (item_list dsb) — ini yang isinya model_quantity_purchased, jawaban asli
+// untuk pertanyaan §5/§10 soal jumlah pcs per baris (bukan tebakan dari rasio harga lagi).
+// orderSn boleh lebih dari satu, pisah koma: ?orderSn=260923S3XAC3D9,260923ABCDEF
+app.get('/api/shopee/order-detail', requireLogin, async (req, res) => {
+  const orderSnList = String(req.query.orderSn || '').trim();
+  if (!orderSnList) return res.status(400).json({ error: 'Query ?orderSn=... wajib diisi.' });
+  try {
+    const token = await ambilTokenAktif(req.query.shopId);
+    const hasil = await shopeeApi.callShopApi('/api/v2/order/get_order_detail', {
+      shopId: token.shop_id,
+      accessToken: token.access_token,
+      query: {
+        order_sn_list: orderSnList,
+        response_optional_fields: 'item_list,total_amount,order_status,create_time,pay_time,buyer_username',
+      },
+    });
+    res.json({ env: shopeeApi.getEnv(), shopId: token.shop_id, hasil });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Rincian income/potongan biaya per pesanan (escrow_amount, komisi, ongkir, dll) — ini yang
+// akan menggantikan sheet "Seller Fee" di file Excel Income kalau sync API jadi dibangun.
+// Satu order_sn per panggilan (beda dari order-detail yang boleh banyak sekaligus).
+app.get('/api/shopee/escrow-detail', requireLogin, async (req, res) => {
+  const orderSn = String(req.query.orderSn || '').trim();
+  if (!orderSn) return res.status(400).json({ error: 'Query ?orderSn=... wajib diisi.' });
+  try {
+    const token = await ambilTokenAktif(req.query.shopId);
+    const hasil = await shopeeApi.callShopApi('/api/v2/payment/get_escrow_detail', {
+      shopId: token.shop_id,
+      accessToken: token.access_token,
+      query: { order_sn: orderSn },
+    });
+    res.json({ env: shopeeApi.getEnv(), shopId: token.shop_id, hasil });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.listen(PORT, () => {

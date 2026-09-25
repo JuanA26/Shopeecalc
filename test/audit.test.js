@@ -75,6 +75,27 @@ function sourceFunction(file, name) {
   return source.slice(start, source.indexOf('\n}', start) + 2);
 }
 
+test('ad-only weeks retain spending without inventing profit, and gaps prevent comparisons', () => {
+  const dates = `const tambahHari=(iso,n)=>{const d=new Date(iso+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};`;
+  const context = {
+    sumberIklan: () => ({ items: [] }),
+    dataIklan: { kampanye: [{ perHari: { '2026-08-10': { biaya: 100000, terjual: 0 } } }],
+      rentangData: { dari: '2026-08-03', sampai: '2026-08-16' } },
+    seninIso: iso => iso, hariIniWib: () => '2026-09-25', tanggalDataMulaiSaatIni: () => '2026-08-03', JEDA_LENGKAP_HARI: 7,
+    escapeHtml: s => s, formatRupiahRingkas: n => `Rp ${n}`, labelMinggu: iso => iso,
+  };
+  const result = vm.runInNewContext(`${dates}${sourceFunction('public/app.js','untungTokoPerMinggu')};untungTokoPerMinggu()`, context);
+  assert.equal(result.minggu.length, 1);
+  assert.equal(result.minggu[0].biayaIklan, 100000);
+  assert.equal(result.minggu[0].untungSetelahIklan, null);
+  assert.equal(result.minggu[0].lengkap, false);
+  const svg = vm.runInNewContext(`(${sourceFunction('public/app.js','grafikMingguanSvg')})(weeks)`, { ...context, weeks: result.minggu });
+  assert.match(svg, /batang-iklan/); assert.match(svg, />\?<\/text>/); assert.doesNotMatch(svg, /NaN|batang-rugi/);
+  const weeks = ['2026-07-06','2026-07-13','2026-07-27','2026-08-03'].map(mulai => ({ mulai, lengkap:true, iklanLengkap:true, biayaIklan:100, untungSetelahIklan:100 }));
+  const rule = vm.runInNewContext(`${dates}${sourceFunction('public/app.js','aturanMingguan')};aturanMingguan({minggu:weeks})`, { weeks });
+  assert.equal(rule.kelas, ''); assert.match(rule.teks, /belum lengkap/);
+});
+
 test('payout allocation conserves money, including a full-return deduction', () => {
   const rows = susunBarisPesanan({ order_income: { escrow_amount: -12000,
     items: [{ item_id: 1, quantity_purchased: 2, discounted_price: 200000 }] } },

@@ -25,15 +25,21 @@ const BATAS_ULANG = 200; // maksimal pesanan dari tabel sinkron_ulang yang dicob
 // dicatat, lalu dicoba lagi di sinkron berikutnya sampai berhasil.
 function antreanUlang(db, shopId, jenis) {
   shopId = String(shopId);
-  const pilih = db.prepare('SELECT order_sn FROM sinkron_ulang WHERE shop_id = ? AND jenis = ? ORDER BY pertama, order_sn LIMIT ?');
+  const pilih = db.prepare('SELECT order_sn FROM sinkron_ulang WHERE shop_id = ? AND jenis = ? ORDER BY percobaan, pertama, order_sn LIMIT ?');
   const tambah = db.prepare(
     `INSERT INTO sinkron_ulang (shop_id, order_sn, jenis) VALUES (?, ?, ?)
-     ON CONFLICT(shop_id, order_sn, jenis) DO UPDATE SET percobaan = percobaan + 1`
+     ON CONFLICT(shop_id, order_sn, jenis) DO NOTHING`
   );
   const buang = db.prepare('DELETE FROM sinkron_ulang WHERE shop_id = ? AND order_sn = ? AND jenis = ?');
   const hitung = db.prepare('SELECT COUNT(*) AS n FROM sinkron_ulang WHERE shop_id = ? AND jenis = ?');
   return {
-    daftar: () => pilih.all(shopId, jenis, BATAS_ULANG).map((r) => r.order_sn),
+    daftar: () => {
+      const ids = pilih.all(shopId, jenis, BATAS_ULANG).map((r) => r.order_sn);
+      // Rotate even when the API omits a row or throws before processing its response.
+      const tandai = db.prepare('UPDATE sinkron_ulang SET percobaan = percobaan + 1 WHERE shop_id = ? AND jenis = ? AND order_sn = ?');
+      for (const sn of ids) tandai.run(shopId, jenis, sn);
+      return ids;
+    },
     catat: (sn) => tambah.run(shopId, sn, jenis),
     hapus: (sn) => buang.run(shopId, sn, jenis),
     sisa: () => hitung.get(shopId, jenis).n,
@@ -295,6 +301,25 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
   const sekarang = Math.floor(Date.now() / 1000);
   const state = db.prepare('SELECT * FROM sinkron_shopee WHERE shop_id = ?').get(shopId) || {};
 
+  // Explicit historical sync also repairs stored rows, in bounded, persistent batches.
+  // Normal scheduled syncs only drain the queue; they do not repeatedly seed it.
+  if (hariMundur) {
+    const awal = tanggalWib(sekarang - hariMundur * DETIK_SEHARI);
+    const akhir = tanggalWib(sekarang);
+    const seed = db.prepare(`INSERT OR IGNORE INTO sinkron_ulang (shop_id, order_sn, jenis)
+      SELECT shop_id, order_sn, ? FROM api_pesanan
+      WHERE shop_id = ? AND tanggal_dilepaskan BETWEEN ? AND ?`);
+    db.exec('BEGIN');
+    try {
+      seed.run('retur', String(shopId), awal, akhir);
+      seed.run('order', String(shopId), awal, akhir);
+      db.prepare(`INSERT OR IGNORE INTO sinkron_ulang (shop_id, order_sn, jenis)
+        SELECT shop_id, order_sn, 'order' FROM api_order
+        WHERE shop_id = ? AND tanggal_pesanan BETWEEN ? AND ?`).run(String(shopId), awal, akhir);
+      db.exec('COMMIT');
+    } catch (err) { db.exec('ROLLBACK'); throw err; }
+  }
+
   let dariOrder;
   if (hariMundur) dariOrder = sekarang - hariMundur * DETIK_SEHARI;
   else if (state.order_ts) dariOrder = state.order_ts - DETIK_TUMPANG_ORDER;
@@ -327,7 +352,7 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
   const simpanPesanan = db.prepare(
     `INSERT INTO api_pesanan (order_sn, shop_id, waktu_pesanan, tanggal_dilepaskan, escrow_amount, status_pesanan, ada_retur, synced_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(order_sn) DO UPDATE SET waktu_pesanan = excluded.waktu_pesanan,
+     ON CONFLICT(order_sn) DO UPDATE SET waktu_pesanan = COALESCE(NULLIF(excluded.waktu_pesanan, ''), api_pesanan.waktu_pesanan),
        tanggal_dilepaskan = COALESCE(NULLIF(excluded.tanggal_dilepaskan, ''), api_pesanan.tanggal_dilepaskan),
        escrow_amount = excluded.escrow_amount, status_pesanan = excluded.status_pesanan, ada_retur = excluded.ada_retur, synced_at = excluded.synced_at`
   );
@@ -406,7 +431,7 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
   return {
     dari, sampai, dilihat: escrow.size, baru: jumlahBaru - terlewatBaru.length,
     orderDiperiksa: hasilOrder.diperiksa, orderBerubah: hasilOrder.diperbarui, orderSampai: sekarang,
-    orderTerlewat: hasilOrder.terlewat, returTertunda,
+    orderTerlewat: antreanUlang(db, shopId, 'order').sisa(), returTertunda,
   };
 }
 

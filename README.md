@@ -70,6 +70,9 @@ Two cards: Kalkulator Margin (profit for the period chosen there) and Analisis I
 - **Sync:**
   - Runs every 30 minutes and only downloads new or changed orders.
   - "Sinkron Sekarang" forces it; a progress bar shows the steps.
+  - **Periksa data lama → Periksa ulang 90 hari** rechecks stored orders and payouts in that window.
+    Recovery runs in batches (up to 200 queued orders per type per sync); pending checks are shown and
+    continue automatically. Failed checks rotate so later records can still recover.
   - If it keeps ending red, read the message. The app renews Shopee's token itself; if Shopee refuses,
     authorize again at `/auth/shopee/authorize` (saved data is kept).
 
@@ -82,6 +85,8 @@ from Shopee automatically. The page answers four questions:
      "kurangi Modal Harian".
    - The attribution ratio compares ad-attributed units with shop units. It does not prove whether
      ads caused those sales or the sales would have happened anyway.
+   - Weeks with ad spend but no order rows remain visible with unknown profit. Gaps prevent comparing
+     nonconsecutive weeks for a budget recommendation.
 2. **Iklan yang Sedang Berjalan:** one row per running ad, showing the budget and target from Seller Centre
    and **one decision**, judged on **direct ROAS** (sales of the advertised product only) against its
    **ROAS minimum**:
@@ -131,7 +136,8 @@ The ads CSV from Seller Centre can still be uploaded under "Cadangan" if the aut
 ## 5. Tests
 
 Run `npm test` for the regression tests (profit and break-even maths, paid-order rate with partial
-returns, payout split, return deductions, sync retries against a mock Shopee). No Shopee credentials are needed.
+returns, payout split, return deductions, ad-only weeks, retry rotation and historical recovery against
+a mock Shopee). No Shopee credentials are needed.
 The calculator excludes business overhead unless it is already part of HPP/payout deductions.
 
 ## 6. Project structure

@@ -459,6 +459,7 @@ function statusSinkron() {
     terakhirSelesai: s.terakhir_selesai || null,
     jumlahBaru: s.jumlah_baru ?? null,
     jumlahOrderBerubah: s.order_berubah ?? null,
+    ulangTertunda: db.prepare('SELECT COUNT(*) AS n FROM sinkron_ulang WHERE shop_id = ?').get(String(token.shop_id)).n,
     modeEscrow: modeEscrow(),
     iklan: { status: s.iklan_status || null, pesan: s.iklan_pesan || null, terakhirSelesai: s.iklan_selesai || null, sampai: s.iklan_sampai || null },
     jumlahPesanan: agg.jumlah,
@@ -474,6 +475,7 @@ app.get('/api/sinkron/status', requireLogin, (req, res) => res.json(statusSinkro
 app.post('/api/sinkron', requireLogin, async (req, res) => {
   const n = Number(req.body && req.body.hariMundur);
   const hariMundur = Number.isInteger(n) && n > 0 ? Math.min(n, 365) : undefined;
+  if (hariMundur && sinkronBerjalan) return res.status(409).json({ error: 'Sinkron masih berjalan. Coba periksa ulang setelah selesai.' });
   try {
     await jalankanSinkron({ hariMundur });
     res.json(statusSinkron());

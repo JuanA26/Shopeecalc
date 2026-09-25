@@ -33,6 +33,55 @@ function mockShopee(shopee) {
 const now = Math.floor(Date.now() / 1000);
 const antrean = (shop, jenis) => db.prepare('SELECT order_sn FROM sinkron_ulang WHERE shop_id = ? AND jenis = ?').all(shop, jenis).map((r) => r.order_sn);
 
+test('retry rotation reaches the 201st order despite persistent failures and isolates shops', async () => {
+  const insert = db.prepare("INSERT INTO sinkron_ulang(shop_id,order_sn,jenis) VALUES (?,?,'order')");
+  for (let i = 0; i < 201; i++) insert.run('rotation', `ROT${String(i).padStart(3, '0')}`);
+  insert.run('other-shop', 'OTHER');
+  const seen = [];
+  const api = mockShopee({ orderList: [], escrowList: [], escrowDetail: {},
+    orderDetail: { ROT200: { order_sn: 'ROT200', create_time: now, order_status: 'COMPLETED', item_list: [] } } });
+  const panggil = (p, o) => {
+    if (p.endsWith('/order/get_order_detail')) seen.push(...o.query.order_sn_list.split(','));
+    return api(p, o);
+  };
+  await sinkronkan({ db, panggil, shopId: 'rotation' });
+  assert.equal(seen.includes('ROT200'), false);
+  await sinkronkan({ db, panggil, shopId: 'rotation' });
+  assert.equal(seen.includes('ROT200'), true);
+  assert.equal(seen.includes('OTHER'), false);
+  assert.equal(antrean('rotation', 'order').includes('ROT200'), false);
+});
+
+test('explicit historical sync repairs stored returns and same-status orders, then drains without duplicates', async () => {
+  const date = require('../sinkronShopee').tanggalWib(now - 86400);
+  db.prepare(`INSERT INTO api_pesanan(order_sn,shop_id,waktu_pesanan,tanggal_dilepaskan,escrow_amount)
+    VALUES ('OLD','repair',?,?, -12000)`).run(date,date);
+  db.exec(`INSERT INTO api_pesanan_item(order_sn,baris,id_produk,jumlah,harga_produk,total_penghasilan)
+    VALUES ('OLD',0,'1',2,100000,-12000)`);
+  db.prepare(`INSERT INTO api_order(order_sn,shop_id,tanggal_pesanan,status) VALUES ('OLD','repair',?,'COMPLETED')`).run(date);
+  const shopee = {
+    orderList: [{ order_sn: 'OLD', order_status: 'COMPLETED' }], escrowList: [],
+    orderDetail: { OLD: { order_sn: 'OLD', create_time: now - 86400, order_status: 'COMPLETED',
+      item_list: [{ item_id: 1, model_quantity_purchased: 2, model_discounted_price: 50000 }] } },
+    escrowDetail: { OLD: { order_sn: 'OLD', return_order_sn_list: ['ROLD'], order_income: {
+      escrow_amount: -12000, items: [{ item_id: 1, quantity_purchased: 2, discounted_price: 100000 }] } } },
+    returDetail: { ROLD: { status: 'ACCEPTED', refund_amount: 100000, item: [{ item_id: 1, amount: 2 }] } },
+    returFails: true,
+  };
+  const panggil = mockShopee(shopee);
+  await sinkronkan({ db, panggil, shopId: 'repair', hariMundur: 90 });
+  assert.equal(db.prepare("SELECT jumlah FROM api_order_item WHERE order_sn='OLD'").get().jumlah, 2);
+  assert.deepEqual(antrean('repair','retur'), ['OLD']);
+  shopee.orderList = []; shopee.returFails = false;
+  await sinkronkan({ db, panggil, shopId: 'repair' });
+  const row = db.prepare("SELECT dikembalikan,jumlah FROM api_pesanan_item WHERE order_sn='OLD'").get();
+  assert.equal(row.dikembalikan, 1); assert.equal(row.jumlah, 2);
+  assert.equal(db.prepare("SELECT tanggal_dilepaskan FROM api_pesanan WHERE order_sn='OLD'").get().tanggal_dilepaskan, date);
+  assert.deepEqual(antrean('repair','retur'), []);
+  await sinkronkan({ db, panggil, shopId: 'repair', hariMundur: 90 });
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM api_pesanan_item WHERE order_sn='OLD'").get().n, 1);
+});
+
 test('a failed return lookup is queued and corrected on the next sync', async () => {
   const shopee = {
     orderList: [], escrowList: [{ order_sn: 'RET1', escrow_release_time: now - 86400 }],

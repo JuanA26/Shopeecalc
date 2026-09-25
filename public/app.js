@@ -184,6 +184,7 @@ const tanggalDari = document.getElementById('tanggalDari');
 const tanggalSampai = document.getElementById('tanggalSampai');
 const tombolTampilkan = document.getElementById('tombolTampilkan');
 const tombolSinkron = document.getElementById('tombolSinkron');
+const tombolPeriksaUlang = document.getElementById('tombolPeriksaUlang');
 const teksStatusSinkron = document.getElementById('statusSinkron');
 const pesanErrorSinkron = document.getElementById('pesanErrorSinkron');
 const pesanLoadingSinkron = document.getElementById('pesanLoadingSinkron');
@@ -261,6 +262,8 @@ function renderStatusSinkron(s) {
   statusSinkronTerakhir = s;
   const terhubung = !!(s && s.terhubung);
   tombolSinkron.classList.toggle('tersembunyi', !terhubung);
+  document.getElementById('pemulihanSinkron').classList.toggle('tersembunyi', !terhubung);
+  tombolPeriksaUlang.disabled = !terhubung || !!s.sedangBerjalan || !!s.ulangTertunda;
   document.getElementById('tautanHubungkan').classList.toggle('tersembunyi', terhubung);
   tombolTampilkan.disabled = !terhubung;
   if (!terhubung) {
@@ -275,6 +278,7 @@ function renderStatusSinkron(s) {
   } else bagian.push('Belum pernah sinkron');
   if (s.jumlahPesanan) bagian.push(`${s.jumlahPesanan.toLocaleString('id-ID')} pesanan tersimpan (${formatTanggalPendek(s.tanggalTerlama)} – ${formatTanggalPendek(s.tanggalTerbaru)})`);
   bagian.push('otomatis tiap 30 menit');
+  if (s.ulangTertunda) bagian.push(`${s.ulangTertunda} pemeriksaan menunggu — dilanjutkan otomatis`);
   teksStatusSinkron.textContent = bagian.join(' · ');
   tombolSinkron.disabled = !!s.sedangBerjalan;
   tampilkanErrorSinkron(s.status === 'gagal' && s.pesan ? `Sinkron terakhir gagal: ${s.pesan}` : '');
@@ -340,6 +344,7 @@ function renderProgres(s) {
   if (nDana) bagianBaru.push(`${nDana.toLocaleString('id-ID')} dana cair baru`);
   label.textContent = gagal
     ? '✕ Gagal mengambil data — lihat pesan di bawah'
+    : s && s.ulangTertunda ? `Pemeriksaan bertahap — ${s.ulangTertunda} masih menunggu`
     : bagianBaru.length ? `✓ Selesai — ${bagianBaru.join(' · ')}` : '✓ Data sudah terbaru — tidak ada pesanan baru';
   angka.textContent = '';
   clearTimeout(jedaPudarProgres);
@@ -359,8 +364,9 @@ async function muatStatusSinkron() {
   }
 }
 
-async function sinkronSekarang() {
+async function sinkronSekarang(opsi = {}) {
   tombolSinkron.disabled = true;
+  tombolPeriksaUlang.disabled = true;
   sedangMengikutiSinkron = true; // pemeriksa semenit tidak perlu ikut memantau
   tampilkanErrorSinkron('');
   renderProgres({ sedangBerjalan: true, progres: null });
@@ -373,7 +379,7 @@ async function sinkronSekarang() {
     } catch (_) { /* abaikan, coba lagi di putaran berikutnya */ }
   }, 1500);
   try {
-    const hasil = await apiFetch('/api/sinkron', { method: 'POST', body: '{}' });
+    const hasil = await apiFetch('/api/sinkron', { method: 'POST', body: JSON.stringify(opsi) });
     pantau = false; clearInterval(penjadwal);
     renderStatusSinkron(hasil);
     await muatDataPenjualan();
@@ -387,9 +393,11 @@ async function sinkronSekarang() {
     pantau = false; clearInterval(penjadwal);
     sedangMengikutiSinkron = false;
     tombolSinkron.disabled = false;
+    tombolPeriksaUlang.disabled = !statusSinkronTerakhir?.terhubung || !!statusSinkronTerakhir?.sedangBerjalan || !!statusSinkronTerakhir?.ulangTertunda;
   }
 }
-tombolSinkron.addEventListener('click', sinkronSekarang);
+tombolSinkron.addEventListener('click', () => sinkronSekarang());
+tombolPeriksaUlang.addEventListener('click', () => sinkronSekarang({ hariMundur: 90 }));
 
 async function muatDataPenjualanIklan() {
   const sampai = hariIniWib();
@@ -1516,14 +1524,15 @@ function untungTokoPerMinggu() {
     const selesai = tambahHari(t.mulai, 6);
     // Untung kotor: baris tanpa HPP diperkirakan pakai margin baris yang ada HPP-nya minggu itu.
     const marginDiketahui = t.penghasilanDiketahui ? t.untungDiketahui / t.penghasilanDiketahui : 0;
-    const untungKotor = t.untungDiketahui + (t.penghasilan - t.penghasilanDiketahui) * marginDiketahui + (t.saldoRetur || 0);
+    // No order rows is not proof of zero sales: coverage has not been established.
+    const untungKotor = t.adaIncome ? t.untungDiketahui + (t.penghasilan - t.penghasilanDiketahui) * marginDiketahui + (t.saldoRetur || 0) : null;
     const lengkap = !!t.adaIncome && t.mulai >= awalData && selesai <= batasLengkap;
     const iklanLengkap = !!dataIklan && t.mulai >= (iklanMulai || '9999') && selesai <= (iklanSelesai || '');
     // Rasio atribusi, bukan bukti tambahan penjualan. Penyebut & pembilang berbeda
     // (pesanan batal, waktu atribusi, produk lain), sehingga bisa melebihi 100%.
     const klaimIklan = t.pcs > 0 && dataIklan ? t.pcsIklan / t.pcs : null;
-    return { ...t, selesai, untungKotor, untungSetelahIklan: untungKotor - t.biayaIklan, klaimIklan, lengkap, iklanLengkap };
-  }).filter((t) => t.adaIncome);
+    return { ...t, selesai, untungKotor, untungSetelahIklan: untungKotor === null ? null : untungKotor - t.biayaIklan, klaimIklan, lengkap, iklanLengkap };
+  });
   return { minggu: daftar, minRilis, maxRilis, iklanMulai, iklanSelesai };
 }
 
@@ -1534,6 +1543,10 @@ function aturanMingguan(data) {
   if (lengkap.length < 4) return { kelas: '', teks: 'Perlu minimal 4 minggu data lengkap (Income + iklan) untuk menilai.', detail: '' };
   const n = Math.min(4, Math.floor(lengkap.length / 2));
   const akhir = lengkap.slice(-n), awal = lengkap.slice(-2 * n, -n);
+  const dibandingkan = [...awal, ...akhir];
+  if (dibandingkan.some((t, i) => i > 0 && t.mulai !== tambahHari(dibandingkan[i - 1].mulai, 7))) {
+    return { kelas: '', teks: 'Ada minggu yang datanya belum lengkap — periksa sinkron sebelum mengubah modal.', detail: '' };
+  }
   const jml = (arr, f) => arr.reduce((a, t) => a + t[f], 0);
   const iklanA = jml(awal, 'biayaIklan'), iklanB = jml(akhir, 'biayaIklan');
   const untungA = jml(awal, 'untungSetelahIklan'), untungB = jml(akhir, 'untungSetelahIklan');
@@ -1563,9 +1576,9 @@ function grafikMingguanSvg(minggu) {
     const hU = skala(Math.abs(t.untungSetelahIklan)), hI = skala(t.biayaIklan);
     const kelasBelum = t.lengkap && t.iklanLengkap ? '' : ' batang-belum';
     const yU = t.untungSetelahIklan >= 0 ? nol - hU : nol;
-    isi += `<rect class="${t.untungSetelahIklan >= 0 ? 'batang-untung' : 'batang-rugi'}${kelasBelum}" x="${xU}" y="${yU}" width="${lebar}" height="${Math.max(hU, 1)}" rx="2"/>`;
+    if (t.untungSetelahIklan !== null) isi += `<rect class="${t.untungSetelahIklan >= 0 ? 'batang-untung' : 'batang-rugi'}${kelasBelum}" x="${xU}" y="${yU}" width="${lebar}" height="${Math.max(hU, 1)}" rx="2"/>`;
     isi += `<rect class="batang-iklan${kelasBelum}" x="${xI}" y="${nol - hI}" width="${lebar}" height="${Math.max(hI, 1)}" rx="2"/>`;
-    isi += `<text class="nilai" x="${x + lebarSlot / 2}" y="${(t.untungSetelahIklan >= 0 ? yU : nol + hU) + (t.untungSetelahIklan >= 0 ? -4 : 12)}" text-anchor="middle">${escapeHtml(formatRupiahRingkas(t.untungSetelahIklan).replace('Rp ', ''))}</text>`;
+    isi += `<text class="nilai" x="${x + lebarSlot / 2}" y="${(t.untungSetelahIklan >= 0 ? yU : nol + hU) + (t.untungSetelahIklan >= 0 ? -4 : 12)}" text-anchor="middle">${t.untungSetelahIklan === null ? '?' : escapeHtml(formatRupiahRingkas(t.untungSetelahIklan).replace('Rp ', ''))}</text>`;
     isi += `<text x="${x + lebarSlot / 2}" y="${H - 8}" text-anchor="middle">${labelMinggu(t.mulai)}</text>`;
   });
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Untung toko per minggu">${isi}</svg>
@@ -1608,14 +1621,15 @@ function renderMingguan() {
     const iklan = !dataIklan ? '<span class="teks-redup">-</span>' : t.iklanLengkap ? formatRupiah(t.biayaIklan) : `<span title="Di luar periode data iklan">${formatRupiah(t.biayaIklan)}*</span>`;
     return `<tr class="${kelas.trim()}">
       <td data-label="Minggu">${labelMinggu(t.mulai)} – ${labelMinggu(t.selesai)}${belum ? ' <span class="pill pill-abu">belum lengkap</span>' : ''}</td>
-      <td class="kolom-angka" data-label="Terjual">${t.pcs} pcs</td>
-      <td class="kolom-angka" data-label="Untung Kotor">${formatRupiah(t.untungKotor)}</td>
+      <td class="kolom-angka" data-label="Terjual">${t.adaIncome ? `${t.pcs} pcs` : 'Data belum lengkap'}</td>
+      <td class="kolom-angka" data-label="Untung Kotor">${t.untungKotor === null ? '—' : formatRupiah(t.untungKotor)}</td>
       <td class="kolom-angka" data-label="Biaya Iklan">${iklan}</td>
-      <td class="kolom-angka ${t.untungSetelahIklan >= 0 ? 'untung-positif' : 'untung-negatif'}" data-label="Untung Setelah Iklan">${formatRupiah(t.untungSetelahIklan)}</td>
+      <td class="kolom-angka ${t.untungSetelahIklan === null ? 'teks-redup' : t.untungSetelahIklan >= 0 ? 'untung-positif' : 'untung-negatif'}" data-label="Untung Setelah Iklan">${t.untungSetelahIklan === null ? '—' : formatRupiah(t.untungSetelahIklan)}</td>
       <td class="kolom-angka" data-label="Diklaim Iklan">${t.klaimIklan === null ? '<span class="teks-redup">-</span>' : `${Math.round(t.klaimIklan * 100)}%`}</td>
     </tr>`;
   }).join('');
   catatan.textContent = `Minggu Senin–Minggu menurut tanggal pesanan. "Belum lengkap" = minggu yang belum lewat ${JEDA_LENGKAP_HARI} hari (pesanan masih bisa batal) atau terpotong awal data. Pesanan yang dananya belum cair dihitung dengan perkiraan. Untung kotor untuk produk tanpa HPP diperkirakan dari margin produk lain minggu itu. "Diklaim iklan" = pcs yang Shopee catat sebagai hasil iklan (termasuk produk lain & pesanan batal) dibanding pcs yang benar-benar dibayar.`;
+  catatan.textContent += ' Minggu tanpa baris pesanan tetap menampilkan biaya iklan; untung belum diketahui (?).';
   return { data, lengkapTerakhir };
 }
 

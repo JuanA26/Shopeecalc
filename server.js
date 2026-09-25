@@ -7,10 +7,9 @@ const multer = require('multer');
 const bcrypt = require('bcryptjs');
 
 const db = require('./db');
-const { parseShopeeIncomeWorkbook } = require('./parseExcel');
 const { parseCsvLine, parseShopeeAdsCsv, hitungAnalisisIklan, RASIO_PENCAIRAN_DEFAULT, TINGKAT_CAIR_DEFAULT } = require('./analisisIklan');
 const shopeeApi = require('./shopeeApi');
-const { sinkronkan, bacaItemPesanan } = require('./sinkronShopee');
+const { sinkronkan, bacaItemPesanan, rasioPencairanToko } = require('./sinkronShopee');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -170,45 +169,6 @@ app.delete('/api/hpp/:idProduk', requireLogin, (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- Rute koreksi manual "Jumlah" (pcs) per baris pesanan ----------
-// Menimpa tebakan otomatis dari hitungJumlahPcsPerBaris() (lihat parseExcel.js)
-// untuk satu baris tertentu. Kuncinya order_sn + id_produk + hargaProduk (bukan
-// cuma order_sn + id_produk) karena satu pesanan bisa punya lebih dari satu baris
-// Sku untuk produk yang SAMA — hargaProduk baris itulah yang membedakannya.
-app.put('/api/jumlah/:orderSn/:idProduk/:hargaProduk', requireLogin, (req, res) => {
-  const orderSn = String(req.params.orderSn || '').trim();
-  const idProduk = String(req.params.idProduk || '').trim();
-  const hargaProduk = Number(req.params.hargaProduk);
-  const jumlahNum = Number(req.body && req.body.jumlah);
-
-  if (!orderSn || !idProduk) return res.status(400).json({ error: 'No. Pesanan dan ID Produk wajib diisi.' });
-  if (!Number.isInteger(jumlahNum) || jumlahNum < 1) {
-    return res.status(400).json({ error: 'Jumlah harus berupa bilangan bulat, minimal 1.' });
-  }
-
-  db.prepare(
-    `INSERT INTO order_item_jumlah (order_sn, id_produk, harga_produk, jumlah, updated_at, updated_by)
-     VALUES (?, ?, ?, ?, datetime('now'), ?)
-     ON CONFLICT(order_sn, id_produk, harga_produk) DO UPDATE SET
-       jumlah = excluded.jumlah,
-       updated_at = excluded.updated_at,
-       updated_by = excluded.updated_by`
-  ).run(orderSn, idProduk, hargaProduk, jumlahNum, req.session.username);
-
-  res.json({ ok: true, orderSn, idProduk, hargaProduk, jumlah: jumlahNum });
-});
-
-// Hapus koreksi manual — baris ini kembali memakai tebakan otomatis lagi.
-app.delete('/api/jumlah/:orderSn/:idProduk/:hargaProduk', requireLogin, (req, res) => {
-  const orderSn = String(req.params.orderSn || '').trim();
-  const idProduk = String(req.params.idProduk || '').trim();
-  const hargaProduk = Number(req.params.hargaProduk);
-  db.prepare(
-    'DELETE FROM order_item_jumlah WHERE order_sn = ? AND id_produk = ? AND harga_produk = ?'
-  ).run(orderSn, idProduk, hargaProduk);
-  res.json({ ok: true });
-});
-
 // Bungkus satu nilai jadi field CSV yang aman (tanda kutip kalau perlu, sesuai
 // format CSV standar) — dipakai saat mengekspor.
 function csvField(nilai) {
@@ -296,64 +256,31 @@ app.post('/api/hpp/import-csv', requireLogin, upload.single('file'), (req, res) 
   res.json({ ok: true, ditambahkan, diperbarui, dilewati });
 });
 
-// ---------- Rute Upload & Hitung Margin ----------
-app.post('/api/upload', requireLogin, upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'Tidak ada file yang diunggah.' });
-  }
-
-  let items;
-  let biayaPerPesanan;
-  let sheetTerbaca;
-  try {
-    ({ items, biayaPerPesanan, sheetTerbaca } = parseShopeeIncomeWorkbook(req.file.buffer));
-  } catch (err) {
-    console.error(err);
-    const message = err.userFacing
-      ? err.message
-      : 'Gagal membaca file ini. Pastikan ini adalah file Excel "Income" asli yang diunduh dari Shopee.';
-    return res.status(400).json({ error: message });
-  }
-
-  res.json(hitungMargin(items, biayaPerPesanan, { sheetTerbaca, sumber: 'excel' }));
-});
-
-// Gabungkan HPP + koreksi jumlah ke baris-baris pesanan lalu hitung untung/margin.
-// Dipakai unggahan Excel (/api/upload) dan data sinkron API (/api/pesanan) — bentuk
-// `items` keduanya sama (lihat parseExcel.js / sinkronShopee.js bacaItemPesanan()).
-function hitungMargin(items, biayaPerPesanan, infoTambahan) {
-  // Ambil semua HPP yang sudah tersimpan, lalu gabungkan ke tiap baris.
+// ---------- Hitung Margin ----------
+// Gabungkan HPP ke baris-baris pesanan (dari sinkronShopee.js bacaItemPesanan()) lalu hitung
+// untung/margin. Baris perkiraan (dana belum cair) ikut dihitung, tapi totalnya juga
+// dilaporkan terpisah supaya UI bisa bilang berapa bagian yang masih perkiraan.
+function hitungMargin(items, infoTambahan) {
   const hppRows = db.prepare('SELECT id_produk, hpp FROM product_hpp').all();
   const hppMap = new Map(hppRows.map((r) => [r.id_produk, r.hpp]));
-
-  // Ambil semua koreksi manual "Jumlah" (pcs) yang pernah disimpan, kunci per baris
-  // (No. Pesanan + ID Produk + Harga Produk baris itu — lihat catatan skema di
-  // db.js soal kenapa perlu 3 kolom) — kalau ada, ini menimpa tebakan otomatis
-  // dari parseExcel.js untuk baris itu saja.
-  const jumlahRows = db.prepare('SELECT order_sn, id_produk, harga_produk, jumlah FROM order_item_jumlah').all();
-  const jumlahOverrideMap = new Map(
-    jumlahRows.map((r) => [`${r.order_sn}|${r.id_produk}|${r.harga_produk}`, r.jumlah])
-  );
 
   let totalPenghasilan = 0;
   let totalHpp = 0;
   let totalUntung = 0;
   let jumlahBelumAdaHpp = 0;
   let jumlahDikembalikan = 0;
+  let penghasilanPerkiraan = 0;
+  let totalOmzet = 0; // Σ harga jual (sebelum potongan Shopee), tanpa yang dikembalikan
+  let totalPcs = 0;
+  const pesananLaku = new Set();
+  const pesananPerkiraan = new Set();
 
   const hasil = items.map((item) => {
     const hpp = hppMap.has(item.idProduk) ? hppMap.get(item.idProduk) : null;
     const punyaHpp = hpp !== null;
 
-    // Jumlah pcs baris ini: pakai koreksi manual kalau pernah disimpan untuk
-    // pesanan+produk ini, kalau tidak pakai tebakan otomatis dari parseExcel.js.
-    // jumlahOtomatis tetap disertakan di respons supaya UI bisa menunjukkan kalau
-    // suatu baris sedang dikoreksi manual (beda dari tebakan aslinya).
-    const jumlahOtomatis = item.jumlah;
-    const overrideJumlah = jumlahOverrideMap.get(`${item.noPesanan}|${item.idProduk}|${item.hargaProduk}`);
-    const jumlah = overrideJumlah !== undefined ? overrideJumlah : jumlahOtomatis;
-
     totalPenghasilan += item.totalPenghasilan;
+    if (item.perkiraan) { penghasilanPerkiraan += item.totalPenghasilan; pesananPerkiraan.add(item.noPesanan); }
 
     // Pesanan yang dikembalikan/di-refund: barangnya kembali ke penjual (proses retur
     // Shopee mengharuskan pembeli mengirim balik sebelum dana dikembalikan), jadi HPP-nya
@@ -361,11 +288,15 @@ function hitungMargin(items, biayaPerPesanan, infoTambahan) {
     // dihitung ke Total Untung/HPP, dan tidak perlu diminta isi HPP juga.
     if (item.dikembalikan) {
       jumlahDikembalikan += 1;
-      return { ...item, jumlah, jumlahOtomatis, hpp, untung: 0, marginPersen: null };
+      return { ...item, hpp, untung: 0, marginPersen: null };
     }
 
+    totalOmzet += item.hargaProduk || 0;
+    totalPcs += item.jumlah || 0;
+    pesananLaku.add(item.noPesanan);
+
     // HPP dikali jumlah pcs dulu sebelum dikurangkan — HPP yang disimpan selalu per 1 pcs.
-    const hppTotal = hpp !== null ? hpp * jumlah : null;
+    const hppTotal = punyaHpp ? hpp * item.jumlah : null;
     const untung = punyaHpp ? item.totalPenghasilan - hppTotal : null;
     const marginPersen =
       punyaHpp && item.totalPenghasilan !== 0 ? (untung / item.totalPenghasilan) * 100 : null;
@@ -377,29 +308,14 @@ function hitungMargin(items, biayaPerPesanan, infoTambahan) {
       jumlahBelumAdaHpp += 1;
     }
 
-    return {
-      ...item,
-      jumlah,
-      jumlahOtomatis,
-      hpp,
-      hppTotal,
-      untung,
-      marginPersen,
-    };
+    return { ...item, hpp, hppTotal, untung, marginPersen };
   });
 
-  // Total biaya yang dipotong Shopee per kategori (dari sheet "Seller Fee" — hanya ada di
-  // file rentang panjang; kalau tidak ada, semua nol dan jumlahPesanan = 0). Belum
-  // ditampilkan di UI, disiapkan untuk halaman biaya/iklan nanti.
-  const biayaPenjual = { platform: 0, gratisOngkirXtra: 0, layanan: 0, promosi: 0, lainnya: 0, jumlahPesanan: 0 };
-  for (const b of biayaPerPesanan.values()) {
-    biayaPenjual.platform += b.platform;
-    biayaPenjual.gratisOngkirXtra += b.gratisOngkirXtra;
-    biayaPenjual.layanan += b.layanan;
-    biayaPenjual.promosi += b.promosi;
-    biayaPenjual.lainnya += b.lainnya;
-    biayaPenjual.jumlahPesanan += 1;
-  }
+  // Rasio pencairan untuk halaman Analisis Iklan: Σ Total Penghasilan ÷ Σ Harga Produk
+  // (nilai jual sebelum potongan Shopee) — hanya dari baris yang SUDAH cair & tidak
+  // dikembalikan (baris perkiraan justru dihitung pakai rasio ini, jadi tidak boleh ikut).
+  const cair = hasil.filter((it) => !it.dikembalikan && !it.perkiraan);
+  const hargaCair = cair.reduce((t, it) => t + (it.hargaProduk || 0), 0);
 
   const ringkasan = {
     jumlahBaris: hasil.length,
@@ -409,23 +325,20 @@ function hitungMargin(items, biayaPerPesanan, infoTambahan) {
     marginRataRataPersen: totalPenghasilan !== 0 ? (totalUntung / totalPenghasilan) * 100 : null,
     jumlahBelumAdaHpp,
     jumlahDikembalikan,
-    // Rasio pencairan untuk halaman Analisis Iklan: Σ Total Penghasilan ÷ Σ Harga Produk
-    // (nilai jual sebelum potongan Shopee), tanpa baris yang dikembalikan — pesanan retur
-    // uangnya memang tidak cair, tapi barangnya juga kembali, jadi bukan "potongan".
-    totalHargaProduk: hasil.reduce((t, it) => t + (it.dikembalikan ? 0 : it.hargaProduk || 0), 0),
-    rasioPencairan: (() => {
-      const laku = hasil.filter((it) => !it.dikembalikan);
-      const harga = laku.reduce((t, it) => t + (it.hargaProduk || 0), 0);
-      return harga ? laku.reduce((t, it) => t + it.totalPenghasilan, 0) / harga : null;
-    })(),
+    totalOmzet,
+    totalPcs,
+    jumlahPesanan: pesananLaku.size,
+    penghasilanPerkiraan,
+    jumlahPesananPerkiraan: pesananPerkiraan.size,
+    totalHargaProduk: hargaCair,
+    rasioPencairan: hargaCair ? cair.reduce((t, it) => t + it.totalPenghasilan, 0) / hargaCair : null,
     ...infoTambahan,
-    biayaPenjual,
   };
 
   return { items: hasil, ringkasan };
 }
 
-// ---------- Data pesanan dari sinkron Shopee API (pengganti unggah Excel) ----------
+// ---------- Data pesanan dari sinkron Shopee API ----------
 const tanggalValid = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
 
 // Token toko untuk environment yang sedang aktif (production di Render, bisa sandbox di lokal).
@@ -433,6 +346,7 @@ function barisTokenAktif() {
   return db.prepare('SELECT * FROM shopee_token WHERE env = ? ORDER BY updated_at DESC LIMIT 1').get(shopeeApi.getEnv());
 }
 
+// Pesanan per TANGGAL PESANAN [dari, sampai]. Kosong bukan error (mis. "Hari ini" pagi-pagi).
 app.get('/api/pesanan', requireLogin, (req, res) => {
   const { dari, sampai } = req.query;
   if (!tanggalValid(dari) || !tanggalValid(sampai)) {
@@ -441,16 +355,15 @@ app.get('/api/pesanan', requireLogin, (req, res) => {
   const token = barisTokenAktif();
   if (!token) return res.status(400).json({ error: 'Toko belum terhubung ke Shopee.' });
 
-  const items = bacaItemPesanan(db, token.shop_id, dari, sampai);
-  if (!items.length) {
-    return res.status(404).json({ error: `Belum ada pesanan dengan dana cair antara ${dari} dan ${sampai}. Coba rentang lain, atau tekan "Sinkron Sekarang".` });
-  }
-  res.json(hitungMargin(items, new Map(), { sumber: 'api', periode: { dari, sampai } }));
+  const rasioToko = rasioPencairanToko(db, token.shop_id);
+  const rasioPerkiraan = rasioToko || RASIO_PENCAIRAN_DEFAULT;
+  const items = bacaItemPesanan(db, token.shop_id, dari, sampai, rasioPerkiraan);
+  res.json(hitungMargin(items, { sumber: 'api', periode: { dari, sampai }, rasioPerkiraan, sumberRasioPerkiraan: rasioToko ? 'toko' : 'default' }));
 });
 
 // ---------- Sinkron otomatis ----------
 let sinkronBerjalan = null; // Promise sinkron yang sedang jalan — cegah dua sinkron bersamaan
-let progresSinkron = null;   // { selesai, total } pesanan baru yang sedang diambil, untuk UI
+let progresSinkron = null;   // { tahap: 'pesanan'|'dana', selesai, total } untuk UI
 
 function jalankanSinkron(opsi = {}) {
   if (sinkronBerjalan) return sinkronBerjalan;
@@ -484,8 +397,9 @@ function jalankanSinkron(opsi = {}) {
         status: 'sukses',
         pesan: null,
         jumlah_baru: hasil.baru,
+        order_ts: hasil.orderSampai,
       });
-      console.log(`[SINKRON] Selesai: ${hasil.baru} pesanan baru dari ${hasil.dilihat} yang dilihat.`);
+      console.log(`[SINKRON] Selesai: ${hasil.orderBerubah} pesanan diperbarui, ${hasil.baru} dana cair baru dari ${hasil.dilihat}.`);
       return hasil;
     })
     .catch((err) => {
@@ -502,7 +416,12 @@ function statusSinkron() {
   if (!token) return { terhubung: false, env: shopeeApi.getEnv() };
   const s = db.prepare('SELECT * FROM sinkron_shopee WHERE shop_id = ?').get(token.shop_id) || {};
   const agg = db.prepare(
-    'SELECT COUNT(*) AS jumlah, MIN(tanggal_dilepaskan) AS terlama, MAX(tanggal_dilepaskan) AS terbaru FROM api_pesanan WHERE shop_id = ?'
+    // Semua pesanan per tanggal dibuat (api_order) + yang cair tapi belum ada di api_order
+    // (dari sinkron sebelum langkah pesanan ada).
+    `SELECT COUNT(*) AS jumlah, MIN(tgl) AS terlama, MAX(tgl) AS terbaru FROM (
+       SELECT order_sn, tanggal_pesanan AS tgl FROM api_order WHERE shop_id = ?1
+       UNION SELECT order_sn, waktu_pesanan AS tgl FROM api_pesanan WHERE shop_id = ?1 AND waktu_pesanan <> ''
+     )`
   ).get(token.shop_id);
   return {
     terhubung: true,
@@ -535,9 +454,10 @@ app.post('/api/sinkron', requireLogin, async (req, res) => {
   }
 });
 
-// Jadwal: sekali 20 detik setelah server nyala, lalu tiap 2 jam. Diam saja kalau toko
+// Jadwal: sekali 20 detik setelah server nyala, lalu tiap 30 menit (sinkron lanjutan cuma
+// beberapa panggilan API, jadi murah; penjualan hari ini jadi hampir langsung terlihat). Diam saja kalau toko
 // belum terhubung atau partner key belum diisi (mis. lokal tanpa .env Shopee).
-const JEDA_SINKRON_MS = 2 * 60 * 60 * 1000;
+const JEDA_SINKRON_MS = 30 * 60 * 1000;
 function sinkronTerjadwal() {
   if (!process.env.SHOPEE_PARTNER_ID || !process.env.SHOPEE_PARTNER_KEY || !barisTokenAktif()) return;
   jalankanSinkron().catch(() => { /* sudah dicatat di sinkron_shopee + log */ });
@@ -622,7 +542,7 @@ app.put('/api/pengaturan/:kunci', requireLogin, (req, res) => {
 });
 
 // Unggah CSV "Data Keseluruhan Iklan" dari Seller Centre → analisis per produk + per kampanye.
-// Seperti /api/upload, semuanya diproses di memori — tidak ada yang disimpan ke database.
+// Semuanya diproses di memori — tidak ada yang disimpan ke database.
 app.post('/api/iklan/upload', requireLogin, upload.single('file'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'Tidak ada file yang diunggah.' });

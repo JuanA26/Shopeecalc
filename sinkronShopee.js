@@ -165,11 +165,81 @@ async function daftarEscrow(panggil, dari, sampai) {
   return hasil;
 }
 
+// Semua order_sn yang dibuat ATAU berubah status dalam rentang [dari, sampai] — pakai
+// time_range_field=update_time supaya pesanan lama yang baru batal/selesai ikut terambil ulang.
+async function daftarOrderBerubah(panggil, dari, sampai) {
+  const hasil = new Set();
+  for (let awal = dari; awal < sampai; awal += JENDELA_HARI * DETIK_SEHARI) {
+    const akhir = Math.min(sampai, awal + JENDELA_HARI * DETIK_SEHARI);
+    let cursor = '';
+    for (;;) {
+      const query = { time_range_field: 'update_time', time_from: awal, time_to: akhir, page_size: 100 };
+      if (cursor) query.cursor = cursor;
+      const resp = cekError(await panggil('/api/v2/order/get_order_list', { query }), 'get_order_list');
+      for (const o of resp.order_list || []) hasil.add(o.order_sn);
+      if (!resp.more || !resp.next_cursor) break;
+      cursor = resp.next_cursor;
+    }
+  }
+  return [...hasil];
+}
+
+// Langkah pesanan (per tanggal dibuat): simpan status + barang semua pesanan yang berubah.
+async function sinkronOrder({ db, panggil, shopId, dari, sampai, onProgres }) {
+  const daftar = await daftarOrderBerubah(panggil, dari, sampai);
+  const simpanOrder = db.prepare(
+    `INSERT INTO api_order (order_sn, shop_id, tanggal_pesanan, create_time, update_time, status) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(order_sn) DO UPDATE SET tanggal_pesanan = excluded.tanggal_pesanan, create_time = excluded.create_time,
+       update_time = excluded.update_time, status = excluded.status`
+  );
+  const hapusItem = db.prepare('DELETE FROM api_order_item WHERE order_sn = ?');
+  const simpanItem = db.prepare(
+    `INSERT INTO api_order_item (order_sn, baris, id_produk, model_id, nama_produk, nama_model, jumlah, harga_satuan)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  if (onProgres) onProgres({ tahap: 'pesanan', selesai: 0, total: daftar.length });
+  for (let i = 0; i < daftar.length; i += UKURAN_BATCH) {
+    const potongan = daftar.slice(i, i + UKURAN_BATCH);
+    const resp = cekError(
+      await panggil('/api/v2/order/get_order_detail', {
+        query: { order_sn_list: potongan.join(','), response_optional_fields: 'item_list,order_status,create_time,update_time' },
+      }),
+      'get_order_detail'
+    );
+    db.exec('BEGIN');
+    try {
+      for (const o of resp.order_list || []) {
+        simpanOrder.run(o.order_sn, String(shopId), tanggalWib(o.create_time), o.create_time || null, o.update_time || null, o.order_status || null);
+        hapusItem.run(o.order_sn);
+        (o.item_list || []).forEach((it, idx) =>
+          simpanItem.run(
+            o.order_sn, idx, String(it.item_id), it.model_id ? String(it.model_id) : '', it.item_name || '', it.model_name || '',
+            Math.max(1, Number(it.model_quantity_purchased) || 1), Number(it.model_discounted_price) || Number(it.model_original_price) || 0
+          )
+        );
+      }
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+    if (onProgres) onProgres({ tahap: 'pesanan', selesai: Math.min(i + UKURAN_BATCH, daftar.length), total: daftar.length });
+  }
+  return daftar.length;
+}
+
 // Sinkron satu toko. `panggil(path, opsi)` = callShopApi yang sudah terikat token toko ini.
 // opsi.hariMundur: paksa tarik ulang N hari ke belakang (mis. untuk menambah riwayat lama).
+// Urutan: pesanan dulu (cepat, supaya penjualan hari ini langsung ada), lalu dana cair.
 async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
   const sekarang = Math.floor(Date.now() / 1000);
   const state = db.prepare('SELECT * FROM sinkron_shopee WHERE shop_id = ?').get(shopId) || {};
+
+  let dariOrder;
+  if (hariMundur) dariOrder = sekarang - hariMundur * DETIK_SEHARI;
+  else if (state.order_ts) dariOrder = state.order_ts - DETIK_SEHARI; // mundur 1 hari, jaga-jaga
+  else dariOrder = sekarang - HARI_AWAL_DEFAULT * DETIK_SEHARI;
+  const orderBerubah = await sinkronOrder({ db, panggil, shopId, dari: dariOrder, sampai: sekarang, onProgres });
 
   let dari;
   if (hariMundur) dari = sekarang - hariMundur * DETIK_SEHARI;
@@ -183,7 +253,7 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
   const baru = [...escrow.keys()]
     .filter((sn) => !sudahAda.get(sn))
     .sort((a, b) => escrow.get(b) - escrow.get(a));
-  if (onProgres) onProgres({ selesai: 0, total: baru.length });
+  if (onProgres) onProgres({ tahap: 'dana', selesai: 0, total: baru.length });
 
   const simpanPesanan = db.prepare(
     `INSERT INTO api_pesanan (order_sn, shop_id, waktu_pesanan, tanggal_dilepaskan, escrow_amount, status_pesanan, ada_retur, synced_at)
@@ -235,22 +305,37 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
       db.exec('ROLLBACK');
       throw err;
     }
-    if (onProgres) onProgres({ selesai: Math.min(i + UKURAN_BATCH, baru.length), total: baru.length });
+    if (onProgres) onProgres({ tahap: 'dana', selesai: Math.min(i + UKURAN_BATCH, baru.length), total: baru.length });
   }
 
-  return { dari, sampai: sekarang, dilihat: escrow.size, baru: baru.length };
+  return { dari, sampai: sekarang, dilihat: escrow.size, baru: baru.length, orderBerubah, orderSampai: sekarang };
 }
 
-// Baris-baris pesanan tersimpan dalam rentang tanggal dana cair [dari, sampai] (YYYY-MM-DD),
-// bentuknya sama dengan hasil parseShopeeIncomeWorkbook().items.
-function bacaItemPesanan(db, shopId, dari, sampai) {
-  const rows = db.prepare(
+// Status pesanan yang belum/tidak jadi penjualan — tidak ditampilkan sama sekali.
+const STATUS_BUKAN_PENJUALAN = new Set(['UNPAID', 'CANCELLED', 'IN_CANCEL']);
+
+// Bagian harga jual yang benar-benar diterima penjual (Σ penghasilan ÷ Σ harga) dari pesanan
+// yang sudah cair 60 hari terakhir — dipakai untuk memperkirakan penghasilan pesanan yang
+// belum cair. null kalau belum ada data.
+function rasioPencairanToko(db, shopId) {
+  const r = db.prepare(
+    `SELECT SUM(i.total_penghasilan) AS penghasilan, SUM(i.harga_produk) AS harga
+     FROM api_pesanan p JOIN api_pesanan_item i ON i.order_sn = p.order_sn
+     WHERE p.shop_id = ? AND i.dikembalikan = 0 AND p.tanggal_dilepaskan >= date('now', '-60 days')`
+  ).get(String(shopId));
+  return r && r.harga > 0 ? r.penghasilan / r.harga : null;
+}
+
+// Baris-baris pesanan dengan TANGGAL PESANAN dalam [dari, sampai] (YYYY-MM-DD), bentuknya
+// sama seperti baris "Sku" Excel Income. Pesanan yang sudah cair → angka pasti dari
+// api_pesanan_item. Yang belum cair → dari api_order_item, penghasilannya = harga × rasio
+// pencairan toko, ditandai perkiraan: true.
+function bacaItemPesanan(db, shopId, dari, sampai, rasioPerkiraan) {
+  const pasti = db.prepare(
     `SELECT p.order_sn, p.waktu_pesanan, p.tanggal_dilepaskan, i.*
      FROM api_pesanan p JOIN api_pesanan_item i ON i.order_sn = p.order_sn
-     WHERE p.shop_id = ? AND p.tanggal_dilepaskan BETWEEN ? AND ?
-     ORDER BY p.tanggal_dilepaskan DESC, p.order_sn, i.baris`
-  ).all(String(shopId), dari, sampai);
-  return rows.map((r) => ({
+     WHERE p.shop_id = ? AND p.waktu_pesanan BETWEEN ? AND ?`
+  ).all(String(shopId), dari, sampai).map((r) => ({
     noPesanan: r.order_sn,
     idProduk: r.id_produk,
     namaProduk: r.nama_produk,
@@ -262,7 +347,39 @@ function bacaItemPesanan(db, shopId, dari, sampai) {
     dikembalikan: !!r.dikembalikan,
     jumlahPengembalian: r.jumlah_pengembalian,
     jumlah: r.jumlah,
+    perkiraan: false,
   }));
+
+  const perkiraan = db.prepare(
+    `SELECT o.order_sn, o.tanggal_pesanan, o.status, i.*
+     FROM api_order o JOIN api_order_item i ON i.order_sn = o.order_sn
+     WHERE o.shop_id = ? AND o.tanggal_pesanan BETWEEN ? AND ?
+       AND NOT EXISTS (SELECT 1 FROM api_pesanan p WHERE p.order_sn = o.order_sn)`
+  ).all(String(shopId), dari, sampai)
+    .filter((r) => !STATUS_BUKAN_PENJUALAN.has(r.status))
+    .map((r) => {
+      const harga = Math.round(r.harga_satuan * r.jumlah);
+      const diretur = r.status === 'TO_RETURN';
+      return {
+        noPesanan: r.order_sn,
+        idProduk: r.id_produk,
+        namaProduk: r.nama_produk,
+        namaModel: r.nama_model || '',
+        waktuPesanan: r.tanggal_pesanan,
+        tanggalDilepaskan: '',
+        totalPenghasilan: diretur ? 0 : Math.round(harga * rasioPerkiraan),
+        hargaProduk: harga,
+        dikembalikan: diretur,
+        jumlahPengembalian: diretur ? harga : 0,
+        jumlah: r.jumlah,
+        perkiraan: true,
+        statusPesanan: r.status,
+      };
+    });
+
+  return [...pasti, ...perkiraan].sort(
+    (a, b) => b.waktuPesanan.localeCompare(a.waktuPesanan) || a.noPesanan.localeCompare(b.noPesanan)
+  );
 }
 
-module.exports = { sinkronkan, bacaItemPesanan, susunBarisPesanan, tanggalWib, HARI_AWAL_DEFAULT };
+module.exports = { sinkronkan, bacaItemPesanan, rasioPencairanToko, susunBarisPesanan, tanggalWib, HARI_AWAL_DEFAULT };

@@ -129,6 +129,36 @@ db.exec(`
     pesan TEXT,
     jumlah_baru INTEGER
   );
+
+  -- SEMUA pesanan per tanggal dibuat (termasuk yang belum cair / batal), dari get_order_list +
+  -- get_order_detail — dipakai untuk penjualan hari ini & tren harian, karena dana baru cair
+  -- beberapa hari setelah pesanan. Pesanan yang sudah cair tetap memakai angka pasti dari
+  -- api_pesanan; yang belum, penghasilannya diperkirakan (lihat server.js /api/pesanan).
+  CREATE TABLE IF NOT EXISTS api_order (
+    order_sn TEXT PRIMARY KEY,
+    shop_id TEXT NOT NULL,
+    tanggal_pesanan TEXT NOT NULL,
+    create_time INTEGER,
+    update_time INTEGER,
+    status TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_api_order_tanggal ON api_order (shop_id, tanggal_pesanan);
+
+  -- harga_satuan = model_discounted_price (per 1 pcs, sudah diverifikasi §20.3/§21).
+  CREATE TABLE IF NOT EXISTS api_order_item (
+    order_sn TEXT NOT NULL,
+    baris INTEGER NOT NULL,
+    id_produk TEXT NOT NULL,
+    model_id TEXT,
+    nama_produk TEXT,
+    nama_model TEXT,
+    jumlah INTEGER NOT NULL,
+    harga_satuan REAL NOT NULL,
+    PRIMARY KEY (order_sn, baris)
+  );
 `);
+
+// Kolom yang ditambahkan setelah tabel sinkron_shopee sudah ada di produksi.
+try { db.exec('ALTER TABLE sinkron_shopee ADD COLUMN order_ts INTEGER'); } catch (_) { /* sudah ada */ }
 
 module.exports = db;

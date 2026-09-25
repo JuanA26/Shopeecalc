@@ -52,7 +52,11 @@ async function apiFetch(url, options = {}) {
 }
 
 // ====== State ======
-let dataHasilUpload = null; // { items, ringkasan }
+let dataHasilUpload = null; // { items, ringkasan } — periode yang dipilih di Kalkulator
+// Data penjualan 90 hari terakhir khusus untuk Analisis Iklan: analisis iklan butuh rentang
+// panjang dengan dana yang sudah cair, jadi tidak ikut periode Kalkulator (mis. "Hari ini").
+let dataPenjualanIklan = null;
+const sumberIklan = () => dataPenjualanIklan || dataHasilUpload;
 let daftarHpp = [];         // dari GET /api/hpp
 let sortKolom = null;       // nama kolom yang sedang diurutkan di tabel Data, mis. "marginPersen"
 let sortArah = 1;           // 1 = naik (A-Z / kecil-besar), -1 = turun
@@ -65,10 +69,6 @@ const pesanErrorLogin = document.getElementById('pesanErrorLogin');
 const labelUsername = document.getElementById('labelUsername');
 const tombolLogout = document.getElementById('tombolLogout');
 
-const inputFile = document.getElementById('inputFile');
-const tombolProses = document.getElementById('tombolProses');
-const pesanErrorUpload = document.getElementById('pesanErrorUpload');
-const pesanLoading = document.getElementById('pesanLoading');
 const areaRingkasan = document.getElementById('areaRingkasan');
 const inputCari = document.getElementById('inputCari');
 const isiTabelData = document.getElementById('isiTabelData');
@@ -139,6 +139,8 @@ tombolLogout.addEventListener('click', async () => {
 function bukaHalaman(idHalaman) {
   document.querySelectorAll('.nav-item[data-page]').forEach((b) => b.classList.toggle('aktif', b.dataset.page === idHalaman));
   document.querySelectorAll('.halaman').forEach((s) => s.classList.toggle('aktif', s.id === idHalaman));
+  // Grafik tren diukur dari lebar kartunya — gambar ulang begitu halamannya kelihatan.
+  if (idHalaman === 'halamanKalkulator' && dataHasilUpload) renderTren();
 }
 
 document.querySelectorAll('.nav-item[data-page]').forEach((btn) => {
@@ -157,55 +159,11 @@ document.querySelectorAll('.pill-filter[data-subtab]').forEach((btn) => {
     document.querySelectorAll('.subtab-isi').forEach((s) => s.classList.remove('aktif'));
     btn.classList.add('aktif');
     document.getElementById(btn.dataset.subtab).classList.add('aktif');
+    if (btn.dataset.subtab === 'subUpload' && dataHasilUpload) renderTren();
   });
 });
 
-// ====== Upload & Hitung ======
-const dropzoneFile = document.getElementById('dropzoneFile');
-const namaFile = document.getElementById('namaFile');
-function perbaruiNamaFile() {
-  const ada = inputFile.files.length > 0;
-  tombolProses.disabled = !ada;
-  namaFile.textContent = ada ? inputFile.files[0].name : 'Pilih file Income (.xlsx) dari Shopee';
-  dropzoneFile.classList.toggle('terisi', ada);
-}
-inputFile.addEventListener('change', perbaruiNamaFile);
-// Seret & lepas file ke area unggah (selain klik) — file yang dilepas dimasukkan ke
-// input yang sama, jadi alur "Proses File" di bawah tidak berubah.
-['dragenter', 'dragover'].forEach((ev) => dropzoneFile.addEventListener(ev, (e) => { e.preventDefault(); dropzoneFile.classList.add('seret'); }));
-['dragleave', 'drop'].forEach((ev) => dropzoneFile.addEventListener(ev, (e) => { e.preventDefault(); dropzoneFile.classList.remove('seret'); }));
-dropzoneFile.addEventListener('drop', (e) => {
-  if (e.dataTransfer && e.dataTransfer.files.length) {
-    inputFile.files = e.dataTransfer.files;
-    perbaruiNamaFile();
-  }
-});
-
-tombolProses.addEventListener('click', async () => {
-  if (!inputFile.files.length) return;
-  pesanErrorUpload.classList.add('tersembunyi');
-  pesanLoading.classList.remove('tersembunyi');
-  areaRingkasan.classList.add('tersembunyi');
-  tombolProses.disabled = true;
-
-  const formData = new FormData();
-  formData.append('file', inputFile.files[0]);
-
-  try {
-    const res = await fetch('/api/upload', { method: 'POST', body: formData });
-    const body = await res.json();
-    if (!res.ok) throw new Error(body.error || 'Gagal memproses file.');
-    terapkanDataPenjualan(body);
-  } catch (err) {
-    pesanErrorUpload.textContent = err.message;
-    pesanErrorUpload.classList.remove('tersembunyi');
-  } finally {
-    pesanLoading.classList.add('tersembunyi');
-    tombolProses.disabled = false;
-  }
-});
-
-// Data penjualan baru (dari sinkron Shopee atau unggahan Excel — bentuknya sama) →
+// Data penjualan baru (dari sinkron Shopee) →
 // tampilkan di kalkulator, tab HPP, dan dipakai halaman Analisis Iklan.
 function terapkanDataPenjualan(body) {
   dataHasilUpload = body;
@@ -213,6 +171,7 @@ function terapkanDataPenjualan(body) {
   renderTabelData(body.items);
   renderTabelHpp(); // refresh tab HPP juga, supaya produk dari data ini langsung kelihatan di sana
   areaRingkasan.classList.remove('tersembunyi');
+  renderTren();
   hitungUlangIklan(); // rasio pencairan & harga dari data ini dipakai halaman Analisis Iklan juga
   if (!dataIklan) renderMingguan(); // belum ada file iklan: tetap tampilkan untung toko per minggu
 }
@@ -234,6 +193,7 @@ const formatTanggalPendek = (iso) =>
 
 function rentangPeriode(kode) {
   const hariIni = new Date();
+  if (kode === 'hari-ini') return [hariIni, hariIni];
   if (kode === 'bulan-ini') return [new Date(hariIni.getFullYear(), hariIni.getMonth(), 1), hariIni];
   if (kode === 'bulan-lalu') return [new Date(hariIni.getFullYear(), hariIni.getMonth() - 1, 1), new Date(hariIni.getFullYear(), hariIni.getMonth(), 0)];
   const dari = new Date(hariIni);
@@ -249,7 +209,13 @@ function pilihPeriode(kode) {
 }
 
 document.querySelectorAll('.pill-filter[data-periode]').forEach((btn) => {
-  btn.addEventListener('click', () => { pilihPeriode(btn.dataset.periode); muatDataPenjualan(); });
+  btn.addEventListener('click', () => {
+    pilihPeriode(btn.dataset.periode);
+    // "Hari ini": ambil pesanan terbaru dulu kalau sinkron terakhir sudah > 5 menit lalu.
+    const s = statusSinkronTerakhir;
+    const basi = s && s.terhubung && !s.sedangBerjalan && (!s.terakhirSelesai || Date.now() - Date.parse(s.terakhirSelesai) > 5 * 60 * 1000);
+    if (btn.dataset.periode === 'hari-ini' && basi) sinkronSekarang(); else muatDataPenjualan();
+  });
 });
 // Ubah tanggal manual → tidak ada pill periode yang aktif lagi
 [tanggalDari, tanggalSampai].forEach((el) => el.addEventListener('change', () => {
@@ -292,14 +258,13 @@ function renderStatusSinkron(s) {
   tombolTampilkan.disabled = !terhubung;
   if (!terhubung) {
     teksStatusSinkron.textContent = 'Toko belum terhubung ke Shopee. Hubungkan sekali, setelah itu data diambil otomatis.';
-    document.getElementById('kartuCaraLama').open = true;
     return;
   }
   const bagian = [];
   if (s.sedangBerjalan) {
     const p = s.progres;
     bagian.push(p && p.total
-      ? `Sedang mengambil data dari Shopee: ${p.selesai.toLocaleString('id-ID')} dari ${p.total.toLocaleString('id-ID')} pesanan baru`
+      ? `Sedang mengambil ${p.tahap === 'dana' ? 'rincian dana cair' : 'pesanan'} dari Shopee: ${p.selesai.toLocaleString('id-ID')} dari ${p.total.toLocaleString('id-ID')}`
       : 'Sedang mengambil data dari Shopee...');
   }
   else if (s.terakhirSelesai) {
@@ -307,7 +272,7 @@ function renderStatusSinkron(s) {
     bagian.push(s.status === 'gagal' ? `Sinkron terakhir gagal (${waktu})` : `Terakhir diperbarui ${waktu}`);
   } else bagian.push('Belum pernah sinkron');
   if (s.jumlahPesanan) bagian.push(`${s.jumlahPesanan.toLocaleString('id-ID')} pesanan tersimpan (${formatTanggalPendek(s.tanggalTerlama)} – ${formatTanggalPendek(s.tanggalTerbaru)})`);
-  bagian.push('otomatis tiap 2 jam');
+  bagian.push('otomatis tiap 30 menit');
   teksStatusSinkron.textContent = bagian.join(' · ');
   tombolSinkron.disabled = !!s.sedangBerjalan;
   tampilkanErrorSinkron(s.status === 'gagal' && s.pesan ? `Sinkron terakhir gagal: ${s.pesan}` : '');
@@ -324,19 +289,32 @@ async function muatStatusSinkron() {
 async function sinkronSekarang() {
   tombolSinkron.disabled = true;
   tampilkanErrorSinkron('');
-  tampilkanLoadingSinkron('Mengambil data terbaru dari Shopee... (pertama kali bisa sampai 1–2 menit)');
+  tampilkanLoadingSinkron('Mengambil data terbaru dari Shopee...');
   try {
     renderStatusSinkron(await apiFetch('/api/sinkron', { method: 'POST', body: '{}' }));
     await muatDataPenjualan();
+    muatDataPenjualanIklan();
   } catch (err) {
     tampilkanErrorSinkron(err.message);
     muatStatusSinkron();
+    await muatDataPenjualanDiam(); // tetap tampilkan data yang sudah tersimpan, pesan error dibiarkan
   } finally {
     tampilkanLoadingSinkron('');
     tombolSinkron.disabled = false;
   }
 }
 tombolSinkron.addEventListener('click', sinkronSekarang);
+
+async function muatDataPenjualanIklan() {
+  const sampai = new Date();
+  const dari = new Date(); dari.setDate(dari.getDate() - 89);
+  try {
+    const q = new URLSearchParams({ dari: isoLokal(dari), sampai: isoLokal(sampai) });
+    dataPenjualanIklan = await apiFetch(`/api/pesanan?${q}`);
+    hitungUlangIklan();
+    if (!dataIklan) renderMingguan();
+  } catch (_) { /* belum terhubung / belum ada data — Analisis Iklan memakai angka standar */ }
+}
 
 // Dipanggil sekali setelah login: cek koneksi, lalu langsung tampilkan 30 hari terakhir.
 // Kalau belum pernah ada data sama sekali (baru terhubung), jalankan sinkron dulu.
@@ -348,6 +326,7 @@ async function mulaiDataOtomatis() {
   if (s.sedangBerjalan) await ikutiSinkronBerjalan();
   else if (!s.jumlahPesanan) await sinkronSekarang();
   else await muatDataPenjualan();
+  muatDataPenjualanIklan();
 }
 
 // Sinkron terjadwal sedang jalan di server (bisa belasan menit untuk yang pertama): tampilkan
@@ -374,8 +353,19 @@ async function muatDataPenjualanDiam() {
 }
 
 function renderRingkasan(r) {
-  document.getElementById('ringkasanPendapatan').textContent = formatRupiah(r.totalPenghasilan);
-  document.getElementById('ringkasanUntung').textContent = formatRupiah(r.totalUntung);
+  // "≈" kecil di depan angka yang sebagian masih perkiraan (dana belum cair).
+  const approx = r.penghasilanPerkiraan ? '<span class="tanda-kira" title="Sebagian masih perkiraan — dana belum cair">≈</span>' : '';
+  document.getElementById('ringkasanOmzet').textContent = formatRupiah(r.totalOmzet || 0);
+  document.getElementById('ketOmzet').textContent = `${(r.jumlahPesanan || 0).toLocaleString('id-ID')} pesanan · ${(r.totalPcs || 0).toLocaleString('id-ID')} pcs`;
+  document.getElementById('ringkasanPendapatan').innerHTML = approx + escapeHtml(formatRupiah(r.totalPenghasilan));
+  document.getElementById('ringkasanUntung').innerHTML = approx + escapeHtml(formatRupiah(r.totalUntung));
+  const catatan = document.getElementById('catatanPerkiraan');
+  catatan.classList.toggle('tersembunyi', !r.penghasilanPerkiraan);
+  if (r.penghasilanPerkiraan) {
+    catatan.textContent = `≈ Termasuk ${r.jumlahPesananPerkiraan} pesanan yang dananya belum cair (${formatRupiah(r.penghasilanPerkiraan)}): ` +
+      `penghasilannya diperkirakan ${formatPersen((r.rasioPerkiraan || 0) * 100)} dari harga jual (rata-rata pesanan cair 60 hari terakhir). ` +
+      'Angka pasti muncul otomatis setelah dana cair.';
+  }
   document.getElementById('ringkasanMargin').textContent = formatPersen(r.marginRataRataPersen);
   document.getElementById('ringkasanBelumHpp').textContent = `${r.jumlahBelumAdaHpp} produk`;
   document.getElementById('kartuBelumHpp').classList.toggle('tersembunyi', r.jumlahBelumAdaHpp === 0);
@@ -388,6 +378,181 @@ function renderRingkasan(r) {
   document.getElementById('widgetKalkulatorKosong').classList.add('tersembunyi');
   document.getElementById('widgetKalkulatorIsi').classList.remove('tersembunyi');
 }
+
+// ====== Tren Penjualan Harian ======
+// Satu kolom per hari untuk SATU ukuran (Omzet / Untung / Pesanan / Pcs, pilih lewat pill) +
+// garis rata-rata 7 hari untuk meredam naik-turun harian (Sabtu/Minggu, tanggal kembar).
+// Sengaja satu sumbu saja: Rp dan jumlah pesanan beda skala, jadi tidak digabung di satu
+// grafik dua-sumbu (mudah salah baca). Arahkan/ketuk kolom untuk melihat semua angka hari itu.
+let metrikTren = 'omzet';
+const METRIK_TREN = {
+  omzet: { label: 'Omzet', rupiah: true },
+  untung: { label: 'Untung', rupiah: true },
+  pesanan: { label: 'Pesanan', rupiah: false },
+  pcs: { label: 'Pcs', rupiah: false },
+};
+
+function dataTrenHarian() {
+  const { dari, sampai } = (dataHasilUpload.ringkasan && dataHasilUpload.ringkasan.periode) || {};
+  if (!dari || !sampai) return [];
+  const hari = new Map();
+  for (let d = dari; d <= sampai; d = tambahHari(d, 1)) {
+    hari.set(d, { tanggal: d, omzet: 0, untung: 0, pesananSet: new Set(), pcs: 0, perkiraan: false, belumHpp: 0 });
+  }
+  for (const it of dataHasilUpload.items) {
+    const h = hari.get(it.waktuPesanan);
+    if (!h || it.dikembalikan) continue;
+    h.omzet += it.hargaProduk || 0;
+    h.pcs += it.jumlah || 0;
+    h.pesananSet.add(it.noPesanan);
+    if (it.untung !== null && it.untung !== undefined) h.untung += it.untung; else h.belumHpp += 1;
+    if (it.perkiraan) h.perkiraan = true;
+  }
+  const daftar = [...hari.values()].map((h) => ({ ...h, pesanan: h.pesananSet.size }));
+  // Rata-rata 7 hari ke belakang (termasuk hari itu); kosong untuk 6 hari pertama.
+  daftar.forEach((h, i) => {
+    h.rata = {};
+    for (const m of Object.keys(METRIK_TREN)) {
+      h.rata[m] = i >= 6 ? daftar.slice(i - 6, i + 1).reduce((t, x) => t + x[m], 0) / 7 : null;
+    }
+  });
+  return daftar;
+}
+
+// Skala sumbu Y yang "bulat" (0, 500 rb, 1 jt, ...) mencakup min..maks.
+function skalaBulat(min, maks, jumlahTik = 4) {
+  const rentang = maks - min || 1;
+  const kasar = rentang / jumlahTik;
+  const pangkat = 10 ** Math.floor(Math.log10(kasar));
+  const langkah = [1, 2, 2.5, 5, 10].map((k) => k * pangkat).find((k) => k >= kasar);
+  const bawah = Math.floor(min / langkah) * langkah;
+  const atas = Math.ceil(maks / langkah) * langkah || langkah;
+  const tik = [];
+  for (let v = bawah; v <= atas + langkah / 2; v += langkah) tik.push(Math.round(v * 1e6) / 1e6);
+  return { bawah, atas, tik };
+}
+
+const namaHari = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' });
+
+function renderTren() {
+  const kartu = document.getElementById('kartuTren');
+  const area = document.getElementById('areaGrafikTren');
+  const daftar = dataHasilUpload ? dataTrenHarian() : [];
+  document.getElementById('tooltipTren').classList.add('tersembunyi');
+  // Satu hari (mis. "Hari ini") tidak butuh grafik — angka ringkasan di atas sudah menjawabnya.
+  kartu.classList.toggle('tersembunyi', daftar.length < 2);
+  if (daftar.length < 2) return;
+
+  const m = metrikTren;
+  const info = METRIK_TREN[m];
+  const fmt = (v) => (info.rupiah ? formatRupiahRingkas(v) : Math.round(v).toLocaleString('id-ID'));
+  const adaRata = daftar.length >= 10;
+  const adaPerkiraan = m === 'untung' && daftar.some((h) => h.perkiraan);
+
+  const lebar = Math.max(300, area.clientWidth || 600);
+  const tinggi = 240;
+  const kiri = info.rupiah ? 62 : 40, kanan = 8, atas = 10, bawah = 26;
+  const nilai = daftar.map((h) => h[m]);
+  const { bawah: yMin, atas: yMaks, tik } = skalaBulat(Math.min(0, ...nilai), Math.max(0, ...nilai));
+  const y = (v) => atas + (tinggi - atas - bawah) * (1 - (v - yMin) / (yMaks - yMin));
+  const langkahX = (lebar - kiri - kanan) / daftar.length;
+  const lebarBatang = Math.max(2, Math.min(28, langkahX - 2)); // selalu ada celah ≥ 2px antar kolom
+  const x = (i) => kiri + langkahX * i + langkahX / 2;
+  const radius = Math.min(4, lebarBatang / 2);
+
+  // Kolom dengan ujung membulat 4px di sisi data (atas untuk positif, bawah untuk negatif).
+  const batang = (i, v) => {
+    const x0 = x(i) - lebarBatang / 2, x1 = x0 + lebarBatang, y0 = y(0), y1 = y(v);
+    if (Math.abs(y1 - y0) < 0.5) return '';
+    const r = Math.min(radius, Math.abs(y1 - y0));
+    const arah = y1 < y0 ? 1 : -1; // 1 = ke atas
+    return `M${x0},${y0} V${y1 + arah * r} Q${x0},${y1} ${x0 + r},${y1} H${x1 - r} Q${x1},${y1} ${x1},${y1 + arah * r} V${y0} Z`;
+  };
+
+  const garisGrid = tik.map((v) => `
+    <line x1="${kiri}" x2="${lebar - kanan}" y1="${y(v)}" y2="${y(v)}" class="${v === 0 ? 'grafik-nol' : 'grafik-grid'}"/>
+    <text x="${kiri - 6}" y="${y(v) + 4}" class="grafik-label" text-anchor="end">${escapeHtml(fmt(v))}</text>`).join('');
+
+  const setiap = Math.ceil(daftar.length / Math.max(2, Math.floor((lebar - kiri) / 44)));
+  // Label dihitung mundur dari hari terakhir supaya hari terbaru selalu berlabel.
+  const labelX = daftar.map((h, i) => {
+    if ((daftar.length - 1 - i) % setiap !== 0) return '';
+    const [, bl, tg] = h.tanggal.split('-');
+    return `<text x="${x(i)}" y="${tinggi - 8}" class="grafik-label" text-anchor="middle">${Number(tg)}/${Number(bl)}</text>`;
+  }).join('');
+
+  const kolom = daftar.map((h, i) => {
+    const kelas = h[m] < 0 ? 'grafik-batang negatif' : m === 'untung' && h.perkiraan ? 'grafik-batang perkiraan' : 'grafik-batang';
+    return `<path d="${batang(i, h[m])}" class="${kelas}" data-i="${i}"/>`;
+  }).join('');
+
+  let garisRata = '';
+  if (adaRata) {
+    const titik = daftar.map((h, i) => (h.rata[m] === null ? null : `${x(i)},${y(h.rata[m])}`)).filter(Boolean);
+    garisRata = `<polyline points="${titik.join(' ')}" class="grafik-rata"/>`;
+  }
+
+  // Area sentuh selebar satu hari penuh (lebih besar dari kolomnya) untuk hover/ketuk.
+  const sentuh = daftar.map((h, i) =>
+    `<rect x="${kiri + langkahX * i}" y="${atas}" width="${langkahX}" height="${tinggi - atas - bawah}" class="grafik-sentuh" data-i="${i}"/>`).join('');
+
+  area.innerHTML = `<svg viewBox="0 0 ${lebar} ${tinggi}" width="${lebar}" height="${tinggi}" role="img"
+      aria-label="${escapeHtml(info.label)} per hari, ${escapeHtml(daftar[0].tanggal)} sampai ${escapeHtml(daftar[daftar.length - 1].tanggal)}">
+      ${garisGrid}${kolom}${garisRata}${labelX}${sentuh}</svg>`;
+
+  document.getElementById('legendaTren').innerHTML =
+    `<span><span class="swatch-batang"></span>${escapeHtml(info.label)} per hari</span>` +
+    (adaRata ? '<span><span class="swatch-garis"></span>Rata-rata 7 hari</span>' : '') +
+    (adaPerkiraan ? '<span><span class="swatch-batang perkiraan"></span>Ada perkiraan (dana belum cair)</span>' : '') +
+    (m === 'untung' && daftar.some((h) => h.belumHpp) ? '<span class="teks-redup">Produk tanpa HPP tidak dihitung</span>' : '');
+
+  const tooltip = document.getElementById('tooltipTren');
+  const svg = area.querySelector('svg');
+  const tampilkan = (i) => {
+    const h = daftar[i];
+    svg.querySelectorAll('.grafik-batang').forEach((b) => b.classList.toggle('redup', b.dataset.i !== String(i)));
+    const approx = h.perkiraan ? '≈ ' : '';
+    tooltip.innerHTML = `<strong>${escapeHtml(namaHari(h.tanggal))}</strong>
+      <div><span>Omzet</span><span>${formatRupiah(h.omzet)}</span></div>
+      <div><span>Untung</span><span>${approx}${formatRupiah(h.untung)}</span></div>
+      <div><span>Pesanan</span><span>${h.pesanan}</span></div>
+      <div><span>Pcs</span><span>${h.pcs}</span></div>
+      ${h.rata[m] !== null && adaRata ? `<div class="teks-redup"><span>Rata-rata 7 hari</span><span>${escapeHtml(fmt(h.rata[m]))}</span></div>` : ''}
+      ${h.belumHpp ? `<div class="teks-redup">${h.belumHpp} baris belum ada HPP</div>` : ''}`;
+    tooltip.classList.remove('tersembunyi');
+    const kotak = area.getBoundingClientRect();
+    const skala = kotak.width / lebar;
+    const px = x(i) * skala;
+    const lebarTip = tooltip.offsetWidth;
+    // Di samping kolom yang ditunjuk (kanan, atau kiri kalau mepet), di bagian atas plot.
+    const kananKolom = px + (lebarBatang * skala) / 2 + 10;
+    const kiriTip = kananKolom + lebarTip <= kotak.width ? kananKolom : Math.max(0, px - (lebarBatang * skala) / 2 - 10 - lebarTip);
+    tooltip.style.left = `${area.offsetLeft + kiriTip}px`;
+    tooltip.style.top = `${area.offsetTop + 4}px`;
+  };
+  const sembunyikan = () => {
+    tooltip.classList.add('tersembunyi');
+    svg.querySelectorAll('.grafik-batang').forEach((b) => b.classList.remove('redup'));
+  };
+  svg.querySelectorAll('.grafik-sentuh').forEach((r) => {
+    r.addEventListener('pointerenter', () => tampilkan(Number(r.dataset.i)));
+    r.addEventListener('click', () => tampilkan(Number(r.dataset.i)));
+  });
+  svg.addEventListener('pointerleave', sembunyikan);
+}
+
+document.querySelectorAll('.pill-filter[data-metrik]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    metrikTren = btn.dataset.metrik;
+    document.querySelectorAll('.pill-filter[data-metrik]').forEach((b) => b.classList.toggle('aktif', b === btn));
+    renderTren();
+  });
+});
+let jedaResizeTren = null;
+window.addEventListener('resize', () => {
+  clearTimeout(jedaResizeTren);
+  jedaResizeTren = setTimeout(() => { if (dataHasilUpload) renderTren(); }, 150);
+});
 
 // Nilai satu baris untuk kolom tertentu, dipakai buat urutkan tabel Data.
 // Baris yang "dikembalikan" untungnya dianggap 0 (sama seperti yang ditampilkan),
@@ -485,35 +650,32 @@ function renderTabelData(items) {
                      data-id="${escapeHtml(it.idProduk)}" data-nama="${escapeHtml(it.namaProduk)}">Simpan</button>
            </div>`;
 
-      // Jumlah pcs: defaultnya 1, otomatis naik kalau baris ini terdeteksi mewakili
-      // beberapa pcs produk yang sama (lihat parseExcel.js). Selalu bisa dikoreksi
-      // manual di sini — border oranye + tombol "Reset" muncul kalau nilainya
-      // sedang beda dari tebakan otomatis, supaya jelas kapan itu koreksi manual.
-      const jumlahDiubahManual = !it.dikembalikan && it.jumlah !== it.jumlahOtomatis;
+      // Jumlah pcs langsung dari Shopee (model_quantity_purchased / quantity_purchased).
       const selJumlah = it.dikembalikan
         ? '<span class="teks-redup" title="Tidak relevan — pesanan ini dikembalikan.">-</span>'
-        : `<div class="sel-jumlah">
-             <input type="number" class="input-jumlah${jumlahDiubahManual ? ' diubah-manual' : ''}" min="1" step="1"
-                    value="${it.jumlah}" data-order="${escapeHtml(it.noPesanan)}" data-id="${escapeHtml(it.idProduk)}"
-                    data-harga="${it.hargaProduk}"
-                    title="Jumlah pcs pada baris ini (dipakai untuk mengalikan HPP). Tebakan otomatis: ${it.jumlahOtomatis} pcs.">
-             ${jumlahDiubahManual ? `<button type="button" class="tombol-reset-jumlah" data-order="${escapeHtml(it.noPesanan)}" data-id="${escapeHtml(it.idProduk)}" data-harga="${it.hargaProduk}">Reset ke ${it.jumlahOtomatis}</button>` : ''}
-           </div>`;
+        : String(it.jumlah);
+
+      // Pesanan yang dananya belum cair: penghasilan = harga jual × rasio pencairan toko
+      // (perkiraan), ditandai "≈" dan pill "Belum cair" supaya jelas bukan angka final.
+      const approx = it.perkiraan ? '≈ ' : '';
+      const selDanaCair = it.perkiraan
+        ? `<span class="pill pill-abu" title="Dana pesanan ini belum dilepas Shopee — penghasilan & untungnya masih perkiraan.">Belum cair</span>`
+        : escapeHtml(it.tanggalDilepaskan);
 
       const totalPenghasilanTampil = it.dikembalikan
-        ? `${formatRupiah(it.totalPenghasilan)}<br><span class="pill pill-kuning" title="Pesanan ini dikembalikan / di-refund ke pembeli sebesar ${formatRupiah(it.jumlahPengembalian)} (menurut kolom &quot;Jumlah Pengembalian Dana ke Pembeli&quot; di file Shopee).">Dikembalikan</span>`
-        : formatRupiah(it.totalPenghasilan);
+        ? `${formatRupiah(it.totalPenghasilan)}<br><span class="pill pill-kuning" title="Pesanan ini dikembalikan / di-refund ke pembeli sebesar ${formatRupiah(it.jumlahPengembalian)}.">Dikembalikan</span>`
+        : approx + formatRupiah(it.totalPenghasilan);
 
       const untungTampil = it.dikembalikan
         ? '<span title="Barang dikembalikan ke Anda, jadi tidak dihitung untung maupun rugi.">Rp 0</span>'
-        : punyaHpp ? formatRupiah(it.untung) : 'Belum diisi';
+        : punyaHpp ? approx + formatRupiah(it.untung) : 'Belum diisi';
       const marginTampil = it.dikembalikan ? '-' : punyaHpp ? pillMargin(it.marginPersen) : '-';
 
       return `
         <tr class="${kelasBaris}">
           <td data-label="No. Pesanan">${escapeHtml(it.noPesanan)}</td>
           <td data-label="Tanggal Pesanan">${escapeHtml(it.waktuPesanan)}</td>
-          <td data-label="Tanggal Dana Cair">${escapeHtml(it.tanggalDilepaskan)}</td>
+          <td data-label="Tanggal Dana Cair">${selDanaCair}</td>
           <td class="kolom-nama" data-label="Nama Produk" title="${escapeHtml(it.namaProduk)}">${escapeHtml(potongNama(it.namaProduk))}${it.namaModel ? `<br><span class="teks-redup teks-varian">${escapeHtml(it.namaModel)}</span>` : ''}</td>
           <td class="kolom-id" data-label="ID Produk">${escapeHtml(it.idProduk)}</td>
           <td class="kolom-jumlah kolom-tengah" data-label="Jumlah">${selJumlah}</td>
@@ -540,69 +702,6 @@ function renderTabelData(items) {
     });
   });
 
-  // Kolom "Jumlah": simpan otomatis begitu kotaknya kehilangan fokus (blur) atau
-  // saat tekan Enter — sama seperti pola isi HPP, tidak perlu tombol "Simpan" terpisah.
-  isiTabelData.querySelectorAll('.input-jumlah').forEach((input) => {
-    const nilaiAwal = input.value;
-    const simpanKalauBerubah = () => {
-      if (input.value !== nilaiAwal) {
-        simpanJumlah(input.dataset.order, input.dataset.id, input.dataset.harga, input.value);
-      }
-    };
-    input.addEventListener('blur', simpanKalauBerubah);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-    });
-  });
-  isiTabelData.querySelectorAll('.tombol-reset-jumlah').forEach((tombol) => {
-    tombol.addEventListener('click', () => resetJumlah(tombol.dataset.order, tombol.dataset.id, tombol.dataset.harga));
-  });
-}
-
-// Baris pesanan+produk yang dituju: cocokkan lewat No. Pesanan + ID Produk + Harga
-// Produk baris itu — order_sn+id_produk saja BISA tidak unik (satu pesanan boleh
-// punya >1 baris Sku untuk produk yang sama, lihat catatan di db.js/server.js).
-function cariItemJumlah(orderSn, idProduk, hargaProduk) {
-  return dataHasilUpload.items.find(
-    (it) => it.noPesanan === orderSn && it.idProduk === idProduk && String(it.hargaProduk) === String(hargaProduk)
-  );
-}
-
-// Simpan koreksi manual jumlah pcs untuk satu baris pesanan+produk, lalu hitung
-// ulang untung/margin di tabel yang sedang tampil (tanpa perlu unggah ulang file).
-async function simpanJumlah(orderSn, idProduk, hargaProduk, nilaiMentah) {
-  const nilai = Number(nilaiMentah);
-  if (!Number.isInteger(nilai) || nilai < 1) {
-    alert('Jumlah harus berupa bilangan bulat, minimal 1.');
-    renderTabelData(dataHasilUpload.items); // kembalikan tampilan ke nilai semula
-    return;
-  }
-  try {
-    await apiFetch(
-      `/api/jumlah/${encodeURIComponent(orderSn)}/${encodeURIComponent(idProduk)}/${encodeURIComponent(hargaProduk)}`,
-      { method: 'PUT', body: JSON.stringify({ jumlah: nilai }) }
-    );
-    const item = cariItemJumlah(orderSn, idProduk, hargaProduk);
-    if (item) item.jumlah = nilai;
-    hitungUlangDanTampilkanUlang();
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-// Hapus koreksi manual — baris ini kembali memakai tebakan otomatis.
-async function resetJumlah(orderSn, idProduk, hargaProduk) {
-  try {
-    await apiFetch(
-      `/api/jumlah/${encodeURIComponent(orderSn)}/${encodeURIComponent(idProduk)}/${encodeURIComponent(hargaProduk)}`,
-      { method: 'DELETE' }
-    );
-    const item = cariItemJumlah(orderSn, idProduk, hargaProduk);
-    if (item) item.jumlah = item.jumlahOtomatis;
-    hitungUlangDanTampilkanUlang();
-  } catch (err) {
-    alert(err.message);
-  }
 }
 
 // Fungsi bersama: simpan satu nilai HPP ke server, lalu refresh tabel Data & tabel HPP.
@@ -619,6 +718,7 @@ async function simpanHpp(idProduk, namaProduk, nilaiMentah) {
     });
     await muatDaftarHpp();
     hitungUlangDanTampilkanUlang();
+    muatDataPenjualanIklan(); // untung per minggu di Analisis Iklan ikut HPP baru
   } catch (err) {
     alert(err.message);
   }
@@ -668,6 +768,7 @@ function hitungUlangDanTampilkanUlang() {
 
   renderRingkasan(dataHasilUpload.ringkasan);
   renderTabelData(dataHasilUpload.items);
+  renderTren();
 }
 
 inputCari.addEventListener('input', () => {
@@ -705,19 +806,22 @@ async function muatDaftarHpp() {
 // produk yang paling banyak menghasilkan uang ada di atas — itulah yang paling penting
 // diisi HPP-nya dulu. Dihitung sekali per unggahan.
 let penjualanPerProdukCache = { sumber: null, peta: new Map() };
-function penjualanPerProduk() {
-  if (!dataHasilUpload) return new Map();
-  if (penjualanPerProdukCache.sumber === dataHasilUpload) return penjualanPerProdukCache.peta;
+function penjualanPerProduk(sumber = dataHasilUpload) {
+  if (!sumber) return new Map();
+  if (penjualanPerProdukCache.sumber === sumber) return penjualanPerProdukCache.peta;
   const peta = new Map();
-  for (const it of dataHasilUpload.items) {
+  for (const it of sumber.items) {
     if (it.dikembalikan) continue;
-    const t = peta.get(it.idProduk) || { pcs: 0, penghasilan: 0, hargaProduk: 0 };
+    const t = peta.get(it.idProduk) || { pcs: 0, penghasilan: 0, hargaProduk: 0, pcsCair: 0, penghasilanCair: 0, hargaCair: 0 };
     t.pcs += it.jumlah || 1;
     t.penghasilan += it.totalPenghasilan || 0;
     t.hargaProduk += it.hargaProduk || 0; // harga jual total baris (sudah dikali pcs untuk baris multi-pcs)
+    // Angka pasti (dana sudah cair) — dipakai Analisis Iklan; baris perkiraan dihitung dari
+    // rasio toko, jadi tidak boleh ikut menentukan rasio per produk.
+    if (!it.perkiraan) { t.pcsCair += it.jumlah || 1; t.penghasilanCair += it.totalPenghasilan || 0; t.hargaCair += it.hargaProduk || 0; }
     peta.set(it.idProduk, t);
   }
-  penjualanPerProdukCache = { sumber: dataHasilUpload, peta };
+  penjualanPerProdukCache = { sumber, peta };
   return peta;
 }
 
@@ -759,7 +863,7 @@ function renderRingkasanBelumHpp(semua) {
   if (!dataHasilUpload || !belum.length) { el.classList.add('tersembunyi'); return; }
   const totalRp = belum.reduce((t, r) => t + r.terjualRp, 0);
   el.innerHTML =
-    `<strong>${belum.length} produk</strong> di file yang diunggah belum ada HPP — nilai penjualannya ` +
+    `<strong>${belum.length} produk</strong> yang terjual di periode ini belum ada HPP — nilai penjualannya ` +
     `<strong title="${escapeHtml(formatRupiah(totalRp))}">${formatRupiahRingkas(totalRp)}</strong>. ` +
     `Daftar di bawah diurutkan dari yang penjualannya paling besar: isi yang di atas dulu.`;
   el.classList.remove('tersembunyi');
@@ -797,7 +901,7 @@ function renderTabelHpp() {
         <tr class="${punyaHpp ? '' : 'baris-peringatan'}">
           <td class="kolom-id" data-label="ID Produk">${escapeHtml(r.id_produk)}</td>
           <td class="kolom-nama" data-label="Nama Produk" title="${escapeHtml(r.nama_produk || '')}">${r.nama_produk ? escapeHtml(potongNama(r.nama_produk)) : '-'}</td>
-          <td class="kolom-angka kolom-terjual" data-label="Terjual (file ini)">${
+          <td class="kolom-angka kolom-terjual" data-label="Terjual (periode ini)">${
             r.terjualPcs
               ? `<span title="${escapeHtml(formatRupiah(r.terjualRp))}">${r.terjualPcs} pcs &middot; ${formatRupiahRingkas(r.terjualRp)}</span>`
               : '<span class="teks-redup">-</span>'
@@ -1016,7 +1120,7 @@ dropzoneIklan.addEventListener('drop', (e) => {
 // Rasio pencairan dari file Income yang sedang diunggah (Σ penghasilan ÷ Σ harga produk);
 // null kalau belum ada unggahan → server memakai angka default dan halaman menampilkan catatan.
 function rasioPencairanSaatIni() {
-  const r = dataHasilUpload && dataHasilUpload.ringkasan;
+  const r = sumberIklan() && sumberIklan().ringkasan;
   return r && r.rasioPencairan ? r.rasioPencairan : null;
 }
 
@@ -1025,14 +1129,14 @@ function rasioPencairanSaatIni() {
 // tebakan dari omzet iklan (yang tercampur produk lain). Kosong kalau belum ada unggahan.
 function produkIncomeSaatIni() {
   const hasil = {};
-  for (const [id, t] of penjualanPerProduk()) {
-    if (!t.pcs || !t.hargaProduk) continue;
+  for (const [id, t] of penjualanPerProduk(sumberIklan())) {
+    if (!t.pcsCair || !t.hargaCair) continue;
     // Server hanya memakai harga/rasio kalau pcs ≥ 3; perHari dipakai untuk batas pesanan
     // iklan yang dibayar (analisisIklan.js: batasDibayarKampanye).
-    hasil[id] = { harga: t.hargaProduk / t.pcs, rasio: t.penghasilan / t.hargaProduk, pcs: t.pcs, perHari: {} };
+    hasil[id] = { harga: t.hargaCair / t.pcsCair, rasio: t.penghasilanCair / t.hargaCair, pcs: t.pcsCair, perHari: {} };
   }
-  for (const it of dataHasilUpload.items) {
-    if (it.dikembalikan || !hasil[it.idProduk]) continue;
+  for (const it of sumberIklan().items) {
+    if (it.dikembalikan || it.perkiraan || !hasil[it.idProduk]) continue;
     const iso = String(it.waktuPesanan || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) continue;
     const h = hasil[it.idProduk].perHari;
@@ -1046,9 +1150,9 @@ function produkIncomeSaatIni() {
 // Tanggal dana dilepaskan paling akhir di file Income — sampai tanggal itu pesanan sudah
 // pasti cair; dipakai server untuk tahu periode kampanye mana yang sudah bisa diukur.
 function tanggalRilisTerakhirSaatIni() {
-  if (!dataHasilUpload) return '';
+  if (!sumberIklan()) return '';
   let maks = '';
-  for (const it of dataHasilUpload.items) { const r = String(it.tanggalDilepaskan || '').slice(0, 10); if (r > maks) maks = r; }
+  for (const it of sumberIklan().items) { const r = String(it.tanggalDilepaskan || '').slice(0, 10); if (r > maks) maks = r; }
   return maks;
 }
 
@@ -1127,11 +1231,11 @@ const namaSingkat = (nama, maks = 46) => potongNama(String(nama || '').replace(/
 // Produk yang layak DICOBA diiklankan: laku sendiri tanpa iklan (dari file Income yang
 // diunggah), margin sehat, dan tidak ada di file iklan. Hanya ada kalau file Income diunggah.
 function kandidatCobaIklan() {
-  if (!dataHasilUpload) return null;
+  if (!sumberIklan()) return null;
   const sudahDiiklankan = new Set(dataIklan.produk.map((p) => p.idProduk));
   const hppMap = new Map(daftarHpp.map((r) => [r.id_produk, r]));
   const kandidat = [];
-  for (const [idProduk, t] of penjualanPerProduk()) {
+  for (const [idProduk, t] of penjualanPerProduk(sumberIklan())) {
     if (sudahDiiklankan.has(idProduk) || t.pcs < 10) continue;
     const info = hppMap.get(idProduk);
     if (!info || info.hpp === null) continue;
@@ -1174,12 +1278,12 @@ const seninIso = (iso) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return n
 const labelMinggu = (iso) => { const [, m, d] = iso.split('-'); return `${Number(d)}/${Number(m)}`; };
 
 function untungTokoPerMinggu() {
-  if (!dataHasilUpload) return null;
+  if (!sumberIklan()) return null;
   const minggu = new Map();
   const ambil = (k) => { let t = minggu.get(k); if (!t) { t = { mulai: k, pcs: 0, penghasilan: 0, penghasilanDiketahui: 0, untungDiketahui: 0, biayaIklan: 0, pcsIklan: 0, adaIklan: false }; minggu.set(k, t); } return t; };
   let minRilis = '', maxRilis = '';
-  for (const it of dataHasilUpload.items) {
-    if (it.dikembalikan) continue;
+  for (const it of sumberIklan().items) {
+    if (it.dikembalikan || it.perkiraan) continue; // aturan mingguan memakai angka pasti saja
     const k = seninIso(it.waktuPesanan);
     if (!k) continue;
     const t = ambil(k);
@@ -1282,7 +1386,7 @@ function renderMingguan() {
   if (!data || !data.minggu.length) {
     aturanTerakhir = null;
     aturanEl.className = 'aturan-mingguan';
-    aturanEl.innerHTML = 'Unggah file Income di Kalkulator Margin untuk melihat apakah anggaran iklan perlu diubah.';
+    aturanEl.innerHTML = 'Buka Kalkulator Margin (data penjualan) untuk melihat apakah anggaran iklan perlu diubah.';
     grafik.innerHTML = ''; isi.innerHTML = ''; catatan.textContent = '';
     return null;
   }
@@ -1327,10 +1431,10 @@ function renderRingkasanIklan(r) {
   const catatanCair = ` Pesanan iklan dihitung <strong>${cairPersen}%</strong> dibayar (sisanya batal / tidak dibayar)` +
     (dataIklan.sumberTingkatCair === 'pengaturan' ? '.' : ' — angka standar, bisa diubah di bagian "Semua produk &amp; rincian".');
   if (dataIklan.sumberRasio === 'upload') {
-    catatan.innerHTML = periode + `Potongan Shopee dihitung dari file Income yang diunggah: rata-rata <strong>${rasioPersen}%</strong> dari harga jual yang cair ke penjual.` + catatanCair;
+    catatan.innerHTML = periode + `Potongan Shopee dihitung dari data penjualan yang sudah cair: rata-rata <strong>${rasioPersen}%</strong> dari harga jual yang cair ke penjual.` + catatanCair;
     catatan.classList.remove('catatan-default');
   } else {
-    catatan.innerHTML = periode + `Memakai rasio pencairan standar <strong>${rasioPersen}%</strong> (belum ada file Income yang diunggah). Unggah file Income di Kalkulator Margin supaya angkanya pas dengan toko ini.` + catatanCair;
+    catatan.innerHTML = periode + `Memakai rasio pencairan standar <strong>${rasioPersen}%</strong> (data penjualan belum dimuat). Buka Kalkulator Margin supaya angkanya pas dengan toko ini.` + catatanCair;
     catatan.classList.add('catatan-default');
   }
 
@@ -1365,7 +1469,7 @@ function renderRingkasanIklan(r) {
   } else {
     untung.textContent = '-'; untung.classList.remove('angka-negatif');
     wUntung.textContent = '-'; wUntung.classList.remove('angka-negatif');
-    ketUntung.textContent = 'Setelah biaya iklan · unggah file Income untuk melihat';
+    ketUntung.textContent = 'Setelah biaya iklan · buka Kalkulator Margin untuk memuat data';
   }
 
   const hitung = (k) => kep.baris.filter((b) => b.keputusan === k).length;
@@ -1458,7 +1562,7 @@ function barisRincianIklan(p, kampanyePerProduk, colspan) {
   const kotak = (label, nilai, ket) => `<div><div class="label-ringkasan">${label}</div><div class="nilai">${nilai}${ket ? ` <small>${ket}</small>` : ''}</div></div>`;
   const cairPersen = Math.round(((dataIklan && dataIklan.ringkasan.tingkatCair) || 0.85) * 100);
   const dibayar = !p.kampanyeTerukur
-    ? [`≈ ${cairPersen}%`, 'perkiraan (belum ada kampanye yang bisa diukur dari file Income)']
+    ? [`≈ ${cairPersen}%`, 'perkiraan (belum ada kampanye yang bisa diukur dari data penjualan)']
     : p.dibayarMaksTerukur < p.terjualLangsungTerukur
       ? [`≤ ${p.dibayarMaksTerukur} dari ${p.terjualLangsungTerukur}`, `terukur di ${p.kampanyeTerukur} kampanye yang sudah cair; sisanya pasti batal / tidak dibayar`]
       : [`≈ ${cairPersen}%`, `${p.kampanyeTerukur} kampanye yang sudah cair tidak menunjukkan pesanan batal; dipakai angka toko`];
@@ -1477,8 +1581,8 @@ function barisRincianIklan(p, kampanyePerProduk, colspan) {
     ${kotak('Omzet langsung', formatRupiahRingkas(p.omzetLangsung), `${p.terjualLangsung} pcs`)}
     ${kotak('Untung versi Shopee', p.untungLuas === null ? '-' : formatRupiah(p.untungLuas), 'termasuk produk lain')}
     ${kotak('Untung hitungan ketat', p.untungLangsung === null ? '-' : formatRupiah(p.untungLangsung), 'produk ini saja')}
-    ${kotak('Harga jual per pcs', formatRupiahRingkas(p.hargaRata), `HPP ${escapeHtml(hppTampil)} · ${p.sumberHarga === 'income' ? 'dari file Income' : p.sumberHarga === 'langsung' ? 'dari penjualan langsung iklan' : 'perkiraan dari omzet Shopee'}`)}
-    ${kotak('Potongan Shopee', p.rasioPencairan ? formatPersen((1 - p.rasioPencairan) * 100) : '-', p.sumberHarga === 'income' ? 'produk ini, dari file Income' : 'rata-rata toko')}
+    ${kotak('Harga jual per pcs', formatRupiahRingkas(p.hargaRata), `HPP ${escapeHtml(hppTampil)} · ${p.sumberHarga === 'income' ? 'dari data penjualan' : p.sumberHarga === 'langsung' ? 'dari penjualan langsung iklan' : 'perkiraan dari omzet Shopee'}`)}
+    ${kotak('Potongan Shopee', p.rasioPencairan ? formatPersen((1 - p.rasioPencairan) * 100) : '-', p.sumberHarga === 'income' ? 'produk ini, dari data penjualan' : 'rata-rata toko')}
     ${kotak('Mode', escapeHtml(p.modeBidding || '-'), '')}
   </div>`;
 
@@ -1496,7 +1600,7 @@ function barisRincianIklan(p, kampanyePerProduk, colspan) {
         <td class="kolom-angka" title="Omzet versi Shopee: ${escapeHtml(formatRupiah(k.omzet))}">${formatRupiah(k.omzetLangsung)}</td>
         <td class="kolom-angka">${formatRoas(k.roasShopee)}</td>
         <td class="kolom-angka"><strong>${formatRoas(k.roasLangsung)}</strong></td>
-        <td class="kolom-angka" title="${k.capTerukur ? 'Terukur: semua pesanan produk ini di file Income pada periode kampanye + 7 hari' : 'Perkiraan dari tingkat pesanan dibayar toko'}">${k.capTerukur ? `≤ ${k.pesananDibayarMaks} / ${k.terjualLangsung}` : `<span class="teks-redup">~${cairPersen}%</span>`}</td>
+        <td class="kolom-angka" title="${k.capTerukur ? 'Terukur: semua pesanan produk ini di data penjualan pada periode kampanye + 7 hari' : 'Perkiraan dari tingkat pesanan dibayar toko'}">${k.capTerukur ? `≤ ${k.pesananDibayarMaks} / ${k.terjualLangsung}` : `<span class="teks-redup">~${cairPersen}%</span>`}</td>
         <td class="kolom-angka">${k.untungLangsung === null ? '-' : `<span class="${k.untungLangsung >= 0 ? 'untung-positif' : 'untung-negatif'}">${formatRupiah(k.untungLangsung)}</span>`}</td>
       </tr>`)
     .join('');

@@ -132,8 +132,9 @@
     <div id="subUpload" class="subtab-isi aktif">
     <div class="kartu" id="kartuSinkron">
       <h2><span class="langkah">1</span> Data Penjualan dari Shopee</h2>
-      <p class="keterangan">Diambil otomatis dari Shopee — tidak perlu unggah file. Pilih periode (berdasarkan tanggal dana cair):</p>
+      <p class="keterangan">Diambil otomatis dari Shopee. Pilih periode (berdasarkan tanggal pesanan dibuat):</p>
       <div class="pill-filter-row baris-periode">
+        <button type="button" class="pill-filter" data-periode="hari-ini">Hari ini</button>
         <button type="button" class="pill-filter" data-periode="7">7 hari</button>
         <button type="button" class="pill-filter aktif" data-periode="30">30 hari</button>
         <button type="button" class="pill-filter" data-periode="bulan-ini">Bulan ini</button>
@@ -156,31 +157,17 @@
       <p id="pesanLoadingSinkron" class="pesan-loading tersembunyi"><span class="spinner"></span> <span id="teksLoadingSinkron">Memuat data...</span></p>
     </div>
 
-    <details class="kartu kartu-cara-lama" id="kartuCaraLama">
-      <summary>Atau unggah file Excel Income dari Shopee (cara lama)</summary>
-      <div class="baris-unggah">
-        <label class="dropzone" id="dropzoneFile" for="inputFile">
-          <span class="widget-ikon">
-            <svg class="ikon" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="m9 15 3-3 3 3"/></svg>
-          </span>
-          <span class="dropzone-teks">
-            <span class="dropzone-judul" id="namaFile">Pilih file Income (.xlsx) dari Shopee</span>
-            <span class="dropzone-sub">Klik di sini, atau seret file ke area ini</span>
-          </span>
-          <input type="file" id="inputFile" accept=".xlsx,.xls">
-        </label>
-        <button id="tombolProses" class="tombol tombol-utama" disabled>Proses File</button>
-      </div>
-      <p id="pesanErrorUpload" class="pesan-error tersembunyi"></p>
-      <p id="pesanLoading" class="pesan-loading tersembunyi"><span class="spinner"></span> Sedang memproses file...</p>
-    </details>
-
     <div id="areaRingkasan" class="tersembunyi">
       <div class="grid-ringkasan">
         <div class="kartu-ringkasan">
+          <div class="label-ringkasan">Omzet</div>
+          <div class="angka-ringkasan" id="ringkasanOmzet">Rp 0</div>
+          <div class="keterangan-ringkasan" id="ketOmzet">Harga jual barang terjual</div>
+        </div>
+        <div class="kartu-ringkasan">
           <div class="label-ringkasan">Total Pendapatan</div>
           <div class="angka-ringkasan" id="ringkasanPendapatan">Rp 0</div>
-          <div class="keterangan-ringkasan">Penghasilan bersih dari Shopee</div>
+          <div class="keterangan-ringkasan">Diterima dari Shopee setelah potongan</div>
         </div>
         <div class="kartu-ringkasan kartu-utama">
           <div class="label-ringkasan">Total Untung</div>
@@ -202,6 +189,28 @@
           <div class="angka-ringkasan" id="ringkasanDikembalikan">0 pesanan</div>
           <div class="keterangan-ringkasan">Tidak dihitung untung/rugi</div>
         </div>
+      </div>
+
+      <p id="catatanPerkiraan" class="catatan-perkiraan tersembunyi"></p>
+
+      <div class="kartu" id="kartuTren">
+        <div class="baris-filter">
+          <div class="baris-filter-judul">
+            <h2>
+              <svg class="ikon" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 16V11"/><path d="M11 16V7"/><path d="M15 16v-3"/><path d="M19 16V9"/></svg>
+              Tren Penjualan Harian
+            </h2>
+          </div>
+          <div class="pill-filter-row pill-filter-row-rapat" role="group" aria-label="Ukuran yang ditampilkan">
+            <button type="button" class="pill-filter aktif" data-metrik="omzet">Omzet</button>
+            <button type="button" class="pill-filter" data-metrik="untung">Untung</button>
+            <button type="button" class="pill-filter" data-metrik="pesanan">Pesanan</button>
+            <button type="button" class="pill-filter" data-metrik="pcs">Pcs</button>
+          </div>
+        </div>
+        <div class="legenda-tren" id="legendaTren"></div>
+        <div class="area-grafik" id="areaGrafikTren"></div>
+        <div class="tooltip-grafik tersembunyi" id="tooltipTren" role="status"></div>
       </div>
 
       <div class="kartu">
@@ -315,7 +324,7 @@
             <tr>
               <th>ID Produk</th>
               <th>Nama Produk</th>
-              <th class="kolom-angka" title="Jumlah pcs &amp; total penghasilan produk ini di file Income yang sedang diunggah">Terjual (file ini)</th>
+              <th class="kolom-angka" title="Jumlah pcs &amp; total penghasilan produk ini di periode yang dipilih di Kalkulator">Terjual (periode ini)</th>
               <th class="kolom-angka">Harga Modal (HPP)</th>
               <th>Terakhir Diubah</th>
               <th>Oleh</th>
@@ -362,7 +371,7 @@
             <div class="kartu-ringkasan kartu-utama">
               <div class="label-ringkasan">Untung Toko Minggu Lalu</div>
               <div class="angka-ringkasan" id="iklanUntung">-</div>
-              <div class="keterangan-ringkasan" id="iklanKetUntung">Setelah biaya iklan · unggah file Income untuk melihat</div>
+              <div class="keterangan-ringkasan" id="iklanKetUntung">Setelah biaya iklan · buka Kalkulator Margin untuk memuat data</div>
             </div>
             <div class="kartu-ringkasan">
               <div class="label-ringkasan">Biaya Iklan Sekarang</div>
@@ -448,7 +457,7 @@
             <div class="pengaturan-iklan">
               <label for="inputTingkatCair">Dari 100 pesanan iklan, berapa yang benar-benar dibayar?</label>
               <span class="sel-setelan"><input type="number" id="inputTingkatCair" class="input-setelan" min="1" max="100" step="1" placeholder="85"><span class="prefix">%</span></span>
-              <small>Shopee menghitung omzet iklan saat pesanan dibuat, termasuk yang lalu batal / tidak dibayar. Kosong = 85%. Angka toko: Seller Centre &rarr; Performa Toko &rarr; Tingkat Pesanan Tidak Terselesaikan (100 &minus; angka itu). Untuk kampanye yang sudah selesai, aplikasi mengukur sendiri dari file Income.</small>
+              <small>Shopee menghitung omzet iklan saat pesanan dibuat, termasuk yang lalu batal / tidak dibayar. Kosong = 85%. Angka toko: Seller Centre &rarr; Performa Toko &rarr; Tingkat Pesanan Tidak Terselesaikan (100 &minus; angka itu). Untuk kampanye yang sudah selesai, aplikasi mengukur sendiri dari data penjualan Shopee.</small>
             </div>
             <div class="baris-filter">
               <div class="baris-filter-judul">

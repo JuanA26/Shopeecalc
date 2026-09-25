@@ -94,12 +94,15 @@ async function callPublicApi(path, body) {
   return res.json();
 }
 
+// shop_id WAJIB angka di body JSON: disimpan sebagai teks di SQLite, dan access_token/get
+// menolak string ("the format of shop_id parameter is wrong" — terjadi di produksi 2026-09-25
+// saat refresh pertama setelah 4 jam).
 function getAccessToken({ code, shopId }) {
-  return callPublicApi('/api/v2/auth/token/get', { code, shop_id: shopId });
+  return callPublicApi('/api/v2/auth/token/get', { code, shop_id: Number(shopId) });
 }
 
 function refreshAccessToken({ refreshToken, shopId }) {
-  return callPublicApi('/api/v2/auth/access_token/get', { refresh_token: refreshToken, shop_id: shopId });
+  return callPublicApi('/api/v2/auth/access_token/get', { refresh_token: refreshToken, shop_id: Number(shopId) });
 }
 
 // Shop API (butuh access_token + shop_id), sudah ditandatangani. method GET pakai `query`

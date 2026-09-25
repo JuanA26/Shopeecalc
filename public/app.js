@@ -330,7 +330,8 @@ function renderProgres(s) {
   el.classList.add(gagal ? 'gagal' : 'selesai');
   isi.style.width = '100%';
   trek.setAttribute('aria-valuenow', '100');
-  lPesanan.className = 'langkah-progres beres';
+  // Gagal: jangan tandai langkah mana pun "beres" — belum tentu langkah 1 selesai.
+  lPesanan.className = 'langkah-progres' + (gagal ? '' : ' beres');
   lDana.className = 'langkah-progres' + (gagal ? '' : ' beres');
   // Ringkasan hasil: tidak ada yang baru → "Data sudah terbaru"; kalau ada, sebutkan berapa.
   const nOrder = (s && s.jumlahOrderBerubah) || 0, nDana = (s && s.jumlahBaru) || 0;

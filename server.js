@@ -697,13 +697,28 @@ app.get('/api/iklan/probe', requireLogin, async (req, res) => {
   const idBaru = baru.map((c) => c.campaign_id);
   const kamp = [];
   const galatHarian = [];
+  // Putaran 3: putaran 2 dapat 0 kampanye tanpa error — bentuk `response` mungkin objek, bukan
+  // array seperti di dokumentasi. Terima dua-duanya dan simpan respons mentahnya (dipotong).
+  const kampanyeDari = (resp) => (Array.isArray(resp) ? resp : resp ? [resp] : []).flatMap((s) => s.campaign_list || []);
+  const mentah = (x) => JSON.stringify(x).slice(0, 3000);
+  const idBerjalan = baru.filter((c) => (c.common_info || {}).campaign_status === 'ongoing').map((c) => c.campaign_id);
+  hasil.dailyMentah = {};
+  for (const [nama, dari, ids] of [['berjalan28Hari', 28, idBerjalan], ['berjalan7Hari', 7, idBerjalan], ['satuSelesai28Hari', 28, idBaru.slice(-12, -11)]]) {
+    if (!ids.length) continue;
+    try {
+      const x = await panggil('/api/v2/ads/get_product_campaign_daily_performance', {
+        query: { start_date: tgl(dari), end_date: tgl(1), campaign_id_list: ids.join(',') },
+      });
+      hasil.dailyMentah[nama] = { ids, mentah: mentah(x) };
+    } catch (err) { hasil.dailyMentah[nama] = { ids, gagalDiServer: err.message }; }
+  }
   for (let i = 0; i < idBaru.length; i += 100) {
     try {
       const x = await panggil('/api/v2/ads/get_product_campaign_daily_performance', {
         query: { start_date: tgl(28), end_date: tgl(1), campaign_id_list: idBaru.slice(i, i + 100).join(',') },
       });
-      if (x.error) galatHarian.push({ i, error: x.error, message: x.message, warning: x.warning });
-      kamp.push(...(Array.isArray(x.response) ? x.response : []).flatMap((s) => s.campaign_list || []));
+      if (x.error || x.warning) galatHarian.push({ i, error: x.error, message: x.message, warning: x.warning });
+      kamp.push(...kampanyeDari(x.response));
     } catch (err) { galatHarian.push({ i, gagalDiServer: err.message }); }
   }
   const jumlahkan = (ms, f) => (ms || []).reduce((s, m) => s + (Number(m[f]) || 0), 0);

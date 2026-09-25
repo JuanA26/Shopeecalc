@@ -16,6 +16,10 @@ const HOST = {
   },
 };
 
+// Batas waktu per panggilan: tanpa ini satu permintaan yang menggantung membuat sinkron tidak
+// pernah selesai, dan semua sinkron berikutnya ikut terkunci sampai server di-restart.
+const BATAS_WAKTU_MS = 30 * 1000;
+
 function getEnv() {
   return process.env.SHOPEE_ENV === 'production' ? 'production' : 'sandbox';
 }
@@ -82,6 +86,7 @@ async function callPublicApi(path, body) {
   const sign = hmac(partnerKey, `${partnerId}${path}${timestamp}`);
   const url = `${api}${path}?partner_id=${partnerId}&timestamp=${timestamp}&sign=${sign}`;
   const res = await fetch(url, {
+    signal: AbortSignal.timeout(BATAS_WAKTU_MS),
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ partner_id: partnerId, ...body }),
@@ -121,6 +126,7 @@ async function callShopApi(path, { shopId, accessToken, method = 'GET', query = 
   for (const [k, v] of Object.entries(query)) params.set(k, v);
   const url = `${api}${path}?${params.toString()}`;
   const res = await fetch(url, {
+    signal: AbortSignal.timeout(BATAS_WAKTU_MS),
     method,
     headers: { 'Content-Type': 'application/json' },
     body: method === 'POST' ? JSON.stringify(body || {}) : undefined,

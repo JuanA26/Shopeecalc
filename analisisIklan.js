@@ -268,8 +268,11 @@ function formatAngka(n) {
 // dalam periode kampanye + 7 hari ekor atribusi). Pesanan yang dibayar dari iklan tidak
 // mungkin melebihi keduanya. Mengembalikan null kalau tidak bisa diukur (belum cair semua,
 // tidak ada data harian, kampanye masih berjalan).
-function batasDibayarKampanye(k, perHari, tanggalLaporanIso, tanggalRilisTerakhir) {
+function batasDibayarKampanye(k, perHari, tanggalLaporanIso, tanggalRilisTerakhir, tanggalDataMulai) {
   if (!perHari || !k.tanggalMulaiIso || !tanggalRilisTerakhir) return null;
+  // Kampanye yang mulai sebelum data penjualan tersedia: pesanan hari-hari awalnya tidak ada di
+  // data, jadi batasnya akan terlalu kecil (merugikan iklan). Lebih baik tidak diukur.
+  if (tanggalDataMulai && k.tanggalMulaiIso < tanggalDataMulai) return null;
   let akhir = k.tanggalSelesaiIso || k.tanggalMulaiIso;
   if (tanggalLaporanIso && akhir > tanggalLaporanIso) akhir = tanggalLaporanIso;
   if (k.status === 'Berjalan') return null;
@@ -302,6 +305,7 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
       : TINGKAT_CAIR_DEFAULT;
   const tanggalLaporanIso = opsi.tanggalLaporanIso || '';
   const tanggalRilisTerakhir = opsi.tanggalRilisTerakhir || '';
+  const tanggalDataMulai = opsi.tanggalDataMulai || '';
   const incomeMap = produkIncome instanceof Map ? produkIncome : new Map(Object.entries(produkIncome || {}));
 
   // Per kampanye: umur (hari berjalan sampai tanggal laporan) & batas pesanan dibayar.
@@ -310,7 +314,7 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
     if (tanggalLaporanIso && akhir > tanggalLaporanIso) akhir = tanggalLaporanIso;
     k.hariBerjalan = k.tanggalMulaiIso && akhir >= k.tanggalMulaiIso ? selisihHari(k.tanggalMulaiIso, akhir) + 1 : 1;
     const inc = incomeMap.get(k.kodeProduk);
-    const batas = batasDibayarKampanye(k, inc && inc.perHari, tanggalLaporanIso, tanggalRilisTerakhir);
+    const batas = batasDibayarKampanye(k, inc && inc.perHari, tanggalLaporanIso, tanggalRilisTerakhir, tanggalDataMulai);
     k.capTerukur = batas !== null;
     if (batas) {
       k.pesananDibayarMaks = Math.min(k.terjualLangsung, batas.pcs);

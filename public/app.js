@@ -46,6 +46,9 @@ async function apiFetch(url, options = {}) {
   let body = null;
   try { body = await res.json(); } catch (_) { /* respon kosong, tidak apa */ }
   if (!res.ok) {
+    // Sesi login habis (12 jam) saat halaman masih terbuka: kembali ke layar login, jangan
+    // tampilkan error membingungkan di setiap kartu. /api/login sendiri dikecualikan.
+    if (res.status === 401 && !url.startsWith('/api/login') && typeof tampilkanLogin === 'function') tampilkanLogin();
     throw new Error((body && body.error) || `Terjadi kesalahan (${res.status}).`);
   }
   return body;
@@ -186,26 +189,30 @@ const pesanErrorSinkron = document.getElementById('pesanErrorSinkron');
 const pesanLoadingSinkron = document.getElementById('pesanLoadingSinkron');
 let statusSinkronTerakhir = null;
 
-// Tanggal lokal (bukan UTC) jadi YYYY-MM-DD, supaya "hari ini" sesuai jam di HP/laptop.
-const isoLokal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+// "Hari ini" menurut kalender WIB (GMT+7) — server memberi tanggal pesanan dalam WIB (sama seperti
+// laporan Shopee), jadi periode juga harus WIB, bukan jam HP. Tanpa ini, di Banjarmasin (WITA,
+// +1 jam) pukul 00.00–01.00 "Hari ini" meminta tanggal WIB yang belum dimulai → kosong.
+const hariIniWib = () => new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
+// Tanggal ISO + n hari (aritmetika UTC murni, tanpa zona waktu).
+const geserHari = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const formatTanggalPendek = (iso) =>
   iso ? new Date(iso + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
 
+// [dari, sampai] sebagai string YYYY-MM-DD (kalender WIB).
 function rentangPeriode(kode) {
-  const hariIni = new Date();
+  const hariIni = hariIniWib();
+  const awalBulan = hariIni.slice(0, 8) + '01';
   if (kode === 'hari-ini') return [hariIni, hariIni];
-  if (kode === 'bulan-ini') return [new Date(hariIni.getFullYear(), hariIni.getMonth(), 1), hariIni];
-  if (kode === 'bulan-lalu') return [new Date(hariIni.getFullYear(), hariIni.getMonth() - 1, 1), new Date(hariIni.getFullYear(), hariIni.getMonth(), 0)];
-  const dari = new Date(hariIni);
-  dari.setDate(dari.getDate() - (Number(kode) - 1));
-  return [dari, hariIni];
+  if (kode === 'bulan-ini') return [awalBulan, hariIni];
+  if (kode === 'bulan-lalu') { const akhirLalu = geserHari(awalBulan, -1); return [akhirLalu.slice(0, 8) + '01', akhirLalu]; }
+  return [geserHari(hariIni, -(Number(kode) - 1)), hariIni];
 }
 
 function pilihPeriode(kode) {
   document.querySelectorAll('.pill-filter[data-periode]').forEach((b) => b.classList.toggle('aktif', b.dataset.periode === kode));
   const [dari, sampai] = rentangPeriode(kode);
-  tanggalDari.value = isoLokal(dari);
-  tanggalSampai.value = isoLokal(sampai);
+  tanggalDari.value = dari;
+  tanggalSampai.value = sampai;
 }
 
 document.querySelectorAll('.pill-filter[data-periode]').forEach((btn) => {
@@ -384,10 +391,10 @@ async function sinkronSekarang() {
 tombolSinkron.addEventListener('click', sinkronSekarang);
 
 async function muatDataPenjualanIklan() {
-  const sampai = new Date();
-  const dari = new Date(); dari.setDate(dari.getDate() - 89);
+  const sampai = hariIniWib();
+  const dari = geserHari(sampai, -89);
   try {
-    const q = new URLSearchParams({ dari: isoLokal(dari), sampai: isoLokal(sampai) });
+    const q = new URLSearchParams({ dari, sampai });
     dataPenjualanIklan = await apiFetch(`/api/pesanan?${q}`);
     hitungUlangIklan();
     if (!dataIklan) renderMingguan();
@@ -837,7 +844,8 @@ function hitungUlangDanTampilkanUlang() {
   if (!dataHasilUpload) return;
   const hppMap = new Map(daftarHpp.map((r) => [r.id_produk, r.hpp]));
 
-  let totalPenghasilan = 0, totalHpp = 0, totalUntung = 0, jumlahBelumAdaHpp = 0, jumlahDikembalikan = 0, penghasilanDenganHpp = 0;
+  let totalPenghasilan = 0, totalHpp = 0, totalUntung = 0, penghasilanDenganHpp = 0;
+  const produkBelumAdaHpp = new Set(), pesananDikembalikan = new Set(); // jumlah berbeda, sama seperti server
 
   dataHasilUpload.items = dataHasilUpload.items.map((it) => {
     const punyaHpp = hppMap.has(it.idProduk);
@@ -848,7 +856,7 @@ function hitungUlangDanTampilkanUlang() {
     // Sama seperti di server: pesanan yang dikembalikan tidak dihitung untung/rugi
     // (barangnya kembali ke penjual), dan tidak perlu diminta isi HPP.
     if (it.dikembalikan) {
-      jumlahDikembalikan += 1;
+      pesananDikembalikan.add(it.noPesanan);
       return { ...it, hpp, untung: 0, marginPersen: null };
     }
 
@@ -858,7 +866,7 @@ function hitungUlangDanTampilkanUlang() {
     const untung = punyaHpp ? it.totalPenghasilan - hppTotal : null;
     const marginPersen = punyaHpp && it.totalPenghasilan !== 0 ? (untung / it.totalPenghasilan) * 100 : null;
 
-    if (punyaHpp) { totalHpp += hppTotal; totalUntung += untung; penghasilanDenganHpp += it.totalPenghasilan; } else { jumlahBelumAdaHpp += 1; }
+    if (punyaHpp) { totalHpp += hppTotal; totalUntung += untung; penghasilanDenganHpp += it.totalPenghasilan; } else { produkBelumAdaHpp.add(it.idProduk); }
 
     return { ...it, hpp, hppTotal, untung, marginPersen };
   });
@@ -872,8 +880,8 @@ function hitungUlangDanTampilkanUlang() {
     // Sama seperti server: margin hanya dari produk yang punya HPP.
     marginRataRataPersen: penghasilanDenganHpp !== 0 ? (totalUntung / penghasilanDenganHpp) * 100 : null,
     penghasilanDenganHpp,
-    jumlahBelumAdaHpp,
-    jumlahDikembalikan,
+    jumlahBelumAdaHpp: produkBelumAdaHpp.size,
+    jumlahDikembalikan: pesananDikembalikan.size,
   };
 
   renderRingkasan(dataHasilUpload.ringkasan);
@@ -1259,6 +1267,13 @@ function produkIncomeSaatIni() {
 
 // Tanggal dana dilepaskan paling akhir di file Income — sampai tanggal itu pesanan sudah
 // pasti cair; dipakai server untuk tahu periode kampanye mana yang sudah bisa diukur.
+// Tanggal pertama periode data penjualan yang dipakai Analisis Iklan — kampanye yang mulai
+// sebelum ini tidak bisa diukur batas pesanan dibayarnya (analisisIklan.js).
+function tanggalDataMulaiSaatIni() {
+  const s = sumberIklan();
+  return (s && s.ringkasan && s.ringkasan.periode && s.ringkasan.periode.dari) || '';
+}
+
 function tanggalRilisTerakhirSaatIni() {
   if (!sumberIklan()) return '';
   let maks = '';
@@ -1279,6 +1294,7 @@ tombolProsesIklan.addEventListener('click', async () => {
     formData.append('rasioPencairan', String(rasio));
     formData.append('produkIncome', JSON.stringify(produkIncomeSaatIni()));
     formData.append('tanggalRilisTerakhir', tanggalRilisTerakhirSaatIni());
+    formData.append('tanggalDataMulai', tanggalDataMulaiSaatIni());
   }
 
   try {
@@ -1314,6 +1330,7 @@ async function hitungUlangIklan() {
         namaToko: dataIklan.namaToko,
         tanggalLaporanIso: dataIklan.tanggalLaporanIso,
         tanggalRilisTerakhir: tanggalRilisTerakhirSaatIni(),
+        tanggalDataMulai: tanggalDataMulaiSaatIni(),
       }),
     });
     dataIklan = body;

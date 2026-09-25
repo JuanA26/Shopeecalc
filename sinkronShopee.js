@@ -37,10 +37,16 @@ function cekError(hasil, namaEndpoint) {
 async function paralel(daftar, n, fn) {
   const hasil = new Array(daftar.length);
   let berikut = 0;
+  let gagal = false; // satu gagal → pekerja lain berhenti mengambil potongan baru (tidak menulis ke DB setelah sinkron dinyatakan gagal)
   const pekerja = Array.from({ length: Math.min(n, daftar.length) }, async () => {
-    while (berikut < daftar.length) {
+    while (berikut < daftar.length && !gagal) {
       const i = berikut++;
-      hasil[i] = await fn(daftar[i], i);
+      try {
+        hasil[i] = await fn(daftar[i], i);
+      } catch (err) {
+        gagal = true;
+        throw err;
+      }
     }
   });
   await Promise.all(pekerja);
@@ -294,6 +300,7 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
   // untuk yang belum tersimpan (mis. pesanan lama di luar jendela langkah pesanan).
   const orderTersimpan = db.prepare('SELECT create_time, status FROM api_order WHERE order_sn = ?');
   let selesai = 0;
+  const terlewat = []; // order_sn yang tidak ada di respons Shopee — dicoba lagi di sinkron berikutnya
   await paralel(potong(baru, UKURAN_BATCH), PARALEL, async (potongan) => {
     const dikenal = new Map();
     for (const sn of potongan) {
@@ -306,6 +313,8 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
       belumDikenal.length ? ambilOrderDetail(panggil, belumDikenal) : new Map(),
     ]);
 
+    const adaDetail = new Set(daftarDetail.map((d) => d.order_sn));
+    for (const sn of potongan) if (!adaDetail.has(sn)) terlewat.push(sn);
     const siapSimpan = [];
     for (const detail of daftarDetail) {
       const sn = detail.order_sn;
@@ -341,8 +350,12 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
     if (onProgres) onProgres({ tahap: 'dana', selesai, total: baru.length });
   });
 
+  if (terlewat.length) console.warn(`[SINKRON] ${terlewat.length} pesanan cair tidak ada di respons escrow — dicoba lagi nanti.`);
+  // Batas "sudah ditarik" tidak boleh melewati pesanan yang terlewat, supaya sinkron berikutnya
+  // (yang mulai dari batas itu dikurangi 3 hari) masih mendaftarnya lagi.
+  const sampai = terlewat.length ? Math.min(...terlewat.map((sn) => escrow.get(sn))) : sekarang;
   return {
-    dari, sampai: sekarang, dilihat: escrow.size, baru: baru.length,
+    dari, sampai, dilihat: escrow.size, baru: baru.length - terlewat.length,
     orderDiperiksa: hasilOrder.diperiksa, orderBerubah: hasilOrder.diperbarui, orderSampai: sekarang,
   };
 }
@@ -368,9 +381,12 @@ function rasioPencairanToko(db, shopId) {
 // pencairan toko, ditandai perkiraan: true.
 function bacaItemPesanan(db, shopId, dari, sampai, rasioPerkiraan) {
   const pasti = db.prepare(
-    `SELECT p.order_sn, p.waktu_pesanan, p.tanggal_dilepaskan, i.*
+    // Tanggal pesanan dari api_pesanan; kalau kosong (rincian pesanan gagal diambil waktu itu)
+    // pakai tanggal dari api_order, supaya pesanan itu tidak hilang dari semua periode.
+    `SELECT p.order_sn, COALESCE(NULLIF(p.waktu_pesanan, ''), o.tanggal_pesanan) AS waktu_pesanan, p.tanggal_dilepaskan, i.*
      FROM api_pesanan p JOIN api_pesanan_item i ON i.order_sn = p.order_sn
-     WHERE p.shop_id = ? AND p.waktu_pesanan BETWEEN ? AND ?`
+     LEFT JOIN api_order o ON o.order_sn = p.order_sn
+     WHERE p.shop_id = ? AND COALESCE(NULLIF(p.waktu_pesanan, ''), o.tanggal_pesanan) BETWEEN ? AND ?`
   ).all(String(shopId), dari, sampai).map((r) => ({
     noPesanan: r.order_sn,
     idProduk: r.id_produk,

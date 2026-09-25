@@ -166,7 +166,7 @@ webapp/
                      the same way Shopee's Income Excel does
   shopeeApi.js      Shopee Open Platform API v2 client: HMAC signing, OAuth link/token exchange,
                      and a hard-allowlisted read-only request helper (see PROJECT_NOTES.md §20) —
-                     used by sinkronShopee.js and the /api/shopee/* debug routes in server.js
+                     used by sinkronShopee.js (the old /api/shopee/* debug routes were removed)
   scripts/add-user.js   CLI to create/update login accounts
   public/           Frontend (Bahasa Indonesia UI): index.html, style.css, app.js
   data/app.db       SQLite database (gitignored — back this up, don't commit it)

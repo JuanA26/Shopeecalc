@@ -476,7 +476,7 @@
             <div class="pengaturan-iklan">
               <label for="inputTingkatCair">Dari 100 pesanan iklan, berapa yang benar-benar dibayar?</label>
               <span class="sel-setelan"><input type="number" id="inputTingkatCair" class="input-setelan" min="1" max="100" step="1" placeholder="85"><span class="prefix">%</span></span>
-              <small>Shopee menghitung omzet iklan saat pesanan dibuat, termasuk yang lalu batal / tidak dibayar. Kosong = 85%. Angka toko: Seller Centre &rarr; Performa Toko &rarr; Tingkat Pesanan Tidak Terselesaikan (100 &minus; angka itu). Untuk kampanye yang sudah selesai, aplikasi mengukur sendiri dari data penjualan Shopee.</small>
+              <small>Shopee menghitung omzet iklan saat pesanan dibuat, termasuk yang lalu batal / tidak dibayar. Kosong = diukur otomatis dari status pesanan Shopee toko ini (angka abu-abu di kotak; 85% kalau datanya belum cukup). Isi hanya kalau ingin menimpanya.</small>
             </div>
             <div class="baris-filter">
               <div class="baris-filter-judul">
@@ -490,6 +490,7 @@
             <div class="pill-filter-row">
               <button class="pill-filter aktif" data-filter-iklan="semua">Semua</button>
               <button class="pill-filter" data-filter-iklan="jeda">Jeda</button>
+              <button class="pill-filter" data-filter-iklan="kurangi">Kurangi</button>
               <button class="pill-filter" data-filter-iklan="ubah-target">Ubah Target</button>
               <button class="pill-filter" data-filter-iklan="biarkan">Biarkan</button>
               <button class="pill-filter" data-filter-iklan="tunggu">Tunggu</button>
@@ -520,6 +521,7 @@
                 <li><strong>Anggaran</strong> ditentukan dari untung toko per minggu: kalau biaya iklan naik tapi untung setelah iklan tidak naik, iklan hanya mengambil penjualan yang memang akan terjadi &rarr; kurangi Modal Harian. Saran per iklan adalah aturan praktis; hasil 2 minggu berikutnya yang memutuskan.</li>
                 <li><strong>Target ROAS minimal</strong> = ROAS minimum + 2. ROAS minimum = di bawah ini iklan pasti rugi setelah potongan Shopee (&plusmn;22%), harga modal, dan pesanan yang batal. Di atasnya belum tentu untung, karena angka Shopee juga memuat penjualan yang memang akan terjadi tanpa iklan &mdash; itu sebabnya anggaran diputuskan dari untung toko per minggu. Target yang terpasang boleh lebih tinggi; jangan di bawahnya. Diamkan 7 hari setelah diubah.</li>
                 <li><strong>Untung Setelah Iklan</strong> per produk: angka atas memakai hitungan Shopee (termasuk produk lain yang ikut terbeli dalam 7 hari), angka bawah hanya produk itu sendiri. Yang benar ada di antara keduanya. Produk yang sedang beriklan dinilai dari kampanye yang berjalan saja, bukan gabungan 3 bulan.</li>
+                <li><strong>Lanjut / Kurangi / Jeda</strong> dinilai dari <strong>ROAS langsung</strong> (hanya produk yang diiklankan) dibanding ROAS minimum &mdash; bukan angka ROAS Shopee yang besar, karena angka Shopee ikut menghitung produk lain dan penjualan yang tetap terjadi tanpa iklan. Di bawah minimum &rarr; kurangi Modal Harian; di bawah separuh minimum setelah 14 hari &rarr; jeda.</li>
                 <li><strong>Hijau</strong> lanjut &middot; <strong>Oranye</strong> kurangi modal &middot; <strong>Biru</strong> naikkan target &middot; <strong>Merah</strong> jeda &middot; <strong>Kuning</strong> isi HPP dulu &middot; <strong>Abu</strong> tunggu (belum 7 hari) atau iklan level toko.</li>
               </ul>
             </details>

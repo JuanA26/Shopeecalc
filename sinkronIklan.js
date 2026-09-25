@@ -7,6 +7,7 @@
 //   - get_product_campaign_daily_performance: `response` berupa OBJEK {campaign_list: [...]},
 //     bukan array seperti di dokumentasi; maks 100 kampanye per panggilan; rentang ≤ 1 bulan.
 //   - Tanggal di API Ads berformat DD-MM-YYYY.
+const crypto = require('crypto');
 const { tanggalWib } = require('./sinkronShopee');
 const { KODE_IKLAN_TOKO } = require('./analisisIklan');
 
@@ -111,6 +112,33 @@ async function sinkronIklan({ db, panggil, shopId, iklanSampai, hariIni = tangga
     } catch (err) { db.exec('ROLLBACK'); throw err; }
   }
 
+  // 1b) Rekomendasi Target ROAS Shopee untuk produk yang sedang beriklan (sekali sehari per
+  //     produk). Gagal di sini tidak menggagalkan sinkron — rekomendasi hanya pelengkap.
+  const perluRekomendasi = db.prepare(
+    `SELECT DISTINCT k.id_produk FROM iklan_kampanye k
+     LEFT JOIN iklan_rekomendasi r ON r.shop_id = k.shop_id AND r.id_produk = k.id_produk
+     WHERE k.shop_id = ? AND k.status = 'ongoing' AND k.id_produk IS NOT NULL
+       AND (r.updated_at IS NULL OR r.updated_at < datetime('now', '-20 hours'))`
+  ).all(shopId).map((r) => r.id_produk);
+  const simpanRekomendasi = db.prepare(
+    `INSERT INTO iklan_rekomendasi (shop_id, id_produk, rendah, tengah, tinggi, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(shop_id, id_produk) DO UPDATE SET rendah = excluded.rendah, tengah = excluded.tengah, tinggi = excluded.tinggi, updated_at = excluded.updated_at`
+  );
+  let rekomendasiGagal = 0;
+  for (const idProduk of perluRekomendasi) {
+    try {
+      const r = cekError(await panggil('/api/v2/ads/get_product_recommended_roi_target', {
+        // reference_id: penanda acak anti-duplikat yang diminta endpoint ini.
+        query: { reference_id: crypto.randomUUID(), item_id: idProduk },
+      }), 'get_product_recommended_roi_target');
+      const nilai = (b) => (b && Number(b.value) > 0 ? Number(b.value) : null);
+      if (nilai(r.upper_bound) !== null) simpanRekomendasi.run(shopId, idProduk, nilai(r.lower_bound), nilai(r.exact), nilai(r.upper_bound));
+    } catch (err) {
+      rekomendasiGagal += 1;
+      console.error(`[SINKRON IKLAN] Rekomendasi ROAS ${idProduk} gagal:`, err.message);
+    }
+  }
+
   // 2) Angka harian. Pertama kali 90 hari; berikutnya HARI_ULANG hari terakhir.
   const dari = iklanSampai ? tambahHari(iklanSampai < hariIni ? iklanSampai : hariIni, -HARI_ULANG) : tambahHari(hariIni, -(HARI_AWAL - 1));
   const sampai = hariIni;
@@ -174,7 +202,7 @@ async function sinkronIklan({ db, panggil, shopId, iklanSampai, hariIni = tangga
     } catch (err) { db.exec('ROLLBACK'); throw err; }
   }
 
-  return { kampanyeBaru, kampanyeDiperbarui: perluSetelan.length, barisHarian, dari, sampai };
+  return { kampanyeBaru, kampanyeDiperbarui: perluSetelan.length, barisHarian, dari, sampai, rekomendasi: perluRekomendasi.length - rekomendasiGagal };
 }
 
 // ---------- Baca untuk halaman Analisis Iklan ----------
@@ -290,6 +318,10 @@ function kampanyeDariDb(db, shopId, dari, sampai) {
     s.mode = info.target_roas > 0 ? 'GMV Max ROAS' : 'GMV Max Auto';
   }
   for (const s of Object.values(setelan)) if (!s.modal_harian) s.modal_harian = null;
+  // Rekomendasi Target ROAS Shopee (rendah/tengah/tinggi) untuk produk yang sedang beriklan.
+  for (const r of db.prepare('SELECT id_produk, rendah, tengah, tinggi FROM iklan_rekomendasi WHERE shop_id = ?').all(shopId)) {
+    if (setelan[r.id_produk]) setelan[r.id_produk].rekomendasi = { rendah: r.rendah, tengah: r.tengah, tinggi: r.tinggi };
+  }
 
   return { kampanye, setelan, adaData: harian.length > 0 || toko.length > 0 };
 }

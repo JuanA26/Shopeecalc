@@ -1149,7 +1149,7 @@ tombolImporCsv.addEventListener('click', async () => {
 let dataIklan = null;       // { produk, kampanye, ringkasan, sumberRasio, periode, namaToko }
 let sortKolomIklan = 'biaya';
 let sortArahIklan = -1;     // biaya terbesar di atas: di situ uang paling banyak dipertaruhkan
-let filterIklan = 'semua';  // 'semua' | 'jeda' | 'ubah-target' | 'biarkan' | 'isi-hpp'
+let filterIklan = 'semua';  // 'semua' | 'jeda' | 'kurangi' | 'ubah-target' | 'biarkan' | 'isi-hpp'
 const produkTerbuka = new Set(); // idProduk yang rincian kampanyenya sedang dibuka
 let grupBerakhirTerbuka = false;   // grup "Sudah berakhir" di tabel terlipat sampai diklik
 const keputusanTerbuka = new Set(); // baris tabel keputusan yang rinciannya sedang dibuka
@@ -1444,11 +1444,13 @@ function renderCobaIklan() {
 }
 
 // ====== Untung toko per minggu (penentu apakah iklan secara keseluruhan menguntungkan) ======
-// Dari file Income (per tanggal pesanan) + biaya iklan per kampanye yang dibagi rata per hari.
-// Minggu = Senin–Minggu. Minggu yang belum lengkap (dana pesanan belum semua cair — jeda
-// pesanan→cair biasanya ≤ 11 hari — atau sebelum awal file) ditandai dan tidak dipakai
-// untuk aturan.
-const JEDA_CAIR_HARI = 11;
+// Dari data penjualan (per tanggal pesanan) + biaya iklan per hari. Minggu = Senin–Minggu.
+// Pesanan yang belum cair IKUT dihitung (penghasilannya perkiraan, ≈ 78% harga): kalau dibuang,
+// minggu-minggu terakhir selalu kelihatan lebih rendah (±10% pesanan belum cair setelah 11 hari)
+// dan aturan jadi condong ke "kurangi". Minggu dianggap lengkap kalau sudah lewat
+// JEDA_LENGKAP_HARI (pembatalan & atribusi iklan 7 hari sudah selesai) dan tidak terpotong
+// awal data; minggu yang belum lengkap ditandai dan tidak dipakai untuk aturan.
+const JEDA_LENGKAP_HARI = 7;
 const tambahHari = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const seninIso = (iso) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return null; const d = new Date(iso + 'T00:00:00Z'); const geser = (d.getUTCDay() + 6) % 7; return tambahHari(iso, -geser); };
 const labelMinggu = (iso) => { const [, m, d] = iso.split('-'); return `${Number(d)}/${Number(m)}`; };
@@ -1457,12 +1459,13 @@ function untungTokoPerMinggu() {
   if (!sumberIklan()) return null;
   const minggu = new Map();
   const ambil = (k) => { let t = minggu.get(k); if (!t) { t = { mulai: k, pcs: 0, penghasilan: 0, penghasilanDiketahui: 0, untungDiketahui: 0, biayaIklan: 0, pcsIklan: 0, adaIklan: false }; minggu.set(k, t); } return t; };
-  let minRilis = '', maxRilis = '';
+  let minRilis = '', maxRilis = '', minPesanan = '';
   for (const it of sumberIklan().items) {
-    if (it.dikembalikan || it.perkiraan) continue; // aturan mingguan memakai angka pasti saja
+    if (it.dikembalikan) continue;
     const k = seninIso(it.waktuPesanan);
     if (!k) continue;
     const t = ambil(k);
+    if (!minPesanan || it.waktuPesanan < minPesanan) minPesanan = String(it.waktuPesanan).slice(0, 10);
     t.pcs += it.jumlah || 1;
     t.penghasilan += it.totalPenghasilan || 0;
     if (it.hpp !== null && it.untung !== null && it.untung !== undefined) { t.penghasilanDiketahui += it.totalPenghasilan || 0; t.untungDiketahui += it.untung; }
@@ -1499,13 +1502,15 @@ function untungTokoPerMinggu() {
     }
   }
   if (dataIklan && dataIklan.rentangData) { iklanMulai = dataIklan.rentangData.dari; iklanSelesai = dataIklan.rentangData.sampai; }
-  const batasLengkap = maxRilis ? tambahHari(maxRilis, -JEDA_CAIR_HARI) : '';
+  const batasLengkap = tambahHari(hariIniWib(), -JEDA_LENGKAP_HARI);
+  // Minggu yang terpotong awal data (periode halaman, atau pesanan tersimpan paling awal) tidak lengkap.
+  const awalData = [tanggalDataMulaiSaatIni(), minPesanan].filter(Boolean).sort().pop() || minRilis;
   const daftar = [...minggu.values()].sort((a, b) => a.mulai.localeCompare(b.mulai)).map((t) => {
     const selesai = tambahHari(t.mulai, 6);
     // Untung kotor: baris tanpa HPP diperkirakan pakai margin baris yang ada HPP-nya minggu itu.
     const marginDiketahui = t.penghasilanDiketahui ? t.untungDiketahui / t.penghasilanDiketahui : 0;
     const untungKotor = t.untungDiketahui + (t.penghasilan - t.penghasilanDiketahui) * marginDiketahui;
-    const lengkap = t.pcs > 0 && t.mulai >= minRilis && selesai <= batasLengkap;
+    const lengkap = t.pcs > 0 && t.mulai >= awalData && selesai <= batasLengkap;
     const iklanLengkap = !!dataIklan && t.mulai >= (iklanMulai || '9999') && selesai <= (iklanSelesai || '');
     // Berapa bagian penjualan toko yang diklaim iklan. Mendekati (atau melewati) 100% =
     // iklan hanya menempel pada penjualan yang memang terjadi, bukan menambah.
@@ -1603,7 +1608,7 @@ function renderMingguan() {
       <td class="kolom-angka" data-label="Diklaim Iklan">${t.klaimIklan === null ? '<span class="teks-redup">-</span>' : `${Math.round(t.klaimIklan * 100)}%`}</td>
     </tr>`;
   }).join('');
-  catatan.textContent = `Minggu Senin–Minggu menurut tanggal pesanan. "Belum lengkap" = dana pesanan belum semua cair (≈ ${JEDA_CAIR_HARI} hari) atau di luar periode file. Untung kotor untuk produk tanpa HPP diperkirakan dari margin produk lain minggu itu. "Diklaim iklan" = pcs yang Shopee catat sebagai hasil iklan (termasuk produk lain & pesanan batal) dibanding pcs yang benar-benar dibayar.`;
+  catatan.textContent = `Minggu Senin–Minggu menurut tanggal pesanan. "Belum lengkap" = minggu yang belum lewat ${JEDA_LENGKAP_HARI} hari (pesanan masih bisa batal) atau terpotong awal data. Pesanan yang dananya belum cair dihitung dengan perkiraan. Untung kotor untuk produk tanpa HPP diperkirakan dari margin produk lain minggu itu. "Diklaim iklan" = pcs yang Shopee catat sebagai hasil iklan (termasuk produk lain & pesanan batal) dibanding pcs yang benar-benar dibayar.`;
   return { data, lengkapTerakhir };
 }
 
@@ -1612,8 +1617,14 @@ function renderRingkasanIklan(r) {
   const catatan = document.getElementById('catatanRasioIklan');
   const periode = dataIklan.periode ? `${dariApi() ? 'Data iklan' : 'Periode file'}: <strong>${escapeHtml(dataIklan.periode)}</strong> · ${r.jumlahKampanye} kampanye, ${r.jumlahProduk} produk. ` : '';
   const cairPersen = Math.round((r.tingkatCair || 0.85) * 100);
-  const catatanCair = ` Pesanan iklan dihitung <strong>${cairPersen}%</strong> dibayar (sisanya batal / tidak dibayar)` +
-    (dataIklan.sumberTingkatCair === 'pengaturan' ? '.' : ' — angka standar, bisa diubah di bagian "Semua produk &amp; rincian".');
+  const sumberCair = {
+    pengaturan: ' — angka yang diisi sendiri di bagian "Semua produk &amp; rincian".',
+    terukur: ' — diukur dari status pesanan Shopee toko ini (90–14 hari lalu); tiap produk memakai angkanya sendiri kalau pesanannya cukup.',
+  }[dataIklan.sumberTingkatCair] || ' — angka standar, bisa diubah di bagian "Semua produk &amp; rincian".';
+  const catatanCair = ` Pesanan iklan dihitung <strong>${cairPersen}%</strong> dibayar (sisanya batal / tidak dibayar / diretur)` + sumberCair;
+  // Kotak isian: kosong = pakai angka terukur (ditunjukkan sebagai placeholder).
+  const terukur = dataIklan.tingkatCairTerukurToko;
+  inputTingkatCair.placeholder = Number.isFinite(terukur) ? String(Math.round(terukur * 100)) : '85';
   if (dataIklan.sumberRasio === 'upload') {
     catatan.innerHTML = periode + `Potongan Shopee dihitung dari data penjualan yang sudah cair: rata-rata <strong>${rasioPersen}%</strong> dari harga jual yang cair ke penjual.` + catatanCair;
     catatan.classList.remove('catatan-default');
@@ -1694,10 +1705,11 @@ function kelasBarisIklan(p) {
   if (p.aksi === 'isi-hpp') return 'baris-peringatan';
   if (p.aksi === 'biarkan') return 'baris-untung';
   if (p.aksi === 'ubah-target') return 'baris-ragu';
+  if (p.aksi === 'kurangi') return 'baris-kurangi';
   if (p.aksi === 'tunggu' || p.aksi === 'toko') return '';
   return 'baris-rugi'; // jeda
 }
-const LABEL_AKSI = { 'isi-hpp': ['Isi HPP dulu', 'pill-kuning'], jeda: ['Jeda', 'pill-merah'], 'ubah-target': ['Ubah Target', 'pill-biru'], biarkan: ['Biarkan', 'pill-hijau'], tunggu: ['Tunggu', 'pill-abu'], toko: ['Iklan toko', 'pill-abu'] };
+const LABEL_AKSI = { 'isi-hpp': ['Isi HPP dulu', 'pill-kuning'], jeda: ['Jeda', 'pill-merah'], kurangi: ['Kurangi modal', 'pill-oranye'], 'ubah-target': ['Ubah Target', 'pill-biru'], biarkan: ['Biarkan', 'pill-hijau'], tunggu: ['Tunggu', 'pill-abu'], toko: ['Iklan toko', 'pill-abu'] };
 
 // Satu baris produk di tabel sederhana + (kalau dibuka) baris rincian di bawahnya.
 function barisProdukIklan(p, kampanyePerProduk) {
@@ -1833,15 +1845,35 @@ function setelanProduk(idProduk) {
   return daftarSetelan.get(idProduk) || {};
 }
 
+// Shopee tidak menyarankan Target ROAS lebih dari 25% di atas rekomendasi tertingginya — di atas
+// itu iklan makin jarang tayang (iklan.shopee.co.id/learn/faq/555/1804).
+const BATAS_ATAS_REKOMENDASI = 1.25;
+const batasTargetShopee = (st) => (st.rekomendasi && st.rekomendasi.tinggi ? st.rekomendasi.tinggi * BATAS_ATAS_REKOMENDASI : null);
+
+// Tanggal selesai terdekat kampanye yang sedang berjalan untuk produk ini, kalau ≤ 7 hari lagi
+// (kampanye "Tidak terbatas" tidak dihitung). Kampanye baru = tahap belajar 7 hari dari nol,
+// jadi lebih baik periodenya diperpanjang (FAQ GMV Max ROAS menyarankan periode Tidak Terbatas).
+function berakhirSegera(idProduk) {
+  const hariIni = hariIniWib(), batas = geserHari(hariIni, 7);
+  let terdekat = null;
+  for (const k of dataIklan.kampanye) {
+    if (k.kodeProduk !== idProduk || k.status !== 'Berjalan' || !/^\d{2}\/\d{2}\/\d{4}$/.test(k.tanggalSelesai || '')) continue;
+    const iso = k.tanggalSelesaiIso;
+    if (iso && iso >= hariIni && iso <= batas && (!terdekat || iso < terdekat)) terdekat = iso;
+  }
+  return terdekat;
+}
+
 function keputusanBerjalan() {
   const baris = [];
   if (!dataIklan) return { baris, modalSekarang: 0, modalSaran: null, belumDiisi: 0 };
   const berjalan = dataIklan.produk.filter((p) => p.sedangBerjalan > 0);
   const perluKurangi = !!(aturanTerakhir && aturanTerakhir.kelas === 'aturan-kurangi');
-  // Kandidat dipotong: hitungan ketat minus, urut dari paling minus. Kalau tidak ada yang
-  // minus tapi toko tetap bilang kurangi: potong 3 dengan ketat terkecil.
+  // Vonis per produk (analisisIklan.js) sudah memakai ROAS LANGSUNG: yang di bawah minimum →
+  // aksi 'kurangi'. Tambahan dari aturan toko mingguan: kalau toko bilang "kurangi" padahal
+  // semua iklan lolos hitungan langsung, potong 3 dengan untung ketat terkecil.
   let dipotong = new Set();
-  if (perluKurangi) {
+  if (perluKurangi && !berjalan.some((p) => p.aksi === 'kurangi')) {
     const dinilai = berjalan.filter((p) => !['jeda', 'isi-hpp', 'tunggu', 'toko'].includes(p.aksi) && metrikBerjalan(p).untungLangsung !== null)
       .sort((a, b) => metrikBerjalan(a).untungLangsung - metrikBerjalan(b).untungLangsung);
     const minus = dinilai.filter((p) => metrikBerjalan(p).untungLangsung < 0);
@@ -1856,17 +1888,21 @@ function keputusanBerjalan() {
     const target = Number.isFinite(st.target_roas) ? st.target_roas : null;
     const modal = Number.isFinite(st.modal_harian) ? st.modal_harian : null;
     const minimal = p.targetDisarankan;
+    const batasShopee = batasTargetShopee(st);
+    // Target yang dibutuhkan supaya tidak rugi melebihi yang masih bisa dijalankan Shopee.
+    const diAtasBatas = minimal !== null && batasShopee !== null && minimal > batasShopee;
     let keputusan, modalBaru = modal;
     if (p.aksi === 'isi-hpp') keputusan = 'isi-hpp';
     else if (p.aksi === 'toko') keputusan = 'toko';
     else if (p.aksi === 'tunggu') keputusan = 'tunggu';
-    else if (p.aksi === 'jeda') { keputusan = 'jeda'; modalBaru = 0; }
+    else if (p.aksi === 'jeda' || diAtasBatas) { keputusan = 'jeda'; modalBaru = 0; }
+    else if (p.aksi === 'kurangi') { keputusan = 'kurangi'; modalBaru = modal !== null ? bulatkanModal(modal / 2) : null; } // rugi di hitungan langsung: ini yang utama
     else if (minimal !== null && ((target !== null && target < minimal) || (target === null && modeAuto))) keputusan = 'naikkan';
     else if (dipotong.has(p.idProduk)) { keputusan = 'kurangi'; modalBaru = modal !== null ? bulatkanModal(modal / 2) : null; }
     else keputusan = 'lanjut';
     if (modal !== null) { modalSekarang += modal; adaModal = true; modalSaran += modalBaru !== null ? modalBaru : modal; }
     else if (!tanpaBatas && p.aksi !== 'toko') belumDiisi += 1; // iklan toko tidak punya modal harian sendiri
-    baris.push({ p, target, modal, minimal, keputusan, modalBaru, tanpaBatas, modeAuto });
+    baris.push({ p, target, modal, minimal, keputusan, modalBaru, tanpaBatas, modeAuto, rekomendasi: st.rekomendasi || null, batasShopee, diAtasBatas, berakhir: berakhirSegera(p.idProduk) });
   }
   const urutan = { jeda: 0, kurangi: 1, naikkan: 2, 'isi-hpp': 3, tunggu: 4, lanjut: 5, toko: 6 };
   baris.sort((a, b) => urutan[a.keputusan] - urutan[b.keputusan] || b.p.biaya - a.p.biaya);
@@ -1883,11 +1919,27 @@ const LABEL_KEPUTUSAN = {
   toko: ['Iklan toko', 'pill-abu', ''],
 };
 
+// Catatan kecil di bawah kalimat keputusan: iklan yang segera berakhir, dan target yang sudah
+// di atas batas Shopee (iklan jadi jarang tayang).
+function catatanKeputusan(b) {
+  const catatan = [];
+  if (b.berakhir && b.keputusan !== 'jeda') {
+    catatan.push(`Berakhir ${formatTanggalPendek(b.berakhir)} — kalau lanjut, ubah Periode jadi Tidak Terbatas; jangan buat iklan baru.`);
+  }
+  if (b.target !== null && b.batasShopee !== null && b.target > b.batasShopee && b.keputusan !== 'jeda') {
+    catatan.push(`Target ${formatRoas(b.target)} di atas batas Shopee (${formatRoas(b.batasShopee)}) — iklan bisa jarang tayang.`);
+  }
+  return catatan.map((t) => `<small class="catatan-keputusan">${escapeHtml(t)}</small>`).join('');
+}
+
 function kalimatKeputusan(b) {
   const f = formatRoas;
   switch (b.keputusan) {
     case 'isi-hpp': return 'Isi HPP di Kalkulator Margin.';
-    case 'jeda': case 'tunggu': case 'toko': return b.p.tindakan;
+    case 'jeda': return b.diAtasBatas && b.p.aksi !== 'jeda'
+      ? `Jeda — butuh target ≥ ${f(b.minimal)}, Shopee maks ${f(b.batasShopee)}.`
+      : b.p.tindakan;
+    case 'tunggu': case 'toko': return b.p.tindakan;
     case 'naikkan': return b.target === null ? `Ganti ke GMV Max ROAS, target ${f(b.minimal)}.` : `Ubah Target ROAS ${f(b.target)} → ${f(b.minimal)}.`;
     case 'kurangi': return b.modal !== null
       ? `Turunkan Modal Harian ke ${formatRupiahRingkas(b.modalBaru)}. Target tetap.`
@@ -1966,6 +2018,9 @@ function renderKeputusan() {
       : b.keputusan === 'naikkan'
         ? `<span class="panah">→</span> <span class="saran">${formatRoas(b.minimal)}</span>`
         : `<span class="min">(min ${formatRoas(b.minimal)})</span>${b.target !== null && b.keputusan !== 'jeda' ? ' <span class="ok">✓</span>' : ''}`;
+    const infoRekomendasi = !toko && b.rekomendasi && b.rekomendasi.rendah && b.rekomendasi.tinggi
+      ? `<small class="rekomendasi-shopee" title="Rekomendasi Target ROAS Shopee (rendah–tinggi). Shopee tidak menyarankan lebih dari 25% di atas angka tertinggi.">Shopee ${formatRoas(b.rekomendasi.rendah)}–${formatRoas(b.rekomendasi.tinggi)}</small>`
+      : '';
     const baris = `
       <tr class="baris-produk ${kelasBaris}${terbuka ? ' terbuka' : ''}" data-id="${escapeHtml(p.idProduk)}">
         <td class="kolom-nama" data-label="Produk" title="${escapeHtml(p.namaProduk)}">
@@ -1975,8 +2030,8 @@ function renderKeputusan() {
           </div>
         </td>
         <td class="kolom-tengah" data-label="Modal Harian"><span class="sel-setelan">${toko || (dariApi() && b.modal === null) ? '' : '<span class="prefix">Rp</span>'}${inputModal}${saranModal}</span></td>
-        <td class="kolom-tengah" data-label="Target ROAS"><span class="sel-setelan">${inputTarget}${infoTarget}</span></td>
-        <td class="kolom-tindakan" data-label="Keputusan"><span class="pill pill-aksi ${pill}">${label}</span> ${escapeHtml(kalimatKeputusan(b))}</td>
+        <td class="kolom-tengah" data-label="Target ROAS"><span class="sel-setelan">${inputTarget}${infoTarget}</span>${infoRekomendasi}</td>
+        <td class="kolom-tindakan" data-label="Keputusan"><span class="pill pill-aksi ${pill}">${label}</span> ${escapeHtml(kalimatKeputusan(b))}${catatanKeputusan(b)}</td>
       </tr>`;
     return terbuka ? baris + barisRincianIklan(p, kampanyePerProduk, 4) : baris;
   }).join('');
@@ -2023,7 +2078,7 @@ function renderTabelIklan() {
   // di bawah sebagai catatan.
   const berjalan = daftar.filter((p) => p.sedangBerjalan > 0);
   const berakhir = daftar.filter((p) => !p.sedangBerjalan);
-  const perluUbah = (items) => items.filter((p) => p.aksi === 'jeda' || p.aksi === 'ubah-target').length;
+  const perluUbah = (items) => items.filter((p) => ['jeda', 'kurangi', 'ubah-target'].includes(p.aksi)).length;
   // Grup "Sudah berakhir" bisa dilipat (default: terlipat) — halaman ini untuk
   // "apa yang harus diubah sekarang"; yang sudah berakhir hanya catatan.
   const grup = (judul, kelas, items, ket, bisaDilipat, terbuka) => {

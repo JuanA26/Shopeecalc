@@ -375,6 +375,42 @@ function rasioPencairanToko(db, shopId) {
   return r && r.harga > 0 ? r.penghasilan / r.harga : null;
 }
 
+// Bagian pesanan yang benar-benar jadi penjualan (0–1), DIUKUR dari status pesanan Shopee —
+// pengganti tebakan 85% untuk "tingkat pesanan iklan dibayar" di Analisis Iklan. Omzet iklan
+// Shopee menghitung pesanan saat DIBUAT, termasuk yang lalu tidak dibayar / batal / diretur
+// (iklan.shopee.co.id/learn/faq/549/2200). Di sini: pcs pesanan yang dibuat 90 s/d 14 hari lalu
+// (statusnya sudah final) → pcs yang tidak UNPAID/CANCELLED/IN_CANCEL/TO_RETURN dan tidak diretur.
+// Per produk ditarik ke angka toko (PENYANGGA_CAIR pcs semu) supaya produk dengan sedikit
+// pesanan tidak loncat ke 0% / 100%. Batasan: ini angka SEMUA pesanan, bukan hanya pesanan
+// iklan (Shopee tidak memberi status per pesanan iklan). null kalau datanya belum cukup.
+const STATUS_TIDAK_DIBAYAR = ['UNPAID', 'CANCELLED', 'IN_CANCEL', 'TO_RETURN'];
+const PENYANGGA_CAIR = 20;
+function tingkatCairTerukur(db, shopId, hariIni) {
+  shopId = String(shopId);
+  const geser = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const sampai = geser(hariIni, -14);
+  const tertua = (db.prepare('SELECT MIN(tanggal_pesanan) AS t FROM api_order WHERE shop_id = ?').get(shopId) || {}).t;
+  if (!tertua) return null;
+  const dari = tertua > geser(hariIni, -90) ? tertua : geser(hariIni, -90);
+  if (dari > sampai) return null;
+  const rows = db.prepare(
+    `SELECT i.id_produk, SUM(i.jumlah) AS dibuat,
+       SUM(CASE WHEN o.status IN (${STATUS_TIDAK_DIBAYAR.map(() => '?').join(',')})
+                  OR EXISTS (SELECT 1 FROM api_pesanan_item r WHERE r.order_sn = o.order_sn AND r.id_produk = i.id_produk AND r.dikembalikan = 1)
+                THEN 0 ELSE i.jumlah END) AS dibayar
+     FROM api_order o JOIN api_order_item i ON i.order_sn = o.order_sn
+     WHERE o.shop_id = ? AND o.tanggal_pesanan BETWEEN ? AND ?
+     GROUP BY i.id_produk`
+  ).all(...STATUS_TIDAK_DIBAYAR, shopId, dari, sampai);
+  const dibuat = rows.reduce((a, r) => a + r.dibuat, 0);
+  const dibayar = rows.reduce((a, r) => a + r.dibayar, 0);
+  if (dibuat < 100) return null; // terlalu sedikit untuk dipercaya
+  const toko = dibayar / dibuat;
+  const perProduk = {};
+  for (const r of rows) perProduk[r.id_produk] = (r.dibayar + PENYANGGA_CAIR * toko) / (r.dibuat + PENYANGGA_CAIR);
+  return { toko, perProduk, pcsDibuat: dibuat, pcsDibayar: dibayar, dari, sampai };
+}
+
 // Baris-baris pesanan dengan TANGGAL PESANAN dalam [dari, sampai] (YYYY-MM-DD), bentuknya
 // sama seperti baris "Sku" Excel Income. Pesanan yang sudah cair → angka pasti dari
 // api_pesanan_item. Yang belum cair → dari api_order_item, penghasilannya = harga × rasio
@@ -434,4 +470,4 @@ function bacaItemPesanan(db, shopId, dari, sampai, rasioPerkiraan) {
   );
 }
 
-module.exports = { modeEscrow, sinkronkan, bacaItemPesanan, rasioPencairanToko, susunBarisPesanan, tanggalWib, HARI_AWAL_DEFAULT };
+module.exports = { modeEscrow, sinkronkan, bacaItemPesanan, rasioPencairanToko, tingkatCairTerukur, susunBarisPesanan, tanggalWib, HARI_AWAL_DEFAULT };

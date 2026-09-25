@@ -9,7 +9,7 @@ const bcrypt = require('bcryptjs');
 const db = require('./db');
 const { parseCsvLine, parseShopeeAdsCsv, hitungAnalisisIklan, RASIO_PENCAIRAN_DEFAULT, TINGKAT_CAIR_DEFAULT } = require('./analisisIklan');
 const shopeeApi = require('./shopeeApi');
-const { sinkronkan, bacaItemPesanan, rasioPencairanToko, modeEscrow } = require('./sinkronShopee');
+const { sinkronkan, bacaItemPesanan, rasioPencairanToko, tingkatCairTerukur, modeEscrow } = require('./sinkronShopee');
 const { sinkronIklan, kampanyeDariDb } = require('./sinkronIklan');
 
 const app = express();
@@ -532,11 +532,17 @@ function bacaPengaturan(kunci) {
   return row ? row.nilai : null;
 }
 
-// Tingkat pesanan iklan yang dibayar (0–1) dari pengaturan; kalau belum diisi pakai default.
+// Tingkat pesanan iklan yang dibayar (0–1). Urutan: angka yang diisi sendiri di halaman
+// (pengaturan, menimpa semuanya) → diukur dari status pesanan Shopee (toko + per produk) →
+// default 85%. tingkatCairTerukur ikut dikirim ke klien supaya kotak isian bisa menunjukkannya.
 function tingkatCairSaatIni() {
+  const token = barisTokenAktif();
+  const terukur = token ? tingkatCairTerukur(db, token.shop_id, new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10)) : null;
+  const tingkatCairTerukurToko = terukur ? terukur.toko : null;
   const n = Number(bacaPengaturan('tingkat_cair'));
-  if (Number.isFinite(n) && n > 0 && n <= 1) return { tingkatCair: n, sumberTingkatCair: 'pengaturan' };
-  return { tingkatCair: TINGKAT_CAIR_DEFAULT, sumberTingkatCair: 'default' };
+  if (Number.isFinite(n) && n > 0 && n <= 1) return { tingkatCair: n, sumberTingkatCair: 'pengaturan', tingkatCairTerukurToko };
+  if (terukur) return { tingkatCair: terukur.toko, tingkatCairPerProduk: terukur.perProduk, sumberTingkatCair: 'terukur', tingkatCairTerukurToko };
+  return { tingkatCair: TINGKAT_CAIR_DEFAULT, sumberTingkatCair: 'default', tingkatCairTerukurToko };
 }
 
 function opsiAnalisisIklan(tanggalLaporanIso, tanggalRilisTerakhir, tanggalDataMulai) {
@@ -591,7 +597,7 @@ app.post('/api/iklan/upload', requireLogin, upload.single('file'), (req, res) =>
   const produkIncome = produkIncomeDariPermintaan(req.body && req.body.produkIncome);
   const opsi = opsiAnalisisIklan(hasilParse.tanggalLaporanIso, req.body && req.body.tanggalRilisTerakhir, req.body && req.body.tanggalDataMulai);
   const analisis = hitungAnalisisIklan(hasilParse.kampanye, petaHppUntukIklan(), rasio, produkIncome, opsi);
-  res.json({ ...analisis, sumberRasio, sumberTingkatCair: opsi.sumberTingkatCair, periode: hasilParse.periode, namaToko: hasilParse.namaToko, tanggalLaporanIso: hasilParse.tanggalLaporanIso });
+  res.json({ ...analisis, sumberRasio, sumberTingkatCair: opsi.sumberTingkatCair, tingkatCairTerukurToko: opsi.tingkatCairTerukurToko, periode: hasilParse.periode, namaToko: hasilParse.namaToko, tanggalLaporanIso: hasilParse.tanggalLaporanIso });
 });
 
 // Analisis iklan dari data Shopee Ads API yang tersimpan (sinkronIklan.js) — pengganti unggah CSV.
@@ -612,7 +618,7 @@ app.post('/api/iklan/dari-shopee', requireLogin, (req, res) => {
   const tampil = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
   res.json({
     ...analisis, sumber: 'api', setelanApi: setelan, rentangData: { dari, sampai }, statusIklan,
-    sumberRasio, sumberTingkatCair: opsi.sumberTingkatCair,
+    sumberRasio, sumberTingkatCair: opsi.sumberTingkatCair, tingkatCairTerukurToko: opsi.tingkatCairTerukurToko,
     periode: `${tampil(dari)} - ${tampil(sampai)}`, namaToko: '', tanggalLaporanIso: sampai,
   });
 });
@@ -627,7 +633,7 @@ app.post('/api/iklan/hitung-ulang', requireLogin, (req, res) => {
   const { rasio, sumberRasio } = rasioDariPermintaan(req.body.rasioPencairan);
   const opsi = opsiAnalisisIklan(req.body.tanggalLaporanIso, req.body.tanggalRilisTerakhir, req.body.tanggalDataMulai);
   const analisis = hitungAnalisisIklan(kampanye, petaHppUntukIklan(), rasio, produkIncomeDariPermintaan(req.body.produkIncome), opsi);
-  res.json({ ...analisis, sumberRasio, sumberTingkatCair: opsi.sumberTingkatCair, periode: req.body.periode || '', namaToko: req.body.namaToko || '', tanggalLaporanIso: req.body.tanggalLaporanIso || '' });
+  res.json({ ...analisis, sumberRasio, sumberTingkatCair: opsi.sumberTingkatCair, tingkatCairTerukurToko: opsi.tingkatCairTerukurToko, periode: req.body.periode || '', namaToko: req.body.namaToko || '', tanggalLaporanIso: req.body.tanggalLaporanIso || '' });
 });
 
 // ---------- Setelan iklan per produk (Target ROAS & Modal Harian yang dipasang di Seller Centre) ----------

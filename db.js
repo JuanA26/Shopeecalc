@@ -210,6 +210,20 @@ db.exec(`
     terjual_langsung REAL NOT NULL DEFAULT 0,
     PRIMARY KEY (shop_id, tanggal)
   );
+
+  -- Rekomendasi Target ROAS dari Shopee per produk (get_product_recommended_roi_target) untuk
+  -- produk yang sedang beriklan: rendah (persentil 80) / tengah (50) / tinggi (20) — tiga pilihan
+  -- yang juga muncul di Seller Centre. Shopee tidak menyarankan target > 25% di atas "tinggi"
+  -- (iklan.shopee.co.id/learn/faq/555/1804). Diperbarui paling sering sekali sehari.
+  CREATE TABLE IF NOT EXISTS iklan_rekomendasi (
+    shop_id TEXT NOT NULL,
+    id_produk TEXT NOT NULL,
+    rendah REAL,
+    tengah REAL,
+    tinggi REAL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (shop_id, id_produk)
+  );
 `);
 
 // Kolom yang ditambahkan setelah tabel sinkron_shopee sudah ada di produksi.

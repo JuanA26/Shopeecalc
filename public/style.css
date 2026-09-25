@@ -1068,6 +1068,10 @@ tbody tr.baris-kurangi:hover td { background: #ffedd5; }
 .titik-abu { background: #9ca3af; }
 /* Tabel keputusan: ROAS Langsung di bawah minimum → merah, supaya "Lanjut" tidak terbaca "pasti untung". */
 #tabelKeputusan .produk-iklan .sub .roas-rendah { color: var(--merah); font-weight: 600; }
+/* Catatan kecil di sel keputusan (iklan segera berakhir, target di atas batas Shopee) dan
+   rentang rekomendasi Target ROAS Shopee di sel target. */
+#tabelKeputusan .catatan-keputusan { display: block; margin-top: 4px; font-size: 0.78rem; color: var(--abu-teks); line-height: 1.35; }
+#tabelKeputusan .rekomendasi-shopee { display: block; margin-top: 2px; font-size: 0.74rem; color: var(--abu-teks); white-space: nowrap; }
 /* Baris "iklan mengklaim N% penjualan" di bawah aturan mingguan. */
 .aturan-mingguan .klaim-iklan { display: block; margin-top: 4px; }
 .aturan-mingguan .klaim-iklan strong { color: inherit; }

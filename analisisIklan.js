@@ -38,12 +38,15 @@
 //                    biasanya 2–4 poin di bawah target). Shopee sendiri menyarankan target dari
 //                    performa kompetitor, bukan dari margin.
 //
-// Skala mana yang dipakai untuk vonis? Target ROAS di Seller Centre dinilai Shopee terhadap
-// omzet LUAS (roasShopee; Proteksi ROAS pun memakai "Broad GMV"). Jadi target & vonis per
-// produk memakai skala Shopee — sama seperti panduan penjual. Angka LANGSUNG (ketat) tetap
-// ditampilkan sebagai batas bawah untung; dan vonis untuk TOKO (apakah iklan secara
-// keseluruhan menguntungkan) diambil dari tren mingguan untung toko vs biaya iklan di sisi
-// klien (app.js: untungTokoPerMinggu), bukan per produk.
+// Skala mana yang dipakai untuk vonis? Keputusan Lanjut / Kurangi / Jeda per produk memakai
+// ROAS LANGSUNG (hanya produk yang diiklankan) dibanding ROAS minimum — keputusan pengguna
+// 2026-09-25 (§27.1 PROJECT_NOTES). Alasannya: omzet LUAS Shopee memasukkan produk lain dan
+// penjualan yang tetap terjadi tanpa iklan (atribusi 7 hari setelah klik + 1 hari setelah
+// lihat), jadi iklan yang rugi tetap kelihatan "Baik". Target ROAS yang DIISI di Seller Centre
+// tetap dinilai di skala Shopee (Shopee membandingkan target dengan omzet luas; Proteksi ROAS
+// pun memakai "Broad GMV"), jadi saran target = minimum + 2 tetap di skala itu. Vonis untuk
+// TOKO (apakah iklan secara keseluruhan menguntungkan) tetap dari tren mingguan untung toko vs
+// biaya iklan di sisi klien (app.js: untungTokoPerMinggu).
 //
 // Produk yang sedang beriklan dinilai dari KAMPANYE YANG SEDANG BERJALAN saja (p.berjalan),
 // bukan gabungan 3 bulan: Shopee mengulang tahap belajar tiap kampanye, jadi kampanye lama
@@ -54,6 +57,8 @@ const TINGKAT_CAIR_DEFAULT = 0.85; // 85% pesanan iklan dianggap dibayar kalau b
 const MARGIN_TIPIS = 0.08;          // ≤ 8% per Rp omzet: iklan tidak bisa untung di target berapa pun
 const PENYANGGA_TARGET = 2;         // poin di atas ROAS minimum
 const HARI_BELAJAR = 7;             // tahap belajar GMV Max: jangan diubah/dinilai sebelum 7 hari (FAQ Shopee)
+const JEDA_DI_BAWAH = 0.5;          // ROAS langsung < 50% minimum: memotong modal tidak cukup, jeda
+const HARI_JEDA = 14;               // …tapi baru setelah 14 hari berjalan (7 belajar + 7 data), supaya bukan kebetulan
 const EKOR_ATRIBUSI_HARI = 7;       // pesanan sampai 7 hari setelah klik masih dihitung iklan
 const JEDA_CAIR_HARI = 14;          // periode kampanye dianggap sudah cair semua ≥ 14 hari setelah akhirnya
 const KODE_IKLAN_TOKO = 'iklan-toko'; // baris "Iklan Produk Otomatis" / Shop GMV Max (tanpa Kode Produk)
@@ -218,9 +223,12 @@ const bagi = (a, b) => (b ? a / b : null);
 //   'toko'        : iklan level toko, tidak ada produknya — dinilai lewat kartu mingguan.
 //   'tunggu'      : kampanye yang berjalan belum 7 hari (tahap belajar) — jangan diubah dulu.
 //   'jeda'        : margin terlalu tipis (target yang dibutuhkan pasti di atas batas Shopee),
-//                   atau ROAS Shopee di bawah minimum (rugi bahkan dengan angka Shopee).
-//   'ubah-target' : ROAS Shopee di atas minimum tapi di bawah target (minimum + 2): isi target.
-//   'biarkan'     : ROAS Shopee sudah ≥ target.
+//                   ROAS langsung jauh di bawah minimum (< JEDA_DI_BAWAH × minimum, kampanye
+//                   berjalan ≥ HARI_JEDA hari supaya bukan kebetulan), atau kampanye yang sudah
+//                   berakhir dan rugi (jangan diulang dengan cara yang sama).
+//   'kurangi'     : kampanye berjalan dengan ROAS langsung di bawah minimum → turunkan Modal Harian.
+//   'ubah-target' : ROAS langsung aman, tapi ROAS Shopee di bawah target (minimum + 2): isi target.
+//   'biarkan'     : ROAS langsung ≥ minimum dan ROAS Shopee ≥ target.
 // Untuk produk yang sedang beriklan, ROAS & untung diambil dari kampanye yang berjalan saja.
 // Kalimatnya SENGAJA pendek — halaman ini dibaca orang tua non-teknis.
 function vonis(p) {
@@ -248,8 +256,15 @@ function vonis(p) {
       tindakan: p.marginPerRp > 0 ? `Jeda — margin cuma ${Math.round(p.marginPerRp * 100)}%.` : 'Jeda — harga di bawah modal.',
     };
   }
-  if (m.roasShopee === null || m.roasShopee < p.roasImpas) {
-    return { status: 'rugi', aksi: 'jeda', tindakan: `Jeda — ROAS ${f(m.roasShopee)} di bawah minimum ${f(p.roasImpas)}.` };
+  const roasL = m.roasLangsung;
+  if (roasL === null) return { status: 'untung', aksi: 'biarkan', tindakan: 'Belum ada biaya iklan.' };
+  if (roasL < p.roasImpas) {
+    const teksRoas = `langsung ${f(roasL)}, min ${f(p.roasImpas)}`;
+    if (!p.berjalan) return { status: 'rugi', aksi: 'jeda', tindakan: `Rugi (${teksRoas}) — jangan diulang begini.` };
+    if (roasL < p.roasImpas * JEDA_DI_BAWAH && p.berjalan.hari >= HARI_JEDA) {
+      return { status: 'rugi', aksi: 'jeda', tindakan: `Jeda — ROAS ${teksRoas}.` };
+    }
+    return { status: 'rugi', aksi: 'kurangi', tindakan: `Kurangi Modal Harian — ROAS ${teksRoas}.` };
   }
   if (m.roasShopee < p.targetDisarankan) {
     return { status: 'ragu', aksi: 'ubah-target', tindakan: `Naikkan Target ROAS ke ${f(p.targetDisarankan)}.` };
@@ -293,7 +308,10 @@ function batasDibayarKampanye(k, perHari, tanggalLaporanIso, tanggalRilisTerakhi
 //   produkIncome  : (opsional) Map/objek idProduk → { harga, rasio, pcs, perHari } dari file
 //                   Income yang sedang diunggah — harga & rasio pencairan produk itu sendiri,
 //                   plus perHari { 'YYYY-MM-DD': { pcs, harga } } untuk batas pesanan dibayar.
-//   opsi          : { tingkatCair, tanggalLaporanIso, tanggalRilisTerakhir }
+//   opsi          : { tingkatCair, tingkatCairPerProduk, tanggalLaporanIso, tanggalRilisTerakhir }
+//                   tingkatCairPerProduk (opsional) = { idProduk: 0–1 } diukur dari status pesanan
+//                   Shopee (sinkronShopee.js: tingkatCairTerukur); produk yang tidak ada di sana
+//                   memakai tingkatCair toko.
 function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, opsi = {}) {
   const rasio =
     Number.isFinite(rasioPencairan) && rasioPencairan > 0 && rasioPencairan <= 1
@@ -303,6 +321,11 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
     Number.isFinite(opsi.tingkatCair) && opsi.tingkatCair > 0 && opsi.tingkatCair <= 1
       ? opsi.tingkatCair
       : TINGKAT_CAIR_DEFAULT;
+  const cairPerProduk = opsi.tingkatCairPerProduk || {};
+  const cairProduk = (id) => {
+    const n = cairPerProduk[id];
+    return Number.isFinite(n) && n > 0 && n <= 1 ? n : tingkatCair;
+  };
   const tanggalLaporanIso = opsi.tanggalLaporanIso || '';
   const tanggalRilisTerakhir = opsi.tanggalRilisTerakhir || '';
   const tanggalDataMulai = opsi.tanggalDataMulai || '';
@@ -320,10 +343,10 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
     k.capTerukur = batas !== null;
     if (batas) {
       k.pesananDibayarMaks = Math.min(k.terjualLangsung, batas.pcs);
-      k.omzetLangsungCair = Math.min(k.omzetLangsung * tingkatCair, batas.harga);
+      k.omzetLangsungCair = Math.min(k.omzetLangsung * cairProduk(k.kodeProduk), batas.harga);
     } else {
       k.pesananDibayarMaks = null;
-      k.omzetLangsungCair = k.omzetLangsung * tingkatCair;
+      k.omzetLangsungCair = k.omzetLangsung * cairProduk(k.kodeProduk);
     }
   }
 
@@ -389,6 +412,7 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
     jumlahBiarkan: 0,
     jumlahUbahTarget: 0,
     jumlahJeda: 0,
+    jumlahKurangi: 0,
     biayaJeda: 0,      // biaya yang selama ini terbuang di iklan yang harus dijeda
     jumlahTunggu: 0,
     jumlahBelumHpp: 0,
@@ -423,6 +447,8 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
       p.hargaRata = 0;
       p.sumberHarga = null;
     }
+    const cair = cairProduk(p.idProduk);
+    p.tingkatCair = cair;
     const rasioProduk = adaIncome && Number.isFinite(inc.rasio) && inc.rasio > 0 && inc.rasio <= 1 ? inc.rasio : rasio;
     p.rasioPencairan = rasioProduk;
 
@@ -431,11 +457,11 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
       t.roasLangsung = bagi(t.omzetLangsung, t.biaya);
       if (m === null) { t.untungLangsung = hpp !== null ? -t.biaya : null; t.untungLuas = t.untungLangsung; return; }
       t.untungLangsung = t.omzetLangsungCair * m - t.biaya;
-      t.untungLuas = t.omzet * tingkatCair * m - t.biaya;
+      t.untungLuas = t.omzet * cair * m - t.biaya;
     };
     if (hpp !== null && p.hargaRata > 0) {
       p.marginPerRp = (p.hargaRata * rasioProduk - hpp) / p.hargaRata;
-      p.roasImpas = p.marginPerRp > 0 ? 1 / (p.marginPerRp * tingkatCair) : null;
+      p.roasImpas = p.marginPerRp > 0 ? 1 / (p.marginPerRp * cair) : null;
       p.targetDisarankan = p.roasImpas !== null ? p.roasImpas + PENYANGGA_TARGET : null;
       hitungUntung(p, p.marginPerRp);
       if (p.berjalan) hitungUntung(p.berjalan, p.marginPerRp);
@@ -470,6 +496,7 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
       if (p.aksi === 'biarkan') ringkasan.jumlahBiarkan += 1;
       else if (p.aksi === 'ubah-target') ringkasan.jumlahUbahTarget += 1;
       else if (p.aksi === 'tunggu') ringkasan.jumlahTunggu += 1;
+      else if (p.aksi === 'kurangi') ringkasan.jumlahKurangi += 1;
       else { ringkasan.jumlahJeda += 1; ringkasan.biayaJeda += p.biaya; }
     }
 

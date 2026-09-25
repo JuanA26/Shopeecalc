@@ -1,210 +1,155 @@
 # Kalkulator Margin Shopee (Shopee Margin Calc)
 
-**Live (server version):** https://shopee-margin-calc.onrender.com — this is the version actively used and developed; see below.
+**Live:** https://shopee-margin-calc.onrender.com (server version, the one in use)
 
-> **Status (2026-09-25):** the calculator gets all its sales data **automatically from the Shopee Open Platform API** — the Excel upload has been removed. Every 30 minutes the server syncs (a) all orders by creation date and (b) the exact payout of orders whose funds were released, into SQLite (`sinkronShopee.js`). The Kalkulator shows any period by order date — including **today** — with a daily sales trend chart; orders not yet paid out use an estimated payout until the exact figure arrives. Analisis Iklan is automatic too: the same sync pulls every ad campaign's settings (daily budget, target ROAS) and daily spend/sales from the Shopee Ads API (`sinkronIklan.js`); the ads CSV upload remains only as a fallback. Full details/history: `PROJECT_NOTES.md` in the parent folder, §21 onwards.
+A small private web app for one Shopee shop. It pulls orders, payouts and ad data **automatically from the
+Shopee Open Platform API** (read-only), combines them with the cost price (HPP) you enter per product,
+and shows:
 
-This repo has **two versions** of the same calculator — pick whichever matches how you want to use it:
+- **Real profit** per sale and per period (payout − HPP), by order date, including today.
+- **Whether each Shopee ad (GMV Max) makes money**, and one action per ad for Seller Centre.
 
-| | [`docs/`](docs/) — static version | [webapp root](.) — server version |
-|---|---|---|
-| **Hosting** | GitHub Pages, free forever, no signup | Render (or similar), ~$7/month |
-| **HPP data stored as** | A CSV file you download/upload yourself | Server-side SQLite database |
-| **Shared live data across people/devices?** | No — CSV is the sync mechanism | Yes — everyone sees the same data instantly |
-| **Login required?** | No | Yes |
-| **Data ever leaves your browser?** | No — 100% client-side, nothing to trust a server with | HPP, accounts and API-synced orders live server-side |
+The UI is in simple Bahasa Indonesia and login is required. There is no public sign-up.
 
-If you're the only one using it, or a couple of you but don't need everyone to see the exact same numbers at the same instant, **use `docs/`** — it's simpler, free, and more private by construction. If you need several people genuinely sharing one live, always-in-sync price list, use the server version.
-
-Everything below this point describes the **server version**. The static version is covered in its own section [near the end of this file](#the-static-docs-version--github-pages).
+This repo also contains an older **static version** in [`docs/`](docs/) (GitHub Pages, no server). It is
+frozen; see [the end of this file](#the-static-docs-version).
 
 ---
 
-A small private web app that:
-
-- Pulls orders and payouts **automatically from the Shopee Open Platform API** (read-only; see `shopeeApi.js`).
-- Shows a table per sold unit: order number, order date, date funds released, product name + ID, and `Total Penghasilan` (Shopee's net payout for that unit, after all their fees).
-- Lets you enter a **HPP (Harga Pokok Penjualan / cost price)** per Product ID in a separate tab. That cost is saved permanently and reused automatically on every future upload.
-- Computes profit (`Total Penghasilan − HPP`) and margin % (`profit / Total Penghasilan`) per line, plus overall totals.
-- Requires login. There is no public sign-up — accounts are created by you from the command line.
-- The UI text is in simple Bahasa Indonesia (built for non-technical family members to use).
-
-**What is stored on the server:** the HPP (cost) table, login accounts, the Shopee OAuth token, and every order pulled from the Shopee API (order number, dates, status, per-item product/variant, pcs, price and — once funds are released — the payout share; tables `api_order` / `api_order_item` / `api_pesanan` / `api_pesanan_item`). Buyer usernames are deliberately **not** stored.
-
----
-
-## 1. Run it locally first
+## 1. Run it locally
 
 ```bash
 cd webapp
 npm install
-copy .env.example .env        # Windows PowerShell: Copy-Item .env.example .env
+copy .env.example .env        # PowerShell: Copy-Item .env.example .env
 ```
 
-Open `.env` and set `SESSION_SECRET` to a long random string. Generate one with:
+In `.env`, set `SESSION_SECRET` to a long random string
+(`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`) and the `SHOPEE_*` values.
+Then create a login and start:
 
 ```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+node scripts/add-user.js saya "GantiDenganPasswordKuat123"   # re-run to change a password
+npm start                                                     # http://localhost:3000
 ```
 
-Create your first login account:
+Sales data needs a one-time shop authorization at `/auth/shopee/authorize`.
 
-```bash
-node scripts/add-user.js saya "GantiDenganPasswordKuat123"
-```
+## 2. Deploy (Render)
 
-Run one of these for every trusted person who needs their own login (e.g. `node scripts/add-user.js ibu "..."`). Re-running with the same username changes that person's password.
+`render.yaml` sets up everything: New → Blueprint → pick the repo.
 
-Start the app:
+- **Plan:** Starter (~$7/month). The free tier has no persistent disk, and the SQLite file
+  (`DATA_DIR`) must be on one or all data is lost on redeploy.
+- **Env vars to fill in:**
+  - `ADMIN_ACCOUNTS`, e.g. `aaron:Pass1,ibu:Pass2`. Accounts are created on start; existing ones are left
+    untouched.
+  - `SHOPEE_PARTNER_ID` / `SHOPEE_PARTNER_KEY` (live keys from the Shopee Open Platform console).
+- After that, every `git push` to `main` redeploys automatically.
 
-```bash
-npm start
-```
+**Access and privacy:**
+- Every route except login requires a session. Only create accounts for people you trust, with long,
+  unique passwords.
+- Back up the database (`app.db`): it holds the HPP list and accounts.
 
-Visit `http://localhost:3000` and log in. Sales data needs a Shopee authorization (`/auth/shopee/authorize`) and the `SHOPEE_*` settings in `.env`.
+## 3. Using the site
 
----
+### Dashboard
+Two cards: Kalkulator Margin (profit for the period chosen there) and Analisis Iklan (headline numbers).
 
-## 2. On privacy / who can access it — my recommendation
+### Kalkulator Margin
+- **Lihat Data Penjualan:**
+  - Choose Hari ini / 7 hari / 30 hari / Bulan ini / Bulan lalu or your own dates. Periods are **by order
+    date** on the WIB calendar.
+  - You get tiles (Omzet, Pendapatan, Untung, margin), a daily trend chart, and a table of every sold item.
+  - Orders whose funds aren't released yet show **"Belum cair"** with an **≈** estimate. The exact figure
+    replaces it automatically. Cancelled and unpaid orders are left out.
+- **Atur Harga Modal (HPP):** set the cost price per Product ID (shared by all users). Bulk CSV
+  import/export. The "Belum Diisi" filter lists products without HPP, best sellers first.
+- Yellow rows = no HPP yet (type it straight into the row). Click a column header to sort.
+- **Sync:**
+  - Runs every 30 minutes and only downloads new or changed orders.
+  - "Sinkron Sekarang" forces it; a progress bar shows the steps.
+  - If it keeps ending red, read the message. The app renews Shopee's token itself; if Shopee refuses,
+    authorize again at `/auth/shopee/authorize` (saved data is kept).
 
-You asked how to keep this private to just you and people you choose. Here's the trade-off, and what I'd actually do:
+### Analisis Iklan
+Ads data (last 90 days, every product campaign, plus the budget and target set in Seller Centre) comes
+from Shopee automatically. The page answers four questions:
 
-### Your situation: "me + a few trusted people, from anywhere"
-Because you need access from multiple locations/devices (not just one PC), the app **must** run on a server reachable over the internet — there's no way around exposing *some* URL publicly. Privacy then comes from **who can authenticate**, not from hiding the URL. So:
+1. **Anggaran Iklan:** the store-level check.
+   - Weekly profit after ads, last 4 complete weeks vs the 4 before. If ads went up but profit didn't:
+     "kurangi Modal Harian".
+   - "Iklan mengklaim N%" shows how much of the store's sales Shopee credits to ads. Near 100% means the
+     ads mostly relabel sales that would have happened anyway.
+2. **Iklan yang Sedang Berjalan:** one row per running ad, showing the budget and target from Seller Centre
+   and **one decision**, judged on **direct ROAS** (sales of the advertised product only) against its
+   **ROAS minimum**:
+   - **Lanjut:** direct ROAS ≥ minimum.
+   - **Kurangi modal:** direct ROAS below the minimum → halve the daily budget.
+   - **Jeda:** direct ROAS below half the minimum after 14 days; margin ≤ 8%; or the target needed
+     is above Shopee's highest recommendation + 25% (Shopee's own limit).
+   - **Naikkan target:** the target set is below minimum + 2. Targets use Shopee's own ROAS scale,
+     because that's what Shopee compares them with.
+   - **Tunggu:** the ad is younger than 7 days (Shopee's learning phase).
+   - **Isi HPP dulu:** the product has no HPP.
+   - Each row also shows Shopee's recommended target range, and a note when the ad ends within 7 days
+     (extend it as "Tidak Terbatas" instead of creating a new one, which restarts learning).
+3. **Mulai Iklankan:** best-selling products with margin ≥ 20% and no ads.
+4. **Semua produk & rincian** (collapsed): every product incl. ended ads, plus the reading guide.
 
-1. **Login is mandatory and already built in** (this app has no public data or public sign-up page — every route except `/api/login` requires a session).
-2. **Only create accounts for people you've explicitly decided should have access**, using `scripts/add-user.js` yourself. Never expose an admin/signup UI.
-3. **Always deploy behind HTTPS** (every option below gives you this for free) — otherwise passwords and financial data travel in plaintext.
-4. **Use long, unique, random passwords per person** (a password manager, not something guessable). Consider rotating them if anyone with access changes (e.g. staff turnover).
-5. **Optional extra layer:** put the app behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) or [Tailscale](https://tailscale.com/) so that even the login page isn't reachable by a random person on the internet — only people on an allow-list (by email, or by being on your private network) can even load the page. This is the strongest option if you want to be extra careful, at the cost of a bit more setup. I'd suggest starting without this and adding it later if you want more peace of mind.
-6. **Back up `webapp/data/app.db` regularly** (it's the only thing with lasting value — your HPP list and accounts) since it's small and irreplaceable if the host's disk is lost.
-7. Keep any raw Seller Centre exports you download (e.g. the ads CSV) off public/shared cloud drives unless that drive itself is private.
+The ads CSV from Seller Centre can still be uploaded under "Cadangan" if the automatic data fails.
 
-### Where to actually host it
-Pick one depending on how hands-on you want to be:
+## 4. How the numbers are calculated
 
-| Option | Effort | Notes |
-|---|---|---|
-| **Render.com / Fly.io / Railway** (small free or ~$5/mo tier) | Low | Easiest. Push code, add a persistent disk/volume for `webapp/data`, set the `SESSION_SECRET` env var in their dashboard. Gives you HTTPS automatically. This is what I'd pick. |
-| **Your own always-on PC / home server + Tailscale** | Medium | No public exposure at all — only devices you've added to your Tailscale network can reach it, from anywhere in the world, without opening any ports. Very private, but requires that machine to stay on. |
-| **A cheap VPS (e.g. DigitalOcean, Hetzner) + Caddy for HTTPS** | Medium-High | More control, but you're responsible for OS updates/security patches yourself. |
+**Kalkulator**
+- **Omzet** = selling price (after the shop's own discounts) × pcs, non-returned items.
+- **Pendapatan** = what Shopee pays out. It's exact for released orders (split over items by price, like
+  Shopee's Income report). Otherwise ≈ price × the shop's payout ratio of the last 60 days.
+- **Untung** = Pendapatan − HPP × pcs, for items that have an HPP.
+- **Margin** = Untung ÷ Pendapatan of those same items.
+- Returned items count as 0.
 
-I did **not** create any accounts or push anything on your behalf — that's your call to make. Below are the concrete steps for the Render path (what I'd pick), which this repo is already set up for via `render.yaml`.
+**Analisis Iklan**
+- **Margin per Rp of sales** = (price × payout ratio − HPP) ÷ price, from the product's own paid-out
+  orders.
+- **Paid-order rate:** Shopee counts ad sales when an order is *placed*, including orders later
+  cancelled, unpaid or returned. The app measures the share that actually became sales from the shop's
+  own order statuses (orders from 90 to 14 days ago, per product where there's enough data).
+  - A value typed under "Semua produk & rincian" overrides it.
+  - It is 85% when there isn't enough data.
+- **ROAS minimum** = 1 ÷ (margin × paid-order rate). Below it, the ad loses money even if every sale it
+  claims is real.
+- **Iklan Toko:** ad spend outside product campaigns (shop total − Σ campaigns) is kept as one line so
+  its cost isn't lost.
 
-### A note on the SQLite database + hosting platforms
-This app uses Node's built-in SQLite (a single file at `webapp/data/app.db`) — no separate database server to manage. The one thing to get right on any host: **make sure the data folder is a persistent volume/disk**, not the platform's ephemeral filesystem, or your HPP entries and accounts will vanish on every redeploy/restart. The `DATA_DIR` env var (see `db.js`) lets you point the database at wherever that platform's persistent disk is mounted — `render.yaml` already wires this up for Render.
-
-### Step-by-step: GitHub + Render
-
-GitHub only stores your code — it can't run this app by itself (GitHub Pages is static-only). Render is what actually runs the server, and it deploys straight from your GitHub repo.
-
-1. **Push to GitHub** (from inside `webapp/`):
-   ```bash
-   git init
-   git add -A
-   git commit -m "Initial commit"
-   ```
-   Create a new **private** repo on github.com (no README/license — you already have files), then:
-   ```bash
-   git remote add origin https://github.com/<youruser>/<yourrepo>.git
-   git branch -M main
-   git push -u origin main
-   ```
-2. **Create a Render account** at render.com (free to sign up), connect your GitHub account.
-3. **New → Blueprint**, pick your repo. Render reads `render.yaml` automatically and sets up the web service, the persistent disk, and a random `SESSION_SECRET` for you.
-4. Render will ask you to fill in `ADMIN_ACCOUNTS` (the one variable marked "sync: false" in `render.yaml`) — enter your login accounts right there, formatted as:
-   ```
-   aaron:SomeStrongPassword1,ibu:AnotherStrongPassword2
-   ```
-   Every account listed here is created automatically the first time the server starts — no shell/SSH access needed. (You can add more people later the same way: edit this env var and trigger a redeploy — accounts that already exist are left untouched.)
-5. Deploy. Render gives you an HTTPS URL (`https://your-app.onrender.com`) — that's what you and your trusted people use to log in.
-6. **Cost note:** persistent disks require Render's paid **Starter** plan (roughly $7/month at time of writing) — their free tier doesn't support attached disks, and without one your HPP data would be wiped on every redeploy.
-
-From then on, `git push` to your repo auto-deploys the new version — no manual redeploy step.
-
----
-
-## 3. Day-to-day usage (for the person using the site)
-
-1. Log in. You land on a **Dashboard** with two cards: "Kalkulator Margin" (profit and margin for the period currently chosen in the Kalkulator — a grey label names it, e.g. "30 hari terakhir · 27 Agu – 25 Sep 2026") and "Analisis Iklan" (its headline numbers, from the synced ads data).
-2. Click **"Buka Kalkulator"** on that card (or "Kalkulator Margin" in the nav bar at the top) to get to the calculator itself, which has two tabs:
-   - **"Lihat Data Penjualan"**: data comes from Shopee automatically. Pick a period — **Hari ini** / 7 hari / 30 hari / Bulan ini / Bulan lalu, or your own dates, **by order date** (WIB calendar, like Shopee's own reports — also for users in WITA/WIT) — and you get: headline tiles (Omzet = selling price of items sold, with order and pcs counts; Pendapatan = what Shopee pays out; Untung; margin), a **daily trend chart** (one column per day for Omzet / Untung / Pesanan / Pcs, a 7-day average line, hover/tap a day for all its numbers), and a table with every sold item and its margin. Orders whose funds aren't released yet show "Belum cair" and a **≈** estimate (selling price × the shop's average payout ratio of the last 60 days); the exact figure replaces it automatically once Shopee releases the funds. Cancelled and unpaid orders are left out. Sync runs every 30 minutes (**"Sinkron Sekarang"** forces it; "Hari ini" refreshes first if the last sync is >5 min old). It is incremental — only new orders and orders whose status changed are downloaded — and a progress bar shows both steps (orders, then payout details), ending with "✓ Data sudah terbaru" when nothing changed. If the shop isn't connected yet, a **"Hubungkan Toko Shopee"** button starts the one-time authorization.
-   **If the progress bar keeps ending red** ("Gagal mengambil data"): read the message under it. The app renews Shopee's 4-hour access token by itself using a 30-day refresh token, and the shop authorization itself lasts up to a year. If renewal is refused (e.g. the authorization expired or was revoked in Shopee), open `/auth/shopee/authorize` and authorize once more with the shop's Shopee account; saved data is kept.
-   - **"Atur Harga Modal (HPP)"**: view/edit/add the cost price for any product by its Product ID. This list is permanent and shared by everyone who logs in. You can also **bulk import/export the whole HPP list as a CSV file** (e.g. to migrate from the static version, or keep a backup) — buttons for both are in that tab.
-3. Rows highlighted in yellow mean that product doesn't have a HPP yet — you can type it right into that row (press Enter to save), or go to the HPP tab. In the HPP tab, the **"Belum Diisi"** filter lists those products ordered by how much they sold in the chosen period (a "Terjual (periode ini)" column shows pcs and revenue), so you can fill in the ones that matter most first.
-4. Click any column header (No. Pesanan, Jumlah, Untung, Margin %, etc.) to sort the table by that column — click again to reverse the order.
-5. **Analisis Iklan** (nav bar): ads data comes **automatically from Shopee** — the last 90 days of every product campaign (spend, Shopee-reported and direct sales per day) plus the budget and target ROAS currently set in Seller Centre; a status line says when it was last updated. The old way — uploading the **"Data Keseluruhan Iklan"** CSV from Seller Centre — is kept in a collapsed "Cadangan" section for when the automatic data has a problem (the uploaded file is used until the page is reloaded). Sales figures come automatically from the last 90 days of synced Shopee orders, independent of the period chosen in the Kalkulator (prices and payout ratios from paid-out orders only; the weekly card also counts orders not paid out yet, at the ≈ estimate, so the latest weeks aren't understated — a week counts as complete 7 days after it ends). The page answers four questions, in this order, with colours and one number each:
-   1. **Anggaran Iklan** — a one-line rule from the store's weekly profit ("iklan naik, untung tidak naik → kurangi Modal Harian"), the share of the store's paid sales that ads claim ("iklan mengklaim N% penjualan" — near 100% means ads are just relabelling sales that would have happened anyway), and the total daily budget now → suggested. The weekly chart/table sits in a dropdown under it. This is the store-level verdict on whether ads pay off; Shopee's per-ad ROAS can't tell you that because it credits ads with other products and with sales that would have happened anyway.
-   2. **Iklan yang Sedang Berjalan** — one row per running campaign. The **Modal Harian** and **Target ROAS** come straight from Seller Centre (with the CSV fallback you type them once instead; they're saved). A campaign on **GMV Max Auto** (no target) with a known minimum gets "Ganti ke GMV Max ROAS, target N". Each row shows *sekarang → saran* for the budget, *sekarang (minimal) ✓* for the target (minimal = ROAS minimum + 2), a small line with Shopee's ROAS and the direct ROAS vs the minimum (red when below — the ad may not be profitable even though Shopee says "Baik"), and one decision, judged on the **direct ROAS** (the advertised product only) against the ROAS minimum — not on Shopee's bigger ROAS, which also credits other products and sales that would have happened anyway: **Lanjut**, **Kurangi modal** (halve; direct ROAS below the minimum — or, when the weekly store rule says cut and every ad passes, the 3 with the lowest strict profit), **Naikkan target** (set target below the minimum + 2, on Shopee's scale because Shopee compares the target with its own ROAS), **Jeda** (margin ≤ 8%, direct ROAS below half the minimum after 14 days, or the target needed exceeds Shopee's highest recommended ROAS + 25% — Shopee's own limit, above which ads barely show), **Tunggu** (campaign younger than 7 days — Shopee's learning phase, nothing is judged yet) or **Isi HPP dulu**. Running products are judged on their *running* campaign only, not the 3-month total. Under the target, Shopee's own recommended range for that product is shown ("Shopee 6,7–11,2", refreshed daily). A running campaign that ends within 7 days gets a note to extend it (Periode → Tidak Terbatas) rather than create a new one, which would restart the 7-day learning phase. Click a row for the details.
-   3. **Mulai Iklankan** — organic best-sellers with margin ≥ 20% and no ads, each with its target minimum.
-   4. **Semua produk & rincian** (collapsed) — the full per-product table incl. ended campaigns, and the reading guide.
-   Prices and Shopee's cut per product come from the synced paid-out orders (otherwise the direct ad price and a 78% default, with a note). **Cancelled / unpaid orders:** Shopee counts ad sales when an order is *placed*, including orders that are later cancelled or never paid; the paid-out order data only has completed orders. The app therefore (a) applies a paid-order rate to all ad sales — **measured from the shop's own Shopee order statuses** (pcs ordered 90–14 days ago that weren't unpaid, cancelled or returned; per product where it has enough orders, pulled towards the shop rate otherwise), 85% only when there isn't enough order data yet; a number typed under "Semua produk & rincian" overrides it — and (b) for campaigns that ended long enough ago for every order to be paid out, measures a hard upper bound from the paid-out orders themselves (paid ad orders can't exceed the product's total paid orders in the campaign window) and shows it per campaign ("Dibayar ≤ 14 / 29"). The ROAS minimum and the strict profit include this. Ad spend outside product campaigns (shop total from Shopee minus the sum of the campaigns; in a CSV: rows without a product code) is kept as one "Iklan Toko" line so its cost isn't lost. With the automatic data, the weekly card uses the real spend per day (the CSV only has campaign totals, which are spread evenly over the campaign's days). Synced ads data is stored in tables `iklan_kampanye`, `iklan_harian`, `iklan_toko_harian`, `iklan_rekomendasi`; nothing from an uploaded CSV is stored, only the typed Target ROAS / Modal Harian per product (table `iklan_setelan`) and the paid-order rate (table `pengaturan`).
-6. **Jumlah (pcs) column:** the pcs count comes straight from Shopee's order data.
-
-**How the numbers are calculated** (details: `PROJECT_NOTES.md` §24):
-- **Omzet** = selling price (after the shop's own discounts) × pcs, summed over all non-returned items ordered in the period — before Shopee takes its cut.
-- **Total Pendapatan** = what Shopee actually pays out. For paid-out orders this is Shopee's exact figure, split across the order's items in proportion to price (the same way Shopee's own Income report does it). For orders not paid out yet it's an estimate: selling price × the shop's average payout ratio over the last 60 days, marked **≈**.
-- **Total Untung** = Pendapatan − HPP × pcs, for items that have an HPP. Items without an HPP are left out (and counted in "Belum Ada Harga Modal", which counts distinct products).
-- **Rata-rata Margin** = Total Untung ÷ the Pendapatan of the same items (only products that have an HPP), so products still missing an HPP don't drag the margin down.
-- Returned items count as neither profit nor loss (the goods come back).
-- Analisis Iklan uses only paid-out orders (exact figures), last 90 days.
-
----
-
-## 4. Project structure
+## 5. Project structure
 
 ```
 webapp/
-  server.js         Express server: auth, HPP API (incl. CSV import/export), sales data + sync endpoints,
-                     manual "Jumlah" (pcs) override API, ads-analysis endpoints
-  analisisIklan.js  Reads the Seller Centre "Data Keseluruhan Iklan" CSV and computes per-product
-                     break-even ROAS / profit after ads from HPP + selling price + payout ratio,
-                     and picks one Seller Centre action per product
-  db.js             SQLite setup (users, product_hpp, order_item_jumlah, iklan_setelan, pengaturan,
-                     shopee_token, api_order, api_order_item, api_pesanan, api_pesanan_item,
-                     sinkron_shopee, iklan_kampanye, iklan_harian, iklan_toko_harian tables)
-  sinkronIklan.js   Automatic ads sync from the Shopee Ads API (campaign list/settings, daily
-                     performance per campaign, shop daily totals; read-only) and turning the
-                     stored rows into the same campaign rows the CSV gives analisisIklan.js
-  sinkronShopee.js  Automatic order sync from the Shopee API (escrow list/detail, order detail,
-                     return detail) into SQLite, splitting each order's payout across its items
-                     the same way Shopee's Income Excel does
-  shopeeApi.js      Shopee Open Platform API v2 client: HMAC signing, OAuth link/token exchange,
-                     and a hard-allowlisted read-only request helper (see PROJECT_NOTES.md §20) —
-                     used by sinkronShopee.js (the old /api/shopee/* debug routes were removed)
-  scripts/add-user.js   CLI to create/update login accounts
-  public/           Frontend (Bahasa Indonesia UI): index.html, style.css, app.js
-  data/app.db       SQLite database (gitignored — back this up, don't commit it)
-  Dockerfile        For deploying to any container host
-  docs/             The static version — see below
+  server.js         Express: login, HPP API (incl. CSV), sales data, sync scheduler/status, ads routes
+  shopeeApi.js      Shopee API v2 client: HMAC signing, OAuth, read-only endpoint allowlist
+  sinkronShopee.js  Order + payout sync into SQLite; measured paid-order rate
+  sinkronIklan.js   Ads sync (campaigns, daily performance, shop totals, recommended ROAS)
+  analisisIklan.js  Ads maths and per-ad decision; parser for the Seller Centre ads CSV
+  db.js             SQLite schema (users, HPP, settings, Shopee token, orders, payouts, ads)
+  scripts/add-user.js   Create/update login accounts
+  public/           Frontend: index.html, app.js, style.css (no build step)
+  data/app.db       SQLite database (gitignored; back it up)
+  Dockerfile        For other container hosts
 ```
+
+**Stored on the server:** HPP list, accounts, the Shopee token, and synced orders, payouts and ad metrics.
+Buyer usernames are **not** stored. Nothing is ever written to Shopee: every API path must be on the
+read-only allowlist in `shopeeApi.js`.
 
 ---
 
-## The static (`docs/`) version — GitHub Pages
+## The static (`docs/`) version
 
-A completely self-contained rewrite with **no server, no database, no login**. Everything —
-reading the Shopee Excel file, computing margins, storing HPP — happens in your browser.
-Nothing is ever sent anywhere.
+Frozen, older version with **no server, no database, no login**. It reads an uploaded Shopee Income Excel
+file entirely in the browser. HPP lives in a CSV you download/upload yourself (plus a copy in the browser's
+local storage), so use "Unduh CSV" after changes and carry the file between devices yourself.
 
-**How HPP data works here:** instead of a database, your cost list lives in a CSV file you
-download and re-upload yourself (via the buttons in the "Atur Harga Modal" tab), plus an
-automatic copy in that browser's local storage as a convenience so it survives a normal
-refresh. If you edit HPP data and try to close the tab without downloading the updated CSV,
-a banner (and the browser's own "leave site?" prompt) reminds you first — but browsers don't
-allow a fully custom message there, and it won't catch a crash or force-quit, so make a habit
-of clicking "Unduh CSV" after making changes you care about.
-
-**Deploying it (free, forever):**
-
-1. Push this repo to GitHub (see steps above if you haven't already).
-2. On GitHub: **Settings → Pages** (left sidebar) → under "Build and deployment", set
-   **Source: Deploy from a branch** → **Branch: `main`, folder: `/docs`** → Save.
-3. GitHub gives you a URL like `https://<youruser>.github.io/<yourrepo>/` within a minute or two.
-   That's it — no build step, no account, no ongoing cost.
-
-**Keeping it updated:** any time you `git push` a change to `main`, GitHub Pages redeploys
-automatically (takes a minute or so).
-
-**Using it on multiple devices:** open the page on each device, and use "Unduh CSV" on one /
-"Unggah CSV" on the other to carry your price list between them — there's no live sync.
+**Publish it (free):** GitHub → Settings → Pages → Deploy from a branch → `main`, folder `/docs`. It
+redeploys on every push.

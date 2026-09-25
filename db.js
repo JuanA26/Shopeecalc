@@ -156,10 +156,68 @@ db.exec(`
     harga_satuan REAL NOT NULL,
     PRIMARY KEY (order_sn, baris)
   );
+
+  -- Iklan dari Shopee Ads API (sinkronIklan.js), pengganti file CSV "Data Keseluruhan Iklan".
+  -- Satu baris per kampanye (Seller Centre: "Iklan Produk · GMV Max ROAS/Auto" = di API
+  -- ad_type manual + bidding_method auto; roas_target 0 = GMV Max Auto). budget_harian 0 =
+  -- tanpa batas. Tanggal = tanggal WIB (YYYY-MM-DD); selesai '' = tanpa tanggal selesai.
+  CREATE TABLE IF NOT EXISTS iklan_kampanye (
+    campaign_id TEXT PRIMARY KEY,
+    shop_id TEXT NOT NULL,
+    id_produk TEXT,
+    nama_iklan TEXT,
+    status TEXT,
+    bidding_method TEXT,
+    placement TEXT,
+    budget_harian REAL,
+    target_roas REAL,
+    mulai TEXT,
+    selesai TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Angka harian per kampanye (get_product_campaign_daily_performance). omzet/terjual = atribusi
+  -- luas (broad_*), *_langsung = hanya produk yang diiklankan (direct_*). Hari tanpa aktivitas
+  -- tidak disimpan. Angka satu hari masih bisa naik sampai 7 hari kemudian (atribusi 7 hari
+  -- setelah klik), jadi sinkron selalu menarik ulang beberapa hari terakhir.
+  CREATE TABLE IF NOT EXISTS iklan_harian (
+    campaign_id TEXT NOT NULL,
+    tanggal TEXT NOT NULL,
+    shop_id TEXT NOT NULL,
+    dilihat REAL NOT NULL DEFAULT 0,
+    klik REAL NOT NULL DEFAULT 0,
+    biaya REAL NOT NULL DEFAULT 0,
+    omzet REAL NOT NULL DEFAULT 0,
+    omzet_langsung REAL NOT NULL DEFAULT 0,
+    terjual REAL NOT NULL DEFAULT 0,
+    terjual_langsung REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (campaign_id, tanggal)
+  );
+  CREATE INDEX IF NOT EXISTS idx_iklan_harian_tanggal ON iklan_harian (shop_id, tanggal);
+
+  -- Total iklan seluruh toko per hari (get_all_cpc_ads_daily_performance). Selisihnya dengan
+  -- jumlah per kampanye = iklan di luar kampanye produk (iklan toko), dihitung sebagai satu
+  -- "produk" semu supaya biayanya tidak hilang.
+  CREATE TABLE IF NOT EXISTS iklan_toko_harian (
+    shop_id TEXT NOT NULL,
+    tanggal TEXT NOT NULL,
+    dilihat REAL NOT NULL DEFAULT 0,
+    klik REAL NOT NULL DEFAULT 0,
+    biaya REAL NOT NULL DEFAULT 0,
+    omzet REAL NOT NULL DEFAULT 0,
+    omzet_langsung REAL NOT NULL DEFAULT 0,
+    terjual REAL NOT NULL DEFAULT 0,
+    terjual_langsung REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (shop_id, tanggal)
+  );
 `);
 
 // Kolom yang ditambahkan setelah tabel sinkron_shopee sudah ada di produksi.
 try { db.exec('ALTER TABLE sinkron_shopee ADD COLUMN order_ts INTEGER'); } catch (_) { /* sudah ada */ }
 try { db.exec('ALTER TABLE sinkron_shopee ADD COLUMN order_berubah INTEGER'); } catch (_) { /* sudah ada */ }
+// Status sinkron iklan (terpisah dari pesanan: iklan gagal tidak membuat sinkron pesanan gagal).
+for (const kolom of ['iklan_sampai TEXT', 'iklan_status TEXT', 'iklan_pesan TEXT', 'iklan_selesai TEXT']) {
+  try { db.exec(`ALTER TABLE sinkron_shopee ADD COLUMN ${kolom}`); } catch (_) { /* sudah ada */ }
+}
 
 module.exports = db;

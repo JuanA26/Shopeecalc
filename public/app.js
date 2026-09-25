@@ -301,13 +301,13 @@ function renderProgres(s) {
     progresTadiBerjalan = true;
     el.classList.remove('tersembunyi', 'selesai', 'gagal', 'memudar');
     const p = s.progres || { tahap: 'pesanan', selesai: 0, total: null };
-    const idx = p.tahap === 'dana' ? 1 : 0;
+    const idx = p.tahap === 'pesanan' ? 0 : 1; // 'dana' & 'iklan' = langkah 2
     lPesanan.className = 'langkah-progres ' + (idx === 0 ? 'aktif' : 'beres');
     lDana.className = 'langkah-progres' + (idx === 1 ? ' aktif' : '');
-    const namaLangkah = idx === 0 ? 'Mengambil pesanan' : 'Mengambil rincian dana cair';
+    const namaLangkah = idx === 0 ? 'Mengambil pesanan' : p.tahap === 'iklan' ? 'Mengambil data iklan' : 'Mengambil rincian dana cair';
     if (p.total === null || p.total === undefined) {
       el.classList.add('tak-tentu');
-      label.textContent = `Langkah ${idx + 1} dari 2 · ${idx === 0 ? 'Mencari pesanan di Shopee...' : 'Mencari pesanan yang dananya cair...'}`;
+      label.textContent = `Langkah ${idx + 1} dari 2 · ${idx === 0 ? 'Mencari pesanan di Shopee...' : p.tahap === 'iklan' ? 'Mengambil data iklan dari Shopee...' : 'Mencari pesanan yang dananya cair...'}`;
       angka.textContent = '';
       trek.removeAttribute('aria-valuenow');
       return;
@@ -397,9 +397,10 @@ async function muatDataPenjualanIklan() {
   try {
     const q = new URLSearchParams({ dari, sampai });
     dataPenjualanIklan = await apiFetch(`/api/pesanan?${q}`);
-    hitungUlangIklan();
-    if (!dataIklan) renderMingguan();
   } catch (_) { /* belum terhubung / belum ada data — Analisis Iklan memakai angka standar */ }
+  if (!dataIklan || dataIklan.sumber === 'api') await muatIklanDariShopee();
+  else hitungUlangIklan();
+  if (!dataIklan) renderMingguan();
 }
 
 // Dipanggil sekali setelah login: cek koneksi, lalu langsung tampilkan 30 hari terakhir.
@@ -1303,6 +1304,7 @@ tombolProsesIklan.addEventListener('click', async () => {
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || 'Gagal memproses file.');
     dataIklan = body;
+    statusIklanShopee.innerHTML = `Memakai file yang diunggah (<strong>${escapeHtml(body.periode || '')}</strong>). Muat ulang halaman untuk kembali ke data otomatis dari Shopee.`;
     produkTerbuka.clear();
     grupBerakhirTerbuka = false;
     renderIklan();
@@ -1316,10 +1318,56 @@ tombolProsesIklan.addEventListener('click', async () => {
   }
 });
 
+// Data iklan otomatis: server menyusun kampanye dari hasil sinkron Shopee Ads API (90 hari
+// terakhir, sama dengan data penjualan halaman ini) lalu menghitung dengan rumus yang sama
+// seperti file CSV. File unggahan (cadangan) menggantikannya sampai halaman dimuat ulang.
+const statusIklanShopee = document.getElementById('statusIklanShopee');
+const waktuSingkat = (iso) => new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+function teksStatusIklan(body) {
+  const st = body.statusIklan || {};
+  const gagal = st.status === 'gagal' ? ` <span class="teks-merah">Sinkron iklan terakhir gagal: ${escapeHtml(st.pesan || '')}</span>` : '';
+  if (body.kosong) {
+    return (st.status === 'gagal' ? 'Data iklan belum bisa diambil dari Shopee.' : 'Data iklan belum ada — diambil otomatis saat sinkron berikutnya (tiap 30 menit, atau tombol "Sinkron Sekarang" di Kalkulator Margin).') + gagal;
+  }
+  const waktu = st.terakhirSelesai ? ` · diperbarui ${waktuSingkat(st.terakhirSelesai)}` : '';
+  return `Otomatis dari Shopee · <strong>${escapeHtml(body.periode)}</strong>${waktu}.` + gagal;
+}
+let muatIklanBerjalan = null;
+async function muatIklanDariShopee() {
+  if (muatIklanBerjalan) return muatIklanBerjalan; // beberapa pemicu sekaligus → satu permintaan
+  muatIklanBerjalan = (async () => {
+    const sampai = hariIniWib();
+    const dari = geserHari(sampai, -89);
+    const adaPenjualan = !!sumberIklan();
+    try {
+      const body = await apiFetch('/api/iklan/dari-shopee', {
+        method: 'POST',
+        body: JSON.stringify({
+          dari, sampai,
+          rasioPencairan: rasioPencairanSaatIni(),
+          produkIncome: adaPenjualan ? produkIncomeSaatIni() : {},
+          tanggalRilisTerakhir: tanggalRilisTerakhirSaatIni(),
+          tanggalDataMulai: tanggalDataMulaiSaatIni(),
+        }),
+      });
+      if (dataIklan && dataIklan.sumber !== 'api') return; // file unggahan dipakai sementara itu
+      statusIklanShopee.innerHTML = teksStatusIklan(body);
+      if (body.kosong) return;
+      dataIklan = body;
+      renderIklan();
+      areaIklan.classList.remove('tersembunyi');
+    } catch (err) {
+      if (!dataIklan || dataIklan.sumber === 'api') statusIklanShopee.textContent = `Gagal memuat data iklan: ${err.message}`;
+    }
+  })().finally(() => { muatIklanBerjalan = null; });
+  return muatIklanBerjalan;
+}
+
 // Hitung ulang vonis dengan HPP terbaru / rasio pencairan terbaru tanpa unggah ulang file —
 // server hanya perlu baris kampanye yang sudah dibaca tadi.
 async function hitungUlangIklan() {
   if (!dataIklan) return;
+  if (dataIklan.sumber === 'api') return muatIklanDariShopee();
   try {
     const body = await apiFetch('/api/iklan/hitung-ulang', {
       method: 'POST',
@@ -1427,6 +1475,13 @@ function untungTokoPerMinggu() {
   if (dataIklan) {
     const batas = dataIklan.tanggalLaporanIso || '';
     for (const k of dataIklan.kampanye) {
+      if (k.perHari) {
+        for (const [h, v] of Object.entries(k.perHari)) {
+          const t = ambil(seninIso(h));
+          t.biayaIklan += v.biaya; t.pcsIklan += v.terjual; t.adaIklan = true;
+        }
+        continue;
+      }
       if (!k.tanggalMulaiIso) continue;
       let akhir = k.tanggalSelesaiIso || k.tanggalMulaiIso;
       if (batas && akhir > batas) akhir = batas;
@@ -1443,6 +1498,7 @@ function untungTokoPerMinggu() {
       if (akhir > iklanSelesai) iklanSelesai = akhir;
     }
   }
+  if (dataIklan && dataIklan.rentangData) { iklanMulai = dataIklan.rentangData.dari; iklanSelesai = dataIklan.rentangData.sampai; }
   const batasLengkap = maxRilis ? tambahHari(maxRilis, -JEDA_CAIR_HARI) : '';
   const daftar = [...minggu.values()].sort((a, b) => a.mulai.localeCompare(b.mulai)).map((t) => {
     const selesai = tambahHari(t.mulai, 6);
@@ -1537,7 +1593,7 @@ function renderMingguan() {
   isi.innerHTML = tampil.map((t) => {
     const belum = !t.lengkap || !t.iklanLengkap;
     const kelas = (belum ? 'minggu-belum' : '') + (lengkapTerakhir && t.mulai === lengkapTerakhir.mulai ? ' minggu-terakhir' : '');
-    const iklan = !dataIklan ? '<span class="teks-redup">-</span>' : t.iklanLengkap ? formatRupiah(t.biayaIklan) : `<span title="Di luar periode file iklan">${formatRupiah(t.biayaIklan)}*</span>`;
+    const iklan = !dataIklan ? '<span class="teks-redup">-</span>' : t.iklanLengkap ? formatRupiah(t.biayaIklan) : `<span title="Di luar periode data iklan">${formatRupiah(t.biayaIklan)}*</span>`;
     return `<tr class="${kelas.trim()}">
       <td data-label="Minggu">${labelMinggu(t.mulai)} – ${labelMinggu(t.selesai)}${belum ? ' <span class="pill pill-abu">belum lengkap</span>' : ''}</td>
       <td class="kolom-angka" data-label="Terjual">${t.pcs} pcs</td>
@@ -1554,7 +1610,7 @@ function renderMingguan() {
 function renderRingkasanIklan(r) {
   const rasioPersen = (r.rasioPencairan * 100).toFixed(1).replace('.', ',');
   const catatan = document.getElementById('catatanRasioIklan');
-  const periode = dataIklan.periode ? `Periode file: <strong>${escapeHtml(dataIklan.periode)}</strong> · ${r.jumlahKampanye} kampanye, ${r.jumlahProduk} produk. ` : '';
+  const periode = dataIklan.periode ? `${dariApi() ? 'Data iklan' : 'Periode file'}: <strong>${escapeHtml(dataIklan.periode)}</strong> · ${r.jumlahKampanye} kampanye, ${r.jumlahProduk} produk. ` : '';
   const cairPersen = Math.round((r.tingkatCair || 0.85) * 100);
   const catatanCair = ` Pesanan iklan dihitung <strong>${cairPersen}%</strong> dibayar (sisanya batal / tidak dibayar)` +
     (dataIklan.sumberTingkatCair === 'pengaturan' ? '.' : ' — angka standar, bisa diubah di bagian "Semua produk &amp; rincian".');
@@ -1577,7 +1633,9 @@ function renderRingkasanIklan(r) {
       (kep.belumDiisi ? ` · ${kep.belumDiisi} iklan belum diisi modalnya` : '');
   } else {
     modalEl.textContent = '-';
-    ketModal.textContent = `Isi Modal Harian tiap iklan di tabel bawah · biaya ${formatRupiahRingkas(r.totalBiaya)} dalam periode file`;
+    ketModal.textContent = dariApi()
+      ? (kep.baris.length ? 'Anggaran iklan tanpa batas di Seller Centre' : 'Tidak ada iklan yang sedang berjalan') + ` · biaya ${formatRupiahRingkas(r.totalBiaya)} dalam 90 hari`
+      : `Isi Modal Harian tiap iklan di tabel bawah · biaya ${formatRupiahRingkas(r.totalBiaya)} dalam periode file`;
   }
 
   // Untung toko minggu lengkap terakhir (dari file Income), vs minggu sebelumnya.
@@ -1769,6 +1827,11 @@ function barisRincianIklan(p, kampanyePerProduk, colspan) {
 const bulatkanModal = (rp) => Math.max(0, Math.round(rp / 5000) * 5000);
 const PERLU_TINDAKAN = new Set(['jeda', 'kurangi', 'naikkan', 'isi-hpp']);
 const metrikBerjalan = (p) => p.berjalan || p;
+const dariApi = () => !!(dataIklan && dataIklan.sumber === 'api');
+function setelanProduk(idProduk) {
+  if (dariApi()) return (dataIklan.setelanApi || {})[idProduk] || {};
+  return daftarSetelan.get(idProduk) || {};
+}
 
 function keputusanBerjalan() {
   const baris = [];
@@ -1786,7 +1849,10 @@ function keputusanBerjalan() {
   }
   let modalSekarang = 0, modalSaran = 0, belumDiisi = 0, adaModal = false;
   for (const p of berjalan) {
-    const st = daftarSetelan.get(p.idProduk) || {};
+    const st = setelanProduk(p.idProduk);
+    const tanpaBatas = !!st.tanpa_batas;
+    // GMV Max Auto (tanpa target) di data Shopee: sarankan pindah ke GMV Max ROAS dengan target minimal.
+    const modeAuto = dariApi() && st.mode === 'GMV Max Auto';
     const target = Number.isFinite(st.target_roas) ? st.target_roas : null;
     const modal = Number.isFinite(st.modal_harian) ? st.modal_harian : null;
     const minimal = p.targetDisarankan;
@@ -1795,12 +1861,12 @@ function keputusanBerjalan() {
     else if (p.aksi === 'toko') keputusan = 'toko';
     else if (p.aksi === 'tunggu') keputusan = 'tunggu';
     else if (p.aksi === 'jeda') { keputusan = 'jeda'; modalBaru = 0; }
-    else if (target !== null && minimal !== null && target < minimal) keputusan = 'naikkan';
+    else if (minimal !== null && ((target !== null && target < minimal) || (target === null && modeAuto))) keputusan = 'naikkan';
     else if (dipotong.has(p.idProduk)) { keputusan = 'kurangi'; modalBaru = modal !== null ? bulatkanModal(modal / 2) : null; }
     else keputusan = 'lanjut';
     if (modal !== null) { modalSekarang += modal; adaModal = true; modalSaran += modalBaru !== null ? modalBaru : modal; }
-    else belumDiisi += 1;
-    baris.push({ p, target, modal, minimal, keputusan, modalBaru });
+    else if (!tanpaBatas && p.aksi !== 'toko') belumDiisi += 1; // iklan toko tidak punya modal harian sendiri
+    baris.push({ p, target, modal, minimal, keputusan, modalBaru, tanpaBatas, modeAuto });
   }
   const urutan = { jeda: 0, kurangi: 1, naikkan: 2, 'isi-hpp': 3, tunggu: 4, lanjut: 5, toko: 6 };
   baris.sort((a, b) => urutan[a.keputusan] - urutan[b.keputusan] || b.p.biaya - a.p.biaya);
@@ -1822,7 +1888,7 @@ function kalimatKeputusan(b) {
   switch (b.keputusan) {
     case 'isi-hpp': return 'Isi HPP di Kalkulator Margin.';
     case 'jeda': case 'tunggu': case 'toko': return b.p.tindakan;
-    case 'naikkan': return `Ubah Target ROAS ${f(b.target)} → ${f(b.minimal)}.`;
+    case 'naikkan': return b.target === null ? `Ganti ke GMV Max ROAS, target ${f(b.minimal)}.` : `Ubah Target ROAS ${f(b.target)} → ${f(b.minimal)}.`;
     case 'kurangi': return b.modal !== null
       ? `Turunkan Modal Harian ke ${formatRupiahRingkas(b.modalBaru)}. Target tetap.`
       : 'Turunkan Modal Harian 50%. Target tetap.';
@@ -1849,6 +1915,9 @@ function renderKeputusan() {
   const info = document.getElementById('infoKeputusan');
   const aturanEl = document.getElementById('aturanMingguan');
   const kep = keputusanBerjalan();
+  document.getElementById('ketTabelKeputusan').innerHTML = dariApi()
+    ? '<strong>Modal Harian</strong> dan <strong>Target ROAS</strong> diambil otomatis dari Seller Centre. Klik baris untuk rincian.'
+    : 'Isi <strong>Modal Harian</strong> dan <strong>Target ROAS</strong> yang sekarang terpasang di Seller Centre (sekali saja, disimpan). Klik baris untuk rincian.';
 
   // Baris anggaran (di kartu 1) — angka sekarang → saran, kalau modal sudah diisi.
   if (kep.modalSekarang > 0) {
@@ -1880,14 +1949,19 @@ function renderKeputusan() {
     const p = b.p;
     const [label, pill, kelasBaris] = LABEL_KEPUTUSAN[b.keputusan];
     const terbuka = keputusanTerbuka.has(p.idProduk);
-    const inputModal = `<input type="number" step="5000" min="0" class="input-setelan${b.modal === null ? ' kosong' : ''}" data-id="${escapeHtml(p.idProduk)}" data-field="modalHarian" value="${b.modal === null ? '' : b.modal}" placeholder="Rp/hari" title="Modal Harian yang terpasang di Seller Centre">`;
-    const saranModal = b.keputusan === 'jeda'
+    const toko = p.aksi === 'toko'; // iklan toko: tidak punya modal/target per produk
+    const inputModal = toko ? '' : dariApi()
+      ? `<span class="nilai-setelan" title="Modal Harian di Seller Centre (otomatis dari Shopee)">${b.modal !== null ? formatRupiahRingkas(b.modal).replace('Rp ', '') : b.tanpaBatas ? 'tanpa batas' : '-'}</span>`
+      : `<input type="number" step="5000" min="0" class="input-setelan${b.modal === null ? ' kosong' : ''}" data-id="${escapeHtml(p.idProduk)}" data-field="modalHarian" value="${b.modal === null ? '' : b.modal}" placeholder="Rp/hari" title="Modal Harian yang terpasang di Seller Centre">`;
+    const saranModal = toko ? '' : b.keputusan === 'jeda'
       ? '<span class="panah">→</span> <span class="saran nol">0</span>'
       : b.keputusan === 'kurangi'
         ? `<span class="panah">→</span> <span class="saran turun">${b.modalBaru !== null ? formatRupiahRingkas(b.modalBaru).replace('Rp ', '') : '−50%'}</span>`
         : b.modal !== null ? '<span class="panah">→</span> <span class="saran">tetap</span>' : '';
-    const inputTarget = `<input type="number" step="0.1" min="0" class="input-setelan${b.target === null ? ' kosong' : ''}${b.keputusan === 'naikkan' ? ' terlalu-rendah' : ''}" data-id="${escapeHtml(p.idProduk)}" data-field="targetRoas" value="${b.target === null ? '' : b.target}" placeholder="target" title="Target ROAS yang terpasang di Seller Centre">`;
-    const infoTarget = b.minimal === null
+    const inputTarget = toko ? '' : dariApi()
+      ? `<span class="nilai-setelan${b.keputusan === 'naikkan' ? ' terlalu-rendah' : ''}" title="Target ROAS di Seller Centre (otomatis dari Shopee)">${b.target !== null ? formatRoas(b.target) : 'Auto'}</span>`
+      : `<input type="number" step="0.1" min="0" class="input-setelan${b.target === null ? ' kosong' : ''}${b.keputusan === 'naikkan' ? ' terlalu-rendah' : ''}" data-id="${escapeHtml(p.idProduk)}" data-field="targetRoas" value="${b.target === null ? '' : b.target}" placeholder="target" title="Target ROAS yang terpasang di Seller Centre">`;
+    const infoTarget = toko ? '' : b.minimal === null
       ? '<span class="min">—</span>'
       : b.keputusan === 'naikkan'
         ? `<span class="panah">→</span> <span class="saran">${formatRoas(b.minimal)}</span>`
@@ -1900,7 +1974,7 @@ function renderKeputusan() {
             <span class="sub"><span class="kolom-id">${escapeHtml(p.idProduk)}</span>${subRoasBerjalan(p)}</span>
           </div>
         </td>
-        <td class="kolom-tengah" data-label="Modal Harian"><span class="sel-setelan"><span class="prefix">Rp</span>${inputModal}${saranModal}</span></td>
+        <td class="kolom-tengah" data-label="Modal Harian"><span class="sel-setelan">${toko || (dariApi() && b.modal === null) ? '' : '<span class="prefix">Rp</span>'}${inputModal}${saranModal}</span></td>
         <td class="kolom-tengah" data-label="Target ROAS"><span class="sel-setelan">${inputTarget}${infoTarget}</span></td>
         <td class="kolom-tindakan" data-label="Keputusan"><span class="pill pill-aksi ${pill}">${label}</span> ${escapeHtml(kalimatKeputusan(b))}</td>
       </tr>`;

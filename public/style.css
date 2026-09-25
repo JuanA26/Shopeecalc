@@ -1050,6 +1050,10 @@ tr.terbuka .panah-baris { transform: rotate(90deg); }
 .sel-setelan input::-webkit-inner-spin-button, .sel-setelan input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .sel-setelan input.kosong { border-color: #f5c26b; background: var(--kuning-muda); }
 .sel-setelan input.terlalu-rendah { border-color: var(--merah); color: var(--merah); }
+/* Nilai dari Shopee (data otomatis): teks biasa, bukan kotak isian. */
+.sel-setelan .nilai-setelan { font-size: 0.8rem; font-weight: 600; color: var(--teks-judul); font-variant-numeric: tabular-nums; }
+.sel-setelan .nilai-setelan.terlalu-rendah { color: var(--merah); }
+.teks-merah { color: var(--merah); }
 .sel-setelan .panah { color: var(--abu-teks); }
 .sel-setelan .saran { font-weight: 700; color: var(--teks-judul); }
 .sel-setelan .saran.turun { color: #c2410c; }

@@ -10,6 +10,7 @@ const db = require('./db');
 const { parseCsvLine, parseShopeeAdsCsv, hitungAnalisisIklan, RASIO_PENCAIRAN_DEFAULT, TINGKAT_CAIR_DEFAULT } = require('./analisisIklan');
 const shopeeApi = require('./shopeeApi');
 const { sinkronkan, bacaItemPesanan, rasioPencairanToko, modeEscrow } = require('./sinkronShopee');
+const { sinkronIklan, kampanyeDariDb } = require('./sinkronIklan');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -394,7 +395,23 @@ function jalankanSinkron(opsi = {}) {
   };
 
   progresSinkron = null;
+  // Iklan disinkron SETELAH pesanan, berhasil atau tidak; statusnya dicatat terpisah (kolom
+  // iklan_*) supaya iklan yang gagal tidak membuat sinkron pesanan dianggap gagal, dan sebaliknya.
+  const lanjutIklan = async () => {
+    progresSinkron = { tahap: 'iklan', selesai: null, total: null };
+    const lama = db.prepare('SELECT iklan_sampai FROM sinkron_shopee WHERE shop_id = ?').get(shopId) || {};
+    try {
+      const h = await sinkronIklan({ db, panggil, shopId, iklanSampai: lama.iklan_sampai || null });
+      tulisStatus({ iklan_sampai: h.sampai, iklan_status: 'sukses', iklan_pesan: null, iklan_selesai: new Date().toISOString() });
+      console.log(`[SINKRON IKLAN] Selesai: ${h.kampanyeBaru} kampanye baru, ${h.kampanyeDiperbarui} setelan dibaca, ${h.barisHarian} baris harian (${h.dari} s/d ${h.sampai}).`);
+    } catch (err) {
+      console.error('[SINKRON IKLAN] Gagal:', err.message);
+      tulisStatus({ iklan_status: 'gagal', iklan_pesan: err.message, iklan_selesai: new Date().toISOString() });
+    }
+  };
+
   sinkronBerjalan = sinkronkan({ db, panggil, shopId, hariMundur: opsi.hariMundur, onProgres: (p) => { progresSinkron = p; } })
+    .then(async (hasil) => { await lanjutIklan(); return hasil; }, async (err) => { await lanjutIklan(); throw err; })
     .then((hasil) => {
       const lama = db.prepare('SELECT sampai_ts, dari_ts FROM sinkron_shopee WHERE shop_id = ?').get(shopId) || {};
       tulisStatus({
@@ -443,6 +460,7 @@ function statusSinkron() {
     jumlahBaru: s.jumlah_baru ?? null,
     jumlahOrderBerubah: s.order_berubah ?? null,
     modeEscrow: modeEscrow(),
+    iklan: { status: s.iklan_status || null, pesan: s.iklan_pesan || null, terakhirSelesai: s.iklan_selesai || null, sampai: s.iklan_sampai || null },
     jumlahPesanan: agg.jumlah,
     tanggalTerlama: agg.terlama,
     tanggalTerbaru: agg.terbaru,
@@ -576,6 +594,29 @@ app.post('/api/iklan/upload', requireLogin, upload.single('file'), (req, res) =>
   res.json({ ...analisis, sumberRasio, sumberTingkatCair: opsi.sumberTingkatCair, periode: hasilParse.periode, namaToko: hasilParse.namaToko, tanggalLaporanIso: hasilParse.tanggalLaporanIso });
 });
 
+// Analisis iklan dari data Shopee Ads API yang tersimpan (sinkronIklan.js) — pengganti unggah CSV.
+// Body sama dengan hitung-ulang (rasio & harga per produk dari data penjualan halaman) + dari/sampai.
+app.post('/api/iklan/dari-shopee', requireLogin, (req, res) => {
+  const token = barisTokenAktif();
+  if (!token) return res.status(400).json({ error: 'Toko belum terhubung ke Shopee.' });
+  const body = req.body || {};
+  const sampai = tanggalValid(body.sampai) ? body.sampai : new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+  const dari = tanggalValid(body.dari) ? body.dari : sampai;
+  const { kampanye, setelan, adaData } = kampanyeDariDb(db, token.shop_id, dari, sampai);
+  const s = db.prepare('SELECT iklan_status, iklan_pesan, iklan_selesai, iklan_sampai FROM sinkron_shopee WHERE shop_id = ?').get(token.shop_id) || {};
+  const statusIklan = { status: s.iklan_status || null, pesan: s.iklan_pesan || null, terakhirSelesai: s.iklan_selesai || null };
+  if (!adaData && !kampanye.length) return res.json({ kosong: true, statusIklan });
+  const { rasio, sumberRasio } = rasioDariPermintaan(body.rasioPencairan);
+  const opsi = opsiAnalisisIklan(sampai, body.tanggalRilisTerakhir, body.tanggalDataMulai);
+  const analisis = hitungAnalisisIklan(kampanye, petaHppUntukIklan(), rasio, produkIncomeDariPermintaan(body.produkIncome), opsi);
+  const tampil = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+  res.json({
+    ...analisis, sumber: 'api', setelanApi: setelan, rentangData: { dari, sampai }, statusIklan,
+    sumberRasio, sumberTingkatCair: opsi.sumberTingkatCair,
+    periode: `${tampil(dari)} - ${tampil(sampai)}`, namaToko: '', tanggalLaporanIso: sampai,
+  });
+});
+
 // Hitung ulang dengan HPP terbaru dari database, tanpa unggah ulang file — dipakai klien
 // setelah pengguna mengisi HPP produk yang tadinya kuning ("belum ada HPP").
 app.post('/api/iklan/hitung-ulang', requireLogin, (req, res) => {
@@ -622,133 +663,6 @@ app.put('/api/iklan/setelan/:idProduk', requireLogin, (req, res) => {
        updated_by = excluded.updated_by`
   ).run(idProduk, targetBaru, modalBaru, req.session.username);
   res.json(db.prepare('SELECT id_produk, target_roas, modal_harian, updated_at, updated_by FROM iklan_setelan WHERE id_produk = ?').get(idProduk));
-});
-
-// ---------- SEMENTARA: probe API Iklan putaran 2 (2026-09-25) — HAPUS setelah hasilnya dicatat ----------
-// Sekali buka untuk melihat bentuk respons asli endpoint Ads (token produksi hanya ada di
-// Render). Hanya endpoint baca-saja dari ENDPOINT_BACA_SAJA; hanya metrik iklan, tanpa data
-// pembeli. Daftar panjang dipotong (jumlah + beberapa contoh) supaya hasilnya bisa ditempel.
-app.get('/api/iklan/probe', requireLogin, async (req, res) => {
-  const token = barisTokenAktif();
-  if (!token) return res.status(400).json({ error: 'Toko belum terhubung.' });
-  const panggil = async (path, o) => {
-    const t = await ambilTokenAktif(token.shop_id);
-    return shopeeApi.callShopApi(path, { shopId: t.shop_id, accessToken: t.access_token, ...o });
-  };
-  // Tanggal WIB format DD-MM-YYYY (format Shopee Ads), n hari ke belakang dari hari ini.
-  const tgl = (n) => {
-    const iso = new Date(Date.now() + 7 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
-    const [y, m, d] = iso.split('-');
-    return `${d}-${m}-${y}`;
-  };
-  const potong = (arr, n = 3) => (Array.isArray(arr) ? { jumlah: arr.length, contoh: arr.slice(0, n) } : arr);
-  const hasil = { env: shopeeApi.getEnv(), shopId: token.shop_id, waktu: new Date().toISOString() };
-  const coba = async (nama, fn) => {
-    try { hasil[nama] = await fn(); } catch (err) { hasil[nama] = { gagalDiServer: err.message }; }
-    return hasil[nama];
-  };
-  const r = (x) => (x && x.response) || {};
-
-  // Putaran 2: putaran 1 hanya membaca 100 ID kampanye TERLAMA (2022–2024, semua closed). Iklan
-  // GMV Max ROAS per produk yang berjalan = kampanye level produk, jadi baca setelan SEMUA
-  // kampanye (maks 100 per panggilan), ambil yang masih hidup atau selesai < 90 hari lalu.
-  const daftar = await coba('campaignIdList', () =>
-    panggil('/api/v2/ads/get_product_level_campaign_id_list', { query: { ad_type: 'all', offset: '0', limit: '5000' } }));
-  const semuaId = (r(daftar).campaign_list || []).map((c) => c.campaign_id);
-  hasil.campaignIdList = { error: daftar.error, jumlah: semuaId.length, has_next_page: r(daftar).has_next_page, pertama: semuaId[0], terakhir: semuaId[semuaId.length - 1] };
-
-  const semuaSetelan = [];
-  const galatSetelan = [];
-  for (let i = 0; i < semuaId.length; i += 100) {
-    try {
-      const x = await panggil('/api/v2/ads/get_product_level_campaign_setting_info', {
-        query: { info_type_list: '1,3,4', campaign_id_list: semuaId.slice(i, i + 100).join(',') },
-      });
-      if (x.error) galatSetelan.push({ i, error: x.error, message: x.message });
-      semuaSetelan.push(...(r(x).campaign_list || []));
-    } catch (err) { galatSetelan.push({ i, gagalDiServer: err.message }); }
-  }
-  const batas90 = Date.now() / 1000 - 90 * 86400;
-  const perStatus = {};
-  for (const c of semuaSetelan) {
-    const ci = c.common_info || {};
-    const k = [ci.ad_type, ci.campaign_status, ci.bidding_method, ci.campaign_placement].join('/');
-    perStatus[k] = (perStatus[k] || 0) + 1;
-  }
-  const baru = semuaSetelan.filter((c) => {
-    const ci = c.common_info || {};
-    const akhir = ci.campaign_duration && ci.campaign_duration.end_time;
-    return !['closed', 'ended', 'deleted'].includes(ci.campaign_status) || (akhir > 0 && akhir >= batas90);
-  });
-  hasil.campaignSettings = {
-    jumlahDibaca: semuaSetelan.length,
-    galat: galatSetelan,
-    perStatus,
-    jumlahBaru: baru.length,
-    baru: baru.map((c) => ({
-      id: c.campaign_id,
-      ...c.common_info,
-      roas_target: c.auto_bidding_info && c.auto_bidding_info.roas_target,
-      auto_products: potong(c.auto_product_ads_info, 5),
-    })),
-  };
-
-  // Harian 28 hari untuk kampanye yang baru/berjalan.
-  const idBaru = baru.map((c) => c.campaign_id);
-  const kamp = [];
-  const galatHarian = [];
-  // Putaran 3: putaran 2 dapat 0 kampanye tanpa error — bentuk `response` mungkin objek, bukan
-  // array seperti di dokumentasi. Terima dua-duanya dan simpan respons mentahnya (dipotong).
-  const kampanyeDari = (resp) => (Array.isArray(resp) ? resp : resp ? [resp] : []).flatMap((s) => s.campaign_list || []);
-  const mentah = (x) => JSON.stringify(x).slice(0, 3000);
-  const idBerjalan = baru.filter((c) => (c.common_info || {}).campaign_status === 'ongoing').map((c) => c.campaign_id);
-  hasil.dailyMentah = {};
-  for (const [nama, dari, ids] of [['berjalan28Hari', 28, idBerjalan], ['berjalan7Hari', 7, idBerjalan], ['satuSelesai28Hari', 28, idBaru.slice(-12, -11)]]) {
-    if (!ids.length) continue;
-    try {
-      const x = await panggil('/api/v2/ads/get_product_campaign_daily_performance', {
-        query: { start_date: tgl(dari), end_date: tgl(1), campaign_id_list: ids.join(',') },
-      });
-      hasil.dailyMentah[nama] = { ids, mentah: mentah(x) };
-    } catch (err) { hasil.dailyMentah[nama] = { ids, gagalDiServer: err.message }; }
-  }
-  for (let i = 0; i < idBaru.length; i += 100) {
-    try {
-      const x = await panggil('/api/v2/ads/get_product_campaign_daily_performance', {
-        query: { start_date: tgl(28), end_date: tgl(1), campaign_id_list: idBaru.slice(i, i + 100).join(',') },
-      });
-      if (x.error || x.warning) galatHarian.push({ i, error: x.error, message: x.message, warning: x.warning });
-      kamp.push(...kampanyeDari(x.response));
-    } catch (err) { galatHarian.push({ i, gagalDiServer: err.message }); }
-  }
-  const jumlahkan = (ms, f) => (ms || []).reduce((s, m) => s + (Number(m[f]) || 0), 0);
-  hasil.productCampaignDaily = {
-    galat: galatHarian,
-    jumlahKampanye: kamp.length,
-    contohLengkap: kamp.slice(0, 1).map((c) => ({ ...c, metrics_list: potong(c.metrics_list, 2) })),
-    perKampanye: kamp.map((c) => ({
-      id: c.campaign_id, ad_type: c.ad_type, placement: c.campaign_placement, ad_name: c.ad_name,
-      hari: (c.metrics_list || []).length,
-      expense: jumlahkan(c.metrics_list, 'expense'),
-      direct_gmv: jumlahkan(c.metrics_list, 'direct_gmv'),
-      broad_gmv: jumlahkan(c.metrics_list, 'broad_gmv'),
-      direct_order: jumlahkan(c.metrics_list, 'direct_order'),
-      direct_order_amount: jumlahkan(c.metrics_list, 'direct_order_amount'),
-    })),
-  };
-
-  // Total toko per hari, semua 28 baris (ringkas) — untuk dicocokkan dengan jumlah per kampanye.
-  const toko = await coba('allCpcDaily', () =>
-    panggil('/api/v2/ads/get_all_cpc_ads_daily_performance', { query: { start_date: tgl(28), end_date: tgl(1) } }));
-  hasil.allCpcDaily = {
-    error: toko.error,
-    baris: (Array.isArray(toko.response) ? toko.response : []).map((d) => ({
-      date: d.date, expense: d.expense, direct_gmv: d.direct_gmv, broad_gmv: d.broad_gmv,
-      direct_order: d.direct_order, direct_item_sold: d.direct_item_sold,
-    })),
-  };
-
-  res.type('application/json').send(JSON.stringify(hasil, null, 2));
 });
 
 // ---------- Shopee Open Platform API — OAuth + tes ambil data ----------

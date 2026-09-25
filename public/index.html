@@ -102,7 +102,7 @@
               <h3>Analisis Iklan</h3>
             </div>
             <div id="widgetIklanKosong">
-              <p class="keterangan">Belum ada data iklan. Unggah file "Data Keseluruhan Iklan" dari Seller Centre untuk melihat iklan mana yang untung dan mana yang rugi.</p>
+              <p class="keterangan">Data iklan diambil otomatis dari Shopee. Buka Analisis Iklan untuk melihat iklan mana yang untung dan mana yang rugi.</p>
             </div>
             <div id="widgetIklanIsi" class="tersembunyi widget-statistik-baris">
               <div>
@@ -360,7 +360,11 @@
         </div>
 
         <div class="kartu">
-          <h2><span class="langkah">1</span> Unggah File Data Iklan dari Seller Centre</h2>
+          <h2>Data Iklan dari Shopee</h2>
+          <p id="statusIklanShopee" class="keterangan">Memuat data iklan...</p>
+          <details class="details-dalam" id="detailsUnggahIklan">
+            <summary>Cadangan: unggah file dari Seller Centre</summary>
+            <p class="keterangan">Hanya perlu kalau data otomatis dari Shopee bermasalah. File yang diunggah dipakai sampai halaman dimuat ulang.</p>
           <div class="baris-unggah">
             <label class="dropzone" id="dropzoneIklan" for="inputFileIklan">
               <span class="widget-ikon">
@@ -376,6 +380,7 @@
           </div>
           <p id="pesanErrorIklan" class="pesan-error tersembunyi"></p>
           <p id="pesanLoadingIklan" class="pesan-loading tersembunyi"><span class="spinner"></span> Sedang memproses file...</p>
+          </details>
         </div>
 
         <div id="areaIklan" class="tersembunyi">
@@ -438,7 +443,7 @@
                 <span id="infoKeputusan" class="info-jumlah-data"></span>
               </div>
             </div>
-            <p class="keterangan keterangan-tabel">Isi <strong>Modal Harian</strong> dan <strong>Target ROAS</strong> yang sekarang terpasang di Seller Centre (sekali saja, disimpan). Klik baris untuk rincian.</p>
+            <p class="keterangan keterangan-tabel" id="ketTabelKeputusan">Isi <strong>Modal Harian</strong> dan <strong>Target ROAS</strong> yang sekarang terpasang di Seller Centre (sekali saja, disimpan). Klik baris untuk rincian.</p>
             <div class="tabel-scroll">
               <table id="tabelKeputusan">
                 <colgroup>

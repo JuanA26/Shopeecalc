@@ -310,7 +310,9 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
 
   // Per kampanye: umur (hari berjalan sampai tanggal laporan) & batas pesanan dibayar.
   for (const k of kampanye) {
-    let akhir = k.tanggalSelesaiIso || k.tanggalMulaiIso;
+    // Kampanye berjalan tanpa tanggal selesai ("Tidak Terbatas"): umurnya sampai tanggal laporan,
+    // bukan 1 hari (kalau tidak, vonisnya "tunggu" selamanya).
+    let akhir = k.tanggalSelesaiIso || (k.status === 'Berjalan' && tanggalLaporanIso) || k.tanggalMulaiIso;
     if (tanggalLaporanIso && akhir > tanggalLaporanIso) akhir = tanggalLaporanIso;
     k.hariBerjalan = k.tanggalMulaiIso && akhir >= k.tanggalMulaiIso ? selisihHari(k.tanggalMulaiIso, akhir) + 1 : 1;
     const inc = incomeMap.get(k.kodeProduk);

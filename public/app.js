@@ -446,6 +446,16 @@ async function muatDataPenjualanDiam() {
   } catch (_) { /* belum ada data di periode ini — tunggu putaran berikutnya */ }
 }
 
+// "30 hari terakhir · 27 Agu – 25 Sep 2026" — nama pill yang aktif (kalau ada) + rentang tanggalnya.
+const NAMA_PERIODE = { 'hari-ini': 'Hari ini', 7: '7 hari terakhir', 30: '30 hari terakhir', 'bulan-ini': 'Bulan ini', 'bulan-lalu': 'Bulan lalu' };
+function teksPeriode({ dari, sampai }) {
+  const aktif = document.querySelector('.pill-filter[data-periode].aktif');
+  const nama = aktif ? NAMA_PERIODE[aktif.dataset.periode] : 'Periode pilihan';
+  const tgl = (iso, tahun) => new Date(iso + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', ...(tahun ? { year: 'numeric' } : {}) });
+  const rentang = dari === sampai ? tgl(dari, true) : `${tgl(dari, dari.slice(0, 4) !== sampai.slice(0, 4))} – ${tgl(sampai, true)}`;
+  return `${nama} · ${rentang}`;
+}
+
 function renderRingkasan(r) {
   // "≈" kecil di depan angka yang sebagian masih perkiraan (dana belum cair).
   const approx = r.penghasilanPerkiraan ? '<span class="tanda-kira" title="Sebagian masih perkiraan — dana belum cair">≈</span>' : '';
@@ -470,6 +480,10 @@ function renderRingkasan(r) {
   document.getElementById('widgetUntung').textContent = formatRupiah(r.totalUntung);
   document.getElementById('widgetMargin').textContent = formatPersen(r.marginRataRataPersen);
   document.getElementById('widgetKalkulatorKosong').classList.add('tersembunyi');
+  // Periode angka di widget = periode yang sedang dipilih di Kalkulator.
+  const elPeriode = document.getElementById('widgetPeriode');
+  elPeriode.textContent = r.periode ? teksPeriode(r.periode) : '';
+  elPeriode.classList.toggle('tersembunyi', !r.periode);
   document.getElementById('widgetKalkulatorIsi').classList.remove('tersembunyi');
 }
 

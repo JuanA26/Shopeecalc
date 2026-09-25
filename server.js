@@ -10,6 +10,7 @@ const db = require('./db');
 const { parseShopeeIncomeWorkbook } = require('./parseExcel');
 const { parseCsvLine, parseShopeeAdsCsv, hitungAnalisisIklan, RASIO_PENCAIRAN_DEFAULT, TINGKAT_CAIR_DEFAULT } = require('./analisisIklan');
 const shopeeApi = require('./shopeeApi');
+const { sinkronkan, bacaItemPesanan } = require('./sinkronShopee');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -314,6 +315,13 @@ app.post('/api/upload', requireLogin, upload.single('file'), (req, res) => {
     return res.status(400).json({ error: message });
   }
 
+  res.json(hitungMargin(items, biayaPerPesanan, { sheetTerbaca, sumber: 'excel' }));
+});
+
+// Gabungkan HPP + koreksi jumlah ke baris-baris pesanan lalu hitung untung/margin.
+// Dipakai unggahan Excel (/api/upload) dan data sinkron API (/api/pesanan) — bentuk
+// `items` keduanya sama (lihat parseExcel.js / sinkronShopee.js bacaItemPesanan()).
+function hitungMargin(items, biayaPerPesanan, infoTambahan) {
   // Ambil semua HPP yang sudah tersimpan, lalu gabungkan ke tiap baris.
   const hppRows = db.prepare('SELECT id_produk, hpp FROM product_hpp').all();
   const hppMap = new Map(hppRows.map((r) => [r.id_produk, r.hpp]));
@@ -410,12 +418,131 @@ app.post('/api/upload', requireLogin, upload.single('file'), (req, res) => {
       const harga = laku.reduce((t, it) => t + (it.hargaProduk || 0), 0);
       return harga ? laku.reduce((t, it) => t + it.totalPenghasilan, 0) / harga : null;
     })(),
-    sheetTerbaca,
+    ...infoTambahan,
     biayaPenjual,
   };
 
-  res.json({ items: hasil, ringkasan });
+  return { items: hasil, ringkasan };
+}
+
+// ---------- Data pesanan dari sinkron Shopee API (pengganti unggah Excel) ----------
+const tanggalValid = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
+
+// Token toko untuk environment yang sedang aktif (production di Render, bisa sandbox di lokal).
+function barisTokenAktif() {
+  return db.prepare('SELECT * FROM shopee_token WHERE env = ? ORDER BY updated_at DESC LIMIT 1').get(shopeeApi.getEnv());
+}
+
+app.get('/api/pesanan', requireLogin, (req, res) => {
+  const { dari, sampai } = req.query;
+  if (!tanggalValid(dari) || !tanggalValid(sampai)) {
+    return res.status(400).json({ error: 'Tanggal "dari" dan "sampai" wajib diisi (format YYYY-MM-DD).' });
+  }
+  const token = barisTokenAktif();
+  if (!token) return res.status(400).json({ error: 'Toko belum terhubung ke Shopee.' });
+
+  const items = bacaItemPesanan(db, token.shop_id, dari, sampai);
+  if (!items.length) {
+    return res.status(404).json({ error: `Belum ada pesanan dengan dana cair antara ${dari} dan ${sampai}. Coba rentang lain, atau tekan "Sinkron Sekarang".` });
+  }
+  res.json(hitungMargin(items, new Map(), { sumber: 'api', periode: { dari, sampai } }));
 });
+
+// ---------- Sinkron otomatis ----------
+let sinkronBerjalan = null; // Promise sinkron yang sedang jalan — cegah dua sinkron bersamaan
+
+function jalankanSinkron(opsi = {}) {
+  if (sinkronBerjalan) return sinkronBerjalan;
+  const token = barisTokenAktif();
+  if (!token) return Promise.reject(new Error('Toko belum terhubung ke Shopee.'));
+  const shopId = token.shop_id;
+
+  const tulisStatus = (kolom) => {
+    const nama = Object.keys(kolom);
+    db.prepare(
+      `INSERT INTO sinkron_shopee (shop_id, ${nama.join(', ')}) VALUES (?, ${nama.map(() => '?').join(', ')})
+       ON CONFLICT(shop_id) DO UPDATE SET ${nama.map((n) => `${n} = excluded.${n}`).join(', ')}`
+    ).run(shopId, ...Object.values(kolom));
+  };
+  tulisStatus({ terakhir_mulai: new Date().toISOString(), status: 'berjalan', pesan: null });
+
+  // Token diambil ulang tiap panggilan: sinkron panjang bisa melewati batas 4 jam token.
+  const panggil = async (path, o) => {
+    const t = await ambilTokenAktif(shopId);
+    return shopeeApi.callShopApi(path, { shopId: t.shop_id, accessToken: t.access_token, ...o });
+  };
+
+  sinkronBerjalan = sinkronkan({ db, panggil, shopId, hariMundur: opsi.hariMundur })
+    .then((hasil) => {
+      const lama = db.prepare('SELECT sampai_ts, dari_ts FROM sinkron_shopee WHERE shop_id = ?').get(shopId) || {};
+      tulisStatus({
+        sampai_ts: Math.max(lama.sampai_ts || 0, hasil.sampai),
+        dari_ts: lama.dari_ts ? Math.min(lama.dari_ts, hasil.dari) : hasil.dari,
+        terakhir_selesai: new Date().toISOString(),
+        status: 'sukses',
+        pesan: null,
+        jumlah_baru: hasil.baru,
+      });
+      console.log(`[SINKRON] Selesai: ${hasil.baru} pesanan baru dari ${hasil.dilihat} yang dilihat.`);
+      return hasil;
+    })
+    .catch((err) => {
+      console.error('[SINKRON] Gagal:', err.message);
+      tulisStatus({ terakhir_selesai: new Date().toISOString(), status: 'gagal', pesan: err.message });
+      throw err;
+    })
+    .finally(() => { sinkronBerjalan = null; });
+  return sinkronBerjalan;
+}
+
+function statusSinkron() {
+  const token = barisTokenAktif();
+  if (!token) return { terhubung: false, env: shopeeApi.getEnv() };
+  const s = db.prepare('SELECT * FROM sinkron_shopee WHERE shop_id = ?').get(token.shop_id) || {};
+  const agg = db.prepare(
+    'SELECT COUNT(*) AS jumlah, MIN(tanggal_dilepaskan) AS terlama, MAX(tanggal_dilepaskan) AS terbaru FROM api_pesanan WHERE shop_id = ?'
+  ).get(token.shop_id);
+  return {
+    terhubung: true,
+    env: shopeeApi.getEnv(),
+    shopId: token.shop_id,
+    sedangBerjalan: !!sinkronBerjalan,
+    status: s.status || null,
+    pesan: s.pesan || null,
+    terakhirSelesai: s.terakhir_selesai || null,
+    jumlahBaru: s.jumlah_baru ?? null,
+    jumlahPesanan: agg.jumlah,
+    tanggalTerlama: agg.terlama,
+    tanggalTerbaru: agg.terbaru,
+  };
+}
+
+app.get('/api/sinkron/status', requireLogin, (req, res) => res.json(statusSinkron()));
+
+// Sinkron sekarang (tombol di UI). Body opsional { hariMundur: N } untuk menarik ulang
+// riwayat N hari ke belakang (maks. 365).
+app.post('/api/sinkron', requireLogin, async (req, res) => {
+  const n = Number(req.body && req.body.hariMundur);
+  const hariMundur = Number.isInteger(n) && n > 0 ? Math.min(n, 365) : undefined;
+  try {
+    await jalankanSinkron({ hariMundur });
+    res.json(statusSinkron());
+  } catch (err) {
+    res.status(500).json({ error: `Sinkron gagal: ${err.message}`, ...statusSinkron() });
+  }
+});
+
+// Jadwal: sekali 20 detik setelah server nyala, lalu tiap 2 jam. Diam saja kalau toko
+// belum terhubung atau partner key belum diisi (mis. lokal tanpa .env Shopee).
+const JEDA_SINKRON_MS = 2 * 60 * 60 * 1000;
+function sinkronTerjadwal() {
+  if (!process.env.SHOPEE_PARTNER_ID || !process.env.SHOPEE_PARTNER_KEY || !barisTokenAktif()) return;
+  jalankanSinkron().catch(() => { /* sudah dicatat di sinkron_shopee + log */ });
+}
+if (process.env.SINKRON_OTOMATIS !== 'off') {
+  setTimeout(sinkronTerjadwal, 20 * 1000);
+  setInterval(sinkronTerjadwal, JEDA_SINKRON_MS);
+}
 
 // ---------- Rute Analisis Iklan ----------
 // Ambil semua HPP tersimpan dalam bentuk Map<idProduk, { hpp, namaProduk }> untuk digabung
@@ -627,6 +754,7 @@ app.get('/auth/shopee/callback', requireLogin, async (req, res) => {
          env = excluded.env, access_token = excluded.access_token, refresh_token = excluded.refresh_token,
          expire_in = excluded.expire_in, obtained_at = excluded.obtained_at, updated_at = excluded.updated_at`
     ).run(String(shopId), shopeeApi.getEnv(), hasil.access_token, hasil.refresh_token, hasil.expire_in, Math.floor(Date.now() / 1000));
+    jalankanSinkron().catch(() => { /* status gagal tercatat, terlihat di halaman Kalkulator */ });
     res.send(`Otorisasi berhasil untuk shop_id ${shopId} (environment: ${shopeeApi.getEnv()}). Token tersimpan — coba GET /api/shopee/test untuk tes ambil data.`);
   } catch (err) {
     res.status(500).send(`Gagal tukar code jadi token: ${err.message}`);

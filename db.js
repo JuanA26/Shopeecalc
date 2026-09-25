@@ -81,6 +81,54 @@ db.exec(`
     obtained_at INTEGER NOT NULL,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  -- Pesanan yang dananya sudah dilepas, hasil sinkron otomatis dari Shopee API (lihat
+  -- sinkronShopee.js) — pengganti file Excel "Income". Beda dari unggahan Excel (yang cuma
+  -- diproses di memori), data ini DISIMPAN supaya kalkulator bisa langsung tampil tanpa
+  -- unggah apa pun. Username pembeli sengaja tidak disimpan. Tanggal = tanggal WIB (YYYY-MM-DD).
+  CREATE TABLE IF NOT EXISTS api_pesanan (
+    order_sn TEXT PRIMARY KEY,
+    shop_id TEXT NOT NULL,
+    waktu_pesanan TEXT,
+    tanggal_dilepaskan TEXT NOT NULL,
+    escrow_amount REAL NOT NULL,
+    status_pesanan TEXT,
+    ada_retur INTEGER NOT NULL DEFAULT 0,
+    synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_api_pesanan_tanggal ON api_pesanan (shop_id, tanggal_dilepaskan);
+
+  -- Satu baris per barang di pesanan (bentuknya sama dengan baris "Sku" di Excel Income):
+  -- harga_produk = subtotal baris (sudah dikali jumlah), total_penghasilan = bagian
+  -- escrow_amount pesanan untuk baris ini (dibagi sebanding harga, persis cara Shopee
+  -- membaginya di Excel). Barang yang diretur jadi baris sendiri dengan dikembalikan = 1.
+  CREATE TABLE IF NOT EXISTS api_pesanan_item (
+    order_sn TEXT NOT NULL,
+    baris INTEGER NOT NULL,
+    id_produk TEXT NOT NULL,
+    model_id TEXT,
+    nama_produk TEXT,
+    nama_model TEXT,
+    jumlah INTEGER NOT NULL,
+    harga_produk REAL NOT NULL,
+    total_penghasilan REAL NOT NULL,
+    dikembalikan INTEGER NOT NULL DEFAULT 0,
+    jumlah_pengembalian REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (order_sn, baris)
+  );
+
+  -- Status sinkron per toko: sampai_ts = batas atas rentang tanggal-cair yang sudah ditarik
+  -- (unix detik), dipakai sinkron berikutnya supaya cuma menarik yang baru.
+  CREATE TABLE IF NOT EXISTS sinkron_shopee (
+    shop_id TEXT PRIMARY KEY,
+    sampai_ts INTEGER,
+    dari_ts INTEGER,
+    terakhir_mulai TEXT,
+    terakhir_selesai TEXT,
+    status TEXT,
+    pesan TEXT,
+    jumlah_baru INTEGER
+  );
 `);
 
 module.exports = db;

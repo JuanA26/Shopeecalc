@@ -2,7 +2,7 @@
 
 **Live (server version):** https://shopee-margin-calc.onrender.com — this is the version actively used and developed; see below.
 
-> **Status (2026-09-24):** the deployed site is still the calculator-only build (commit `c1041fd`). Everything described in §3 items 5–6 (multi-sheet Income exports, ranked missing-HPP list, the **Analisis Iklan** page) is finished and reviewed locally but **deliberately not deployed yet** — it ships together with the Shopee Open Platform API integration (order + ads sync replacing the manual exports). That integration is in progress: OAuth/signing is built and verified against Shopee's sandbox (see `shopeeApi.js` below), and a Go Live review is pending with Shopee to unlock real production data. Until all of this lands, run it locally (§1) to use the finished-but-undeployed features. Full details/history: `PROJECT_NOTES.md` in the parent folder, §20 onwards.
+> **Status (2026-09-25):** the calculator now gets its sales data **automatically from the Shopee Open Platform API** — no Excel upload needed. The server syncs released-fund orders (the same basis as the Income "sudah dilepas" export) every 2 hours into SQLite (`sinkronShopee.js`), and the Kalkulator page shows any period straight from that. The Excel upload remains as a fallback. Analisis Iklan still needs the ads CSV upload (ads sync not built yet). Full details/history: `PROJECT_NOTES.md` in the parent folder, §21 onwards.
 
 This repo has **two versions** of the same calculator — pick whichever matches how you want to use it:
 
@@ -12,7 +12,7 @@ This repo has **two versions** of the same calculator — pick whichever matches
 | **HPP data stored as** | A CSV file you download/upload yourself | Server-side SQLite database |
 | **Shared live data across people/devices?** | No — CSV is the sync mechanism | Yes — everyone sees the same data instantly |
 | **Login required?** | No | Yes |
-| **Data ever leaves your browser?** | No — 100% client-side, nothing to trust a server with | The HPP + accounts live server-side (uploaded sales data still never persists — see below) |
+| **Data ever leaves your browser?** | No — 100% client-side, nothing to trust a server with | HPP, accounts and API-synced orders live server-side (uploaded Excel files still never persist — see below) |
 
 If you're the only one using it, or a couple of you but don't need everyone to see the exact same numbers at the same instant, **use `docs/`** — it's simpler, free, and more private by construction. If you need several people genuinely sharing one live, always-in-sync price list, use the server version.
 
@@ -29,7 +29,7 @@ A small private web app that:
 - Requires login. There is no public sign-up — accounts are created by you from the command line.
 - The UI text is in simple Bahasa Indonesia (built for non-technical family members to use).
 
-**What is *not* stored on the server:** the actual sales data (order numbers, income amounts) from an uploaded Excel file is processed in memory for that request only and sent back to your browser — it is never written to disk or the database. The only thing persisted long-term is the HPP (cost) table and the login accounts. This was a deliberate choice to minimize how much sensitive sales history sits on a server.
+**What is stored on the server:** the HPP (cost) table, login accounts, the Shopee OAuth token, and — since the automatic sync — every released-fund order pulled from the Shopee API (order number, dates, per-item product/variant, pcs, price and payout share; tables `api_pesanan` / `api_pesanan_item`). Buyer usernames are deliberately **not** stored. An Excel file uploaded via the fallback path is still processed in memory only and never written to disk.
 
 ---
 
@@ -128,7 +128,7 @@ From then on, `git push` to your repo auto-deploys the new version — no manual
 
 1. Log in. You land on a **Dashboard** with two cards: "Kalkulator Margin" and "Analisis Iklan" (each shows its headline numbers once a file has been uploaded).
 2. Click **"Buka Kalkulator"** on that card (or "Kalkulator Margin" in the nav bar at the top) to get to the calculator itself, which has two tabs:
-   - **"Unggah & Lihat Data"**: choose the Excel file downloaded from Shopee, click **"Proses File"**. A table appears with every sold item and its margin.
+   - **"Lihat Data Penjualan"**: data comes from Shopee automatically. Pick a period (7 hari / 30 hari / Bulan ini / Bulan lalu, or your own dates — based on the date funds were released) and a table appears with every sold item and its margin. The last 30 days load by themselves after login. The status line shows when data was last synced (every 2 hours; **"Sinkron Sekarang"** forces it). If the shop isn't connected yet, a **"Hubungkan Toko Shopee"** button starts the one-time authorization. The old Excel upload is still available under "Atau unggah file Excel Income dari Shopee (cara lama)".
    - **"Atur Harga Modal (HPP)"**: view/edit/add the cost price for any product by its Product ID. This list is permanent and shared by everyone who logs in. You can also **bulk import/export the whole HPP list as a CSV file** (e.g. to migrate from the static version, or keep a backup) — buttons for both are in that tab.
 3. Rows highlighted in yellow mean that product doesn't have a HPP yet — you can type it right into that row (press Enter to save), or go to the HPP tab. In the HPP tab, the **"Belum Diisi"** filter lists those products ordered by how much they sold in the uploaded file (a "Terjual (file ini)" column shows pcs and revenue), so you can fill in the ones that matter most first.
    Long date ranges: Shopee splits big exports into sheets named "Penghasilan - 1", "- 2", … — these load fine, all sheets are read and combined.
@@ -139,7 +139,7 @@ From then on, `git push` to your repo auto-deploys the new version — no manual
    3. **Mulai Iklankan** — organic best-sellers with margin ≥ 20% and no ads, each with its target minimum.
    4. **Semua produk & rincian** (collapsed) — the full per-product table incl. ended campaigns, and the reading guide.
    Prices and Shopee's cut per product come from the Income file when loaded (otherwise the direct ad price and a 78% default, with a note). **Cancelled / unpaid orders:** Shopee counts ad sales when an order is *placed*, including orders that are later cancelled or never paid; the Income file only has paid-out orders. The app therefore (a) applies a store-wide paid-order rate to all ad sales — default 85%, editable under "Semua produk & rincian" (use 100 − "Tingkat Pesanan Tidak Terselesaikan" from Seller Centre), and (b) for campaigns that ended long enough ago for every order to be paid out, measures a hard upper bound from the Income file itself (paid ad orders can't exceed the product's total paid orders in the campaign window) and shows it per campaign ("Dibayar ≤ 14 / 29"). The ROAS minimum and the strict profit include this. Ad rows without a product code (Shopee's shop-level "Iklan Produk Otomatis" / Shop GMV Max) are kept as one "Iklan Toko" line so their cost isn't lost. Nothing from the uploaded files is stored on the server; only the typed Target ROAS / Modal Harian per product (table `iklan_setelan`) and the paid-order rate (table `pengaturan`) are.
-6. **Jumlah (pcs) column:** Shopee's export doesn't always tell you how many units a row represents — when someone buys several of the same product in one order, Shopee sometimes bundles them into a single row. The app auto-detects this from price patterns in the file and multiplies HPP accordingly, but you can always correct the number yourself by typing directly into the "Jumlah" box — a "Reset" link appears if you want to go back to the auto-detected value.
+6. **Jumlah (pcs) column:** with API data the pcs count comes straight from Shopee. For Excel uploads: Shopee's export doesn't always tell you how many units a row represents — when someone buys several of the same product in one order, Shopee sometimes bundles them into a single row. The app auto-detects this from price patterns in the file and multiplies HPP accordingly, but you can always correct the number yourself by typing directly into the "Jumlah" box — a "Reset" link appears if you want to go back to the auto-detected value.
 
 ---
 
@@ -153,13 +153,16 @@ webapp/
                      break-even ROAS / profit after ads from HPP + selling price + payout ratio,
                      and picks one Seller Centre action per product
   db.js             SQLite setup (users, product_hpp, order_item_jumlah, iklan_setelan, pengaturan,
-                     shopee_token tables)
+                     shopee_token, api_pesanan, api_pesanan_item, sinkron_shopee tables)
+  sinkronShopee.js  Automatic order sync from the Shopee API (escrow list/detail, order detail,
+                     return detail) into SQLite, splitting each order's payout across its items
+                     the same way Shopee's Income Excel does
   parseExcel.js     Reads the Shopee "Penghasilan" sheet into clean rows, incl. auto-detecting
                      when a row represents more than 1 pcs of the same product (no explicit
                      quantity column exists in Shopee's export — see code comments for the method)
   shopeeApi.js      Shopee Open Platform API v2 client: HMAC signing, OAuth link/token exchange,
                      and a hard-allowlisted read-only request helper (see PROJECT_NOTES.md §20) —
-                     not yet used by the UI, only by the /api/shopee/* test routes in server.js
+                     used by sinkronShopee.js and the /api/shopee/* debug routes in server.js
   scripts/add-user.js   CLI to create/update login accounts
   public/           Frontend (Bahasa Indonesia UI): index.html, style.css, app.js
   data/app.db       SQLite database (gitignored — back this up, don't commit it)

@@ -111,6 +111,7 @@ function tampilkanAplikasi(username) {
   muatDaftarHpp();
   muatSetelanIklan();
   muatPengaturan();
+  mulaiDataOtomatis();
 }
 
 formLogin.addEventListener('submit', async (e) => {
@@ -194,13 +195,7 @@ tombolProses.addEventListener('click', async () => {
     const res = await fetch('/api/upload', { method: 'POST', body: formData });
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || 'Gagal memproses file.');
-    dataHasilUpload = body;
-    renderRingkasan(body.ringkasan);
-    renderTabelData(body.items);
-    renderTabelHpp(); // refresh tab HPP juga, supaya produk dari file ini langsung kelihatan di sana
-    areaRingkasan.classList.remove('tersembunyi');
-    hitungUlangIklan(); // rasio pencairan & harga dari file ini dipakai halaman Analisis Iklan juga
-    if (!dataIklan) renderMingguan(); // belum ada file iklan: tetap tampilkan untung toko per minggu
+    terapkanDataPenjualan(body);
   } catch (err) {
     pesanErrorUpload.textContent = err.message;
     pesanErrorUpload.classList.remove('tersembunyi');
@@ -209,6 +204,154 @@ tombolProses.addEventListener('click', async () => {
     tombolProses.disabled = false;
   }
 });
+
+// Data penjualan baru (dari sinkron Shopee atau unggahan Excel — bentuknya sama) →
+// tampilkan di kalkulator, tab HPP, dan dipakai halaman Analisis Iklan.
+function terapkanDataPenjualan(body) {
+  dataHasilUpload = body;
+  renderRingkasan(body.ringkasan);
+  renderTabelData(body.items);
+  renderTabelHpp(); // refresh tab HPP juga, supaya produk dari data ini langsung kelihatan di sana
+  areaRingkasan.classList.remove('tersembunyi');
+  hitungUlangIklan(); // rasio pencairan & harga dari data ini dipakai halaman Analisis Iklan juga
+  if (!dataIklan) renderMingguan(); // belum ada file iklan: tetap tampilkan untung toko per minggu
+}
+
+// ====== Data otomatis dari Shopee (sinkron API) ======
+const tanggalDari = document.getElementById('tanggalDari');
+const tanggalSampai = document.getElementById('tanggalSampai');
+const tombolTampilkan = document.getElementById('tombolTampilkan');
+const tombolSinkron = document.getElementById('tombolSinkron');
+const teksStatusSinkron = document.getElementById('statusSinkron');
+const pesanErrorSinkron = document.getElementById('pesanErrorSinkron');
+const pesanLoadingSinkron = document.getElementById('pesanLoadingSinkron');
+let statusSinkronTerakhir = null;
+
+// Tanggal lokal (bukan UTC) jadi YYYY-MM-DD, supaya "hari ini" sesuai jam di HP/laptop.
+const isoLokal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const formatTanggalPendek = (iso) =>
+  iso ? new Date(iso + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
+
+function rentangPeriode(kode) {
+  const hariIni = new Date();
+  if (kode === 'bulan-ini') return [new Date(hariIni.getFullYear(), hariIni.getMonth(), 1), hariIni];
+  if (kode === 'bulan-lalu') return [new Date(hariIni.getFullYear(), hariIni.getMonth() - 1, 1), new Date(hariIni.getFullYear(), hariIni.getMonth(), 0)];
+  const dari = new Date(hariIni);
+  dari.setDate(dari.getDate() - (Number(kode) - 1));
+  return [dari, hariIni];
+}
+
+function pilihPeriode(kode) {
+  document.querySelectorAll('.pill-filter[data-periode]').forEach((b) => b.classList.toggle('aktif', b.dataset.periode === kode));
+  const [dari, sampai] = rentangPeriode(kode);
+  tanggalDari.value = isoLokal(dari);
+  tanggalSampai.value = isoLokal(sampai);
+}
+
+document.querySelectorAll('.pill-filter[data-periode]').forEach((btn) => {
+  btn.addEventListener('click', () => { pilihPeriode(btn.dataset.periode); muatDataPenjualan(); });
+});
+// Ubah tanggal manual → tidak ada pill periode yang aktif lagi
+[tanggalDari, tanggalSampai].forEach((el) => el.addEventListener('change', () => {
+  document.querySelectorAll('.pill-filter[data-periode]').forEach((b) => b.classList.remove('aktif'));
+}));
+tombolTampilkan.addEventListener('click', () => muatDataPenjualan());
+
+function tampilkanLoadingSinkron(teks) {
+  document.getElementById('teksLoadingSinkron').textContent = teks;
+  pesanLoadingSinkron.classList.toggle('tersembunyi', !teks);
+}
+function tampilkanErrorSinkron(teks) {
+  pesanErrorSinkron.textContent = teks || '';
+  pesanErrorSinkron.classList.toggle('tersembunyi', !teks);
+}
+
+async function muatDataPenjualan() {
+  if (!statusSinkronTerakhir || !statusSinkronTerakhir.terhubung) return;
+  if (!tanggalDari.value || !tanggalSampai.value) return;
+  if (tanggalDari.value > tanggalSampai.value) { tampilkanErrorSinkron('Tanggal "Dari" tidak boleh sesudah tanggal "Sampai".'); return; }
+  tampilkanErrorSinkron('');
+  tampilkanLoadingSinkron('Memuat data...');
+  tombolTampilkan.disabled = true;
+  try {
+    const q = new URLSearchParams({ dari: tanggalDari.value, sampai: tanggalSampai.value });
+    terapkanDataPenjualan(await apiFetch(`/api/pesanan?${q}`));
+  } catch (err) {
+    tampilkanErrorSinkron(err.message);
+  } finally {
+    tampilkanLoadingSinkron('');
+    tombolTampilkan.disabled = false;
+  }
+}
+
+function renderStatusSinkron(s) {
+  statusSinkronTerakhir = s;
+  const terhubung = !!(s && s.terhubung);
+  tombolSinkron.classList.toggle('tersembunyi', !terhubung);
+  document.getElementById('tautanHubungkan').classList.toggle('tersembunyi', terhubung);
+  tombolTampilkan.disabled = !terhubung;
+  if (!terhubung) {
+    teksStatusSinkron.textContent = 'Toko belum terhubung ke Shopee. Hubungkan sekali, setelah itu data diambil otomatis.';
+    document.getElementById('kartuCaraLama').open = true;
+    return;
+  }
+  const bagian = [];
+  if (s.sedangBerjalan) bagian.push('Sedang mengambil data terbaru dari Shopee...');
+  else if (s.terakhirSelesai) {
+    const waktu = new Date(s.terakhirSelesai).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    bagian.push(s.status === 'gagal' ? `Sinkron terakhir gagal (${waktu})` : `Terakhir diperbarui ${waktu}`);
+  } else bagian.push('Belum pernah sinkron');
+  if (s.jumlahPesanan) bagian.push(`${s.jumlahPesanan.toLocaleString('id-ID')} pesanan tersimpan (${formatTanggalPendek(s.tanggalTerlama)} – ${formatTanggalPendek(s.tanggalTerbaru)})`);
+  bagian.push('otomatis tiap 2 jam');
+  teksStatusSinkron.textContent = bagian.join(' · ');
+  tombolSinkron.disabled = !!s.sedangBerjalan;
+  tampilkanErrorSinkron(s.status === 'gagal' && s.pesan ? `Sinkron terakhir gagal: ${s.pesan}` : '');
+}
+
+async function muatStatusSinkron() {
+  try {
+    renderStatusSinkron(await apiFetch('/api/sinkron/status'));
+  } catch (err) {
+    teksStatusSinkron.textContent = 'Gagal memeriksa koneksi ke Shopee.';
+  }
+}
+
+async function sinkronSekarang() {
+  tombolSinkron.disabled = true;
+  tampilkanErrorSinkron('');
+  tampilkanLoadingSinkron('Mengambil data terbaru dari Shopee... (pertama kali bisa sampai 1–2 menit)');
+  try {
+    renderStatusSinkron(await apiFetch('/api/sinkron', { method: 'POST', body: '{}' }));
+    await muatDataPenjualan();
+  } catch (err) {
+    tampilkanErrorSinkron(err.message);
+    muatStatusSinkron();
+  } finally {
+    tampilkanLoadingSinkron('');
+    tombolSinkron.disabled = false;
+  }
+}
+tombolSinkron.addEventListener('click', sinkronSekarang);
+
+// Dipanggil sekali setelah login: cek koneksi, lalu langsung tampilkan 30 hari terakhir.
+// Kalau belum pernah ada data sama sekali (baru terhubung), jalankan sinkron dulu.
+async function mulaiDataOtomatis() {
+  pilihPeriode('30');
+  await muatStatusSinkron();
+  const s = statusSinkronTerakhir;
+  if (!s || !s.terhubung) return;
+  if (s.sedangBerjalan) {
+    // Sinkron terjadwal sedang jalan di server: tunggu selesai, baru tampilkan.
+    tampilkanLoadingSinkron('Sedang mengambil data terbaru dari Shopee...');
+    while (statusSinkronTerakhir && statusSinkronTerakhir.sedangBerjalan) {
+      await new Promise((r) => setTimeout(r, 5000));
+      await muatStatusSinkron();
+    }
+    tampilkanLoadingSinkron('');
+    await muatDataPenjualan();
+  } else if (!s.jumlahPesanan) await sinkronSekarang();
+  else await muatDataPenjualan();
+}
 
 function renderRingkasan(r) {
   document.getElementById('ringkasanPendapatan').textContent = formatRupiah(r.totalPenghasilan);
@@ -351,7 +494,7 @@ function renderTabelData(items) {
           <td data-label="No. Pesanan">${escapeHtml(it.noPesanan)}</td>
           <td data-label="Tanggal Pesanan">${escapeHtml(it.waktuPesanan)}</td>
           <td data-label="Tanggal Dana Cair">${escapeHtml(it.tanggalDilepaskan)}</td>
-          <td class="kolom-nama" data-label="Nama Produk" title="${escapeHtml(it.namaProduk)}">${escapeHtml(potongNama(it.namaProduk))}</td>
+          <td class="kolom-nama" data-label="Nama Produk" title="${escapeHtml(it.namaProduk)}">${escapeHtml(potongNama(it.namaProduk))}${it.namaModel ? `<br><span class="teks-redup teks-varian">${escapeHtml(it.namaModel)}</span>` : ''}</td>
           <td class="kolom-id" data-label="ID Produk">${escapeHtml(it.idProduk)}</td>
           <td class="kolom-jumlah kolom-tengah" data-label="Jumlah">${selJumlah}</td>
           <td class="kolom-total kolom-angka" data-label="Total Penghasilan">${totalPenghasilanTampil}</td>

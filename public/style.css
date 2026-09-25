@@ -468,6 +468,36 @@ a.tombol { display: inline-flex; text-decoration: none; }
 .baris-unggah .dropzone { flex: 1; min-width: 260px; }
 .baris-unggah .tombol { align-self: center; }
 
+/* Kartu "Data Penjualan dari Shopee" (sinkron otomatis) */
+.baris-periode { margin: 12px 0 10px; }
+.baris-tanggal { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.baris-tanggal label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; font-weight: 600; color: var(--abu-teks); }
+input[type="date"] {
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-kecil);
+  background: #fff;
+  color: var(--teks);
+  outline: none;
+}
+.baris-status-sinkron {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.baris-status-sinkron .keterangan { font-size: 0.84rem; }
+.teks-varian { font-size: 0.78rem; }
+/* Unggah Excel lama: dilipat, dibuka kalau perlu */
+.kartu-cara-lama summary { cursor: pointer; font-weight: 600; color: var(--abu-teks); font-size: 0.9rem; }
+.kartu-cara-lama[open] summary { margin-bottom: 14px; }
+
 /* Tombol "Pilih File" biasa (untuk CSV) + nama file di sampingnya */
 .pilih-file { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .pilih-file input[type="file"] { display: none; }

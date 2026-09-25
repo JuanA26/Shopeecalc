@@ -54,6 +54,10 @@ const ENDPOINT_BACA_SAJA = new Set([
   '/api/v2/payment/get_payout_info',
   '/api/v2/logistics/get_tracking_number',
   '/api/v2/logistics/get_tracking_info',
+  // Modul Returns juga punya endpoint TINDAKAN (confirm, dispute, offer, accept_offer, ...) —
+  // cuma get_return_detail yang dibuka: dipakai sinkronShopee.js untuk tahu barang MANA di
+  // satu pesanan yang diretur (escrow detail hanya memberi daftar nomor returnya).
+  '/api/v2/returns/get_return_detail',
 ]);
 
 // Tautan otorisasi (Seller in House System): seller login lalu redirect balik ke redirectUri

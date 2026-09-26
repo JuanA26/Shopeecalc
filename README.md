@@ -55,7 +55,12 @@ Sales data needs a one-time shop authorization at `/auth/shopee/authorize`.
 ## 3. Using the site
 
 ### Dashboard
-Two cards: Kalkulator Margin (profit for the period chosen there) and Analisis Iklan (headline numbers).
+- **Tugas Minggu Ini** (top): last complete week's store profit after ads (vs the week before), this
+  month so far vs last month, then one card per ad that needs a change in Seller Centre, with the
+  exact old → new value. Below: ads changed less than 7 days ago (wait), ads to leave alone, and the
+  result of earlier changes (the ad's own profit per day, 7 days before vs after).
+- Changes made in Seller Centre are detected automatically by the next sync; nothing to tick.
+- Two cards below: Kalkulator Margin (profit for the period chosen there) and Analisis Iklan.
 
 ### Kalkulator Margin
 - **Lihat Data Penjualan:**
@@ -82,26 +87,31 @@ from Shopee automatically. The page answers four questions:
 
 1. **Anggaran Iklan:** the store-level check.
    - Weekly profit after ads, last 4 complete weeks vs the 4 before. If ads went up but profit didn't:
-     "kurangi Modal Harian".
+     "jangan tambah Modal Harian dulu" (no budget increases are suggested until that changes).
    - The attribution ratio compares ad-attributed units with shop units. It does not prove whether
      ads caused those sales or the sales would have happened anyway.
    - Weeks with ad spend but no order rows remain visible with unknown profit. Gaps prevent comparing
      nonconsecutive weeks for a budget recommendation.
 2. **Iklan yang Sedang Berjalan:** one row per running ad, showing the budget and target from Seller Centre
-   and **one decision**, judged on **direct ROAS** (sales of the advertised product only) against its
-   **ROAS minimum**:
-   - **Lanjut:** direct ROAS ≥ minimum.
-   - **Kurangi modal:** direct ROAS below the minimum → halve the daily budget.
-   - **Jeda:** direct ROAS below half the minimum after 14 days; margin ≤ 8%; or the target needed
-     is above Shopee's highest recommendation + 25% (the app's policy, not a hard Shopee limit).
-   - **Naikkan target:** the target set is below minimum + 2. Targets use Shopee's own ROAS scale,
-     because that's what Shopee compares them with.
-   - **Tunggu:** the ad is younger than 7 days, or has no spend yet.
+   and **one change**. The goal is store profit after ads, so losing ads are tuned step by step
+   rather than paused. Each ad first gets a zone, from **direct ROAS** (sales of the advertised
+   product only) and Shopee's ROAS against the **ROAS minimum**:
+   - **Untung** (direct ≥ minimum) → **Tambah modal** +20% if it spent ≥ 90% of its daily budget on
+     average over the last 7 days and weekly store profit isn't falling while ads rise; otherwise **Biarkan**.
+   - **Belum tentu** (only Shopee's ROAS ≥ minimum) or **Rugi** (both below) → **Naikkan target**
+     by 20% (Shopee's guidance: at most 20% per change). Auto ads: switch to ROAS mode at Shopee ROAS + 20%.
+   - **Target limit** = Shopee's highest recommendation × 1.25; above it ads barely deliver. A raise
+     stops at the limit, with a note. At or above the limit: a losing ad → **Kurangi modal** (halve
+     the budget; a lower target would spend more on a losing ad); a "belum tentu" ad above the
+     limit → **Target terlalu tinggi**, lowered by at most 20% per step towards the limit.
+   - **Tunggu:** the ad is younger than 7 days, has no spend yet, or its target/budget was changed
+     less than 7 days ago.
+   - **Jeda:** only when price is below cost or no ad orders are ever paid.
    - **Isi HPP dulu:** the product has no HPP.
    - Each row also shows Shopee's recommended target range, and a note when the ad ends within 7 days
      (extend it as "Tidak Terbatas" instead of creating a new one, which restarts learning).
-3. **Mulai Iklankan:** best-selling products with margin ≥ 20% and no ads.
-4. **Semua produk & rincian** (collapsed): every product incl. ended ads, plus the reading guide.
+3. **Semua produk & rincian** (collapsed): every product incl. ended ads, its zone and ROAS minimum,
+   plus the reading guide.
 
 The ads CSV from Seller Centre can still be uploaded under "Cadangan" if the automatic data fails.
 
@@ -129,7 +139,8 @@ The ads CSV from Seller Centre can still be uploaded under "Cadangan" if the aut
   price, payout and paid-rate assumptions; cross-product contribution is not measured by this formula.
 - A measured zero paid rate is preserved. Partial returns remove only returned units from the
   measured rate. Active zero-activity campaigns stay visible while waiting for data.
-- Target = minimum + 2 is a heuristic, not a conversion from direct to broad ROAS or a profit guarantee.
+- Targets are on Shopee's own (broad) ROAS scale; the app raises them in 20% steps and watches
+  direct ROAS, because the link between the two scales is different for every ad.
 - **Iklan Toko:** ad spend outside product campaigns (shop total − Σ campaigns) is kept as one line so
   its cost isn't lost.
 

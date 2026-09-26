@@ -987,10 +987,6 @@ tr.terbuka .panah-baris { transform: rotate(90deg); }
 .kartu-details[open] summary::before { transform: rotate(45deg); }
 .kartu-details .daftar-catatan { padding: 0 20px 16px 38px; }
 
-/* Daftar "Coba iklankan": dua kolom di layar lebar */
-.daftar-coba { columns: 2; column-gap: 28px; }
-.daftar-coba li { break-inside: avoid; }
-@media (max-width: 700px) { .daftar-coba { columns: 1; } }
 /* Tabel mingguan tetap tabel biasa di HP (5 kolom pendek, muat digeser). */
 @media (max-width: 700px) {
   .tabel-mingguan-bungkus { overflow-x: auto !important; border: 1px solid var(--border) !important; border-radius: var(--radius-kecil) !important; }
@@ -1191,3 +1187,27 @@ tbody tr.baris-kurangi:hover td { background: #ffedd5; }
   :is(#tabelIklan, #tabelKeputusan) tr.baris-detail > td::before { content: none; }
   .tabel-detail { min-width: 640px; }
 }
+
+/* ---------- Tugas Minggu Ini (Dashboard) ---------- */
+.kartu-tugas { border-top: 3px solid var(--oranye); max-width: 760px; }
+.tugas-kepala { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.tugas-kepala h2 { margin-bottom: 10px; }
+.tugas-untung { background: var(--abu-terang); border-radius: var(--radius-kecil); padding: 12px 14px; margin-bottom: 14px; }
+.tugas-untung .angka-ringkasan { white-space: normal; }
+.tugas-selisih { font-size: 0.85rem; margin-top: 4px; }
+.tugas-bulan { font-size: 0.85rem; color: var(--abu-teks); margin-top: 4px; }
+.tugas-bulan strong { color: var(--teks-judul); }
+.tugas-judul { font-weight: 600; color: var(--teks-judul); margin: 0 0 8px; }
+.tugas-judul-kecil { font-size: 0.8rem; font-weight: 600; color: var(--abu-teks); margin: 16px 0 6px; }
+.tugas-item { border: 1px solid var(--border); border-radius: var(--radius-kecil); padding: 10px 12px; margin-bottom: 8px; }
+.tugas-atas { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.tugas-atas .pill { flex-shrink: 0; }
+.tugas-nama { font-weight: 600; color: var(--teks-judul); overflow-wrap: anywhere; }
+.tugas-aksi { font-size: 1rem; font-weight: 600; margin-top: 4px; color: var(--teks); }
+.tugas-alasan, .tugas-catatan { display: block; font-size: 0.8rem; color: var(--abu-teks); margin-top: 2px; }
+.tugas-catatan { color: var(--kuning); }
+.tugas-baris { list-style: none; margin: 0; padding: 0; }
+.tugas-baris li { display: flex; flex-direction: column; padding: 6px 0; border-top: 1px solid var(--border-lemah); font-size: 0.9rem; }
+.tugas-baris li small { color: var(--abu-teks); font-size: 0.8rem; }
+.tugas-cara { margin: 14px 0 0; font-size: 0.8rem; }
+.sel-setelan .saran.naik { color: var(--hijau); }

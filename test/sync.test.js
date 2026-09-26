@@ -148,3 +148,26 @@ test('orders that keep failing become "stuck": still retried, but no longer coun
   assert.equal(seen.length, sebelum + 1); // still retried
   assert.deepEqual(antrean('stuck', 'order'), ['GONE']);
 });
+
+test('ads sync records Seller Centre target/budget changes and exposes the latest one', async () => {
+  const { sinkronIklan, kampanyeDariDb } = require('../sinkronIklan');
+  const setelan = { target: 9, budget: 60000 };
+  const panggil = async (p) => {
+    if (p.endsWith('/get_product_level_campaign_id_list')) return { response: { campaign_list: [{ campaign_id: 77 }], has_next_page: false } };
+    if (p.endsWith('/get_product_level_campaign_setting_info')) return { response: { campaign_list: [{ campaign_id: 77,
+      common_info: { item_id_list: [555], ad_name: 'Iklan', campaign_status: 'ongoing', bidding_method: 'auto', campaign_budget: setelan.budget,
+        campaign_duration: { start_time: now - 20 * 86400, end_time: 0 } }, auto_bidding_info: { roas_target: setelan.target } }] } };
+    if (p.endsWith('/get_product_recommended_roi_target')) return { response: { upper_bound: { value: 13 }, exact: { value: 10 }, lower_bound: { value: 8 } } };
+    if (p.endsWith('/get_product_campaign_daily_performance')) return { response: [] };
+    if (p.endsWith('/get_all_cpc_ads_daily_performance')) return { response: [] };
+    throw new Error('unexpected endpoint ' + p);
+  };
+  await sinkronIklan({ db, panggil, shopId: 'ads', hariIni: '2026-10-01' });
+  await sinkronIklan({ db, panggil, shopId: 'ads', iklanSampai: '2026-10-01', hariIni: '2026-10-02' });
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM iklan_riwayat_setelan WHERE shop_id = 'ads'").get().n, 0, 'unchanged settings are not history');
+  setelan.target = 10.8;
+  await sinkronIklan({ db, panggil, shopId: 'ads', iklanSampai: '2026-10-02', hariIni: '2026-10-03' });
+  const { setelan: s } = kampanyeDariDb(db, 'ads', '2026-09-01', '2026-10-03');
+  assert.deepEqual(s['555'].perubahan, { tanggal: '2026-10-03', targetLama: 9, targetBaru: 10.8, modalLama: 60000, modalBaru: 60000 });
+  assert.equal(s['555'].rekomendasi.tinggi, 13);
+});

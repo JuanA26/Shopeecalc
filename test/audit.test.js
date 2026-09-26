@@ -132,3 +132,54 @@ test('daily and weekly charts include return costs without counting returned uni
   const missingHpp = vm.runInNewContext(`${dates}\n${sourceFunction('public/app.js', 'untungTokoPerMinggu')}\nuntungTokoPerMinggu()`, { ...context });
   assert.equal(missingHpp.minggu[0].untungKotor, -12000, 'return balances must not imply a 100% margin for missing HPP');
 });
+
+test('profit zones: direct above break-even, only broad above it, both below, price below cost', () => {
+  // Break-even = 1 / 0.21 ≈ 4.76 (see the hand calculation above).
+  assert.equal(analyze(campaign()).produk[0].aksi, 'untung');
+  assert.equal(analyze(campaign({ omzetLangsung: 300000, omzet: 900000 })).produk[0].aksi, 'abu');
+  assert.equal(analyze(campaign({ omzetLangsung: 300000, omzet: 400000 })).produk[0].aksi, 'rugi');
+  const belowCost = hitungAnalisisIklan([campaign()], new Map([['p', { hpp: 90000 }]]), 0.78,
+    { p: { harga: 100000, rasio: 0.78, pcs: 10 } }, { tanggalLaporanIso: '2026-09-25', tingkatCair: 0.75 });
+  assert.equal(belowCost.produk[0].aksi, 'jeda');
+});
+
+test('running-ad ladder: +20% target up to Shopee cap, "too high" note, budget steps, 7-day wait', () => {
+  const src = ['keputusanBerjalan', 'harianProduk', 'pemakaianModal'].map((n) => sourceFunction('public/app.js', n)).join('\n');
+  const run = (produk, setelan, { aturan = null, perHari = null } = {}) => vm.runInNewContext(`${src};keputusanBerjalan()`, {
+    dataIklan: { sumber: 'api', produk: [{ idProduk: 'p', sedangBerjalan: 1, biaya: 1, targetDisarankan: 7, berjalan: { roasShopee: 9 }, ...produk }],
+      kampanye: [{ kodeProduk: 'p', status: 'Berjalan', perHari: perHari || {} }], setelanApi: { p: setelan } },
+    aturanTerakhir: aturan, hariIniWib: () => '2026-10-10',
+    geserHari: (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); },
+    bulatkanModal: (rp) => Math.max(0, Math.round(rp / 5000) * 5000), bulatkanTargetBawah: (n) => Math.floor(n * 10 + 1e-9) / 10,
+    LANGKAH_TARGET: 1.2, LANGKAH_MODAL: 1.2, MODAL_HABIS: 0.9, HARI_TUNGGU_UBAH: 7,
+    batasTargetShopee: (st) => (st.rekomendasi ? Math.floor(st.rekomendasi.tinggi * 1.25 * 10 + 1e-9) / 10 : null),
+    metrikBerjalan: (p) => p.berjalan || p, dariApi: () => true, setelanProduk: () => setelan, berakhirSegera: () => null,
+  }).baris[0];
+  const rek = (tinggi) => ({ rendah: 8, tengah: 10, tinggi });
+  // Losing ad (like blouse V14): 11 × 1.2 = 13.2 would pass the cap 10.2 × 1.25 = 12.7.
+  let b = run({ aksi: 'rugi' }, { target_roas: 11, modal_harian: 55000, rekomendasi: rek(10.2) });
+  assert.equal(b.keputusan, 'naikkan'); assert.equal(b.targetBaru, 12.7); assert.equal(b.alasan, 'ke-batas');
+  // Already above the cap: a losing ad gets less budget (a lower target would spend more);
+  // a maybe-profitable ad steps down at most 20% towards the cap.
+  b = run({ aksi: 'rugi' }, { target_roas: 13, modal_harian: 55000, rekomendasi: rek(10.2) });
+  assert.equal(b.keputusan, 'kurangi'); assert.equal(b.alasan, 'di-atas-batas');
+  b = run({ aksi: 'abu' }, { target_roas: 11, modal_harian: 55000, rekomendasi: rek(5) });
+  assert.equal(b.keputusan, 'turunkan'); assert.equal(b.targetBaru, 9.2);
+  b = run({ aksi: 'abu' }, { target_roas: 13, modal_harian: 55000, rekomendasi: rek(10.2) });
+  assert.equal(b.keputusan, 'turunkan'); assert.equal(b.targetBaru, 12.7);
+  b = run({ aksi: 'rugi' }, { target_roas: 12.7, modal_harian: 55000, rekomendasi: rek(10.2) });
+  assert.equal(b.keputusan, 'kurangi'); assert.equal(b.modalBaru, 30000);
+  b = run({ aksi: 'abu' }, { target_roas: 12.7, modal_harian: 55000, rekomendasi: rek(10.2) });
+  assert.equal(b.keputusan, 'lanjut'); assert.equal(b.alasan, 'di-batas');
+  b = run({ aksi: 'abu' }, { target_roas: 9, modal_harian: 60000, rekomendasi: rek(13.5) });
+  assert.equal(b.keputusan, 'naikkan'); assert.equal(b.targetBaru, 10.8);
+  // Profitable ad that spends ≥ 90% of its budget: +20% budget, unless store profit is falling.
+  const penuh = {}; for (let i = 1; i <= 7; i++) penuh[`2026-10-0${i + 2}`] = { biaya: 57000 };
+  b = run({ aksi: 'untung' }, { target_roas: 9, modal_harian: 60000 }, { perHari: penuh });
+  assert.equal(b.keputusan, 'tambah'); assert.equal(b.modalBaru, 70000);
+  b = run({ aksi: 'untung' }, { target_roas: 9, modal_harian: 60000 }, { perHari: penuh, aturan: { kelas: 'aturan-kurangi' } });
+  assert.equal(b.keputusan, 'lanjut'); assert.equal(b.alasan, 'toko-turun');
+  // Changed in Seller Centre 3 days ago: wait until 7 days have passed.
+  b = run({ aksi: 'rugi' }, { target_roas: 9, modal_harian: 60000, perubahan: { tanggal: '2026-10-07' } });
+  assert.equal(b.keputusan, 'tunggu'); assert.equal(b.bisaDiubahLagi, '2026-10-14');
+});

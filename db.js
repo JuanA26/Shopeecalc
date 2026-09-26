@@ -238,6 +238,22 @@ db.exec(`
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (shop_id, id_produk)
   );
+
+  -- Riwayat perubahan Target ROAS / Modal Harian yang terlihat saat sinkron (sinkronIklan.js):
+  -- satu baris tiap kali nilai di Seller Centre berbeda dari yang tersimpan. Dipakai untuk
+  -- "tunggu 7 hari setelah diubah" dan hasil perubahan di Tugas Minggu Ini. Tanggal = WIB.
+  CREATE TABLE IF NOT EXISTS iklan_riwayat_setelan (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    shop_id TEXT NOT NULL,
+    campaign_id TEXT NOT NULL,
+    id_produk TEXT,
+    tanggal TEXT NOT NULL,
+    target_lama REAL,
+    target_baru REAL,
+    modal_lama REAL,
+    modal_baru REAL
+  );
+  CREATE INDEX IF NOT EXISTS idx_iklan_riwayat ON iklan_riwayat_setelan (shop_id, tanggal);
 `);
 
 // Kolom yang ditambahkan setelah tabel sinkron_shopee sudah ada di produksi.

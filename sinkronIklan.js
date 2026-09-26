@@ -84,7 +84,7 @@ async function sinkronIklan({ db, panggil, shopId, iklanSampai, hariIni = tangga
   // 1) Setelan kampanye: yang belum pernah dilihat + yang belum selesai (target/anggaran/status
   //    bisa berubah) + yang baru selesai seminggu terakhir.
   const semuaId = await daftarIdKampanye(panggil);
-  const lama = new Map(db.prepare('SELECT campaign_id, status, selesai FROM iklan_kampanye WHERE shop_id = ?').all(shopId).map((r) => [r.campaign_id, r]));
+  const lama = new Map(db.prepare('SELECT campaign_id, status, selesai, target_roas, budget_harian FROM iklan_kampanye WHERE shop_id = ?').all(shopId).map((r) => [r.campaign_id, r]));
   const batasBaruSelesai = tambahHari(hariIni, -7);
   const perluSetelan = semuaId.filter((id) => {
     const r = lama.get(id);
@@ -97,6 +97,12 @@ async function sinkronIklan({ db, panggil, shopId, iklanSampai, hariIni = tangga
        bidding_method = excluded.bidding_method, placement = excluded.placement, budget_harian = excluded.budget_harian,
        target_roas = excluded.target_roas, mulai = excluded.mulai, selesai = excluded.selesai, updated_at = excluded.updated_at`
   );
+  // Target/Modal yang berbeda dari yang tersimpan = diubah di Seller Centre sejak sinkron lalu.
+  const simpanRiwayat = db.prepare(
+    `INSERT INTO iklan_riwayat_setelan (shop_id, campaign_id, id_produk, tanggal, target_lama, target_baru, modal_lama, modal_baru)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const beda = (a, b) => Math.abs((a || 0) - (b || 0)) > 1e-6;
   let kampanyeBaru = 0;
   for (const kelompok of potong(perluSetelan, MAKS_ID)) {
     const r = cekError(await panggil('/api/v2/ads/get_product_level_campaign_setting_info', {
@@ -105,8 +111,13 @@ async function sinkronIklan({ db, panggil, shopId, iklanSampai, hariIni = tangga
     db.exec('BEGIN');
     try {
       for (const c of r.campaign_list || []) {
-        if (!lama.has(String(c.campaign_id))) kampanyeBaru += 1;
-        simpanKampanye.run(barisKampanye(c, shopId));
+        const baris = barisKampanye(c, shopId);
+        const sebelum = lama.get(baris.campaign_id);
+        if (!sebelum) kampanyeBaru += 1;
+        else if (beda(sebelum.target_roas, baris.target_roas) || beda(sebelum.budget_harian, baris.budget_harian)) {
+          simpanRiwayat.run(shopId, baris.campaign_id, baris.id_produk, hariIni, sebelum.target_roas, baris.target_roas, sebelum.budget_harian, baris.budget_harian);
+        }
+        simpanKampanye.run(baris);
       }
       db.exec('COMMIT');
     } catch (err) { db.exec('ROLLBACK'); throw err; }
@@ -230,7 +241,7 @@ function kampanyeDariDb(db, shopId, dari, sampai) {
     if (!k) { k = { ...kosong(), perHari: {} }; perKampanye.set(h.campaign_id, k); }
     const v = { dilihat: h.dilihat, klik: h.klik, biaya: h.biaya, omzet: h.omzet, omzetLangsung: h.omzet_langsung, terjual: h.terjual, terjualLangsung: h.terjual_langsung };
     for (const f of Object.keys(v)) k[f] += v[f];
-    k.perHari[h.tanggal] = { biaya: h.biaya, terjual: h.terjual };
+    k.perHari[h.tanggal] = { biaya: h.biaya, terjual: h.terjual, omzetLangsung: h.omzet_langsung };
     const j = jumlahPerHari.get(h.tanggal) || kosong();
     for (const f of Object.keys(v)) j[f] += v[f];
     jumlahPerHari.set(h.tanggal, j);
@@ -321,6 +332,18 @@ function kampanyeDariDb(db, shopId, dari, sampai) {
   // Rekomendasi Target ROAS Shopee (rendah/tengah/tinggi) untuk produk yang sedang beriklan.
   for (const r of db.prepare('SELECT id_produk, rendah, tengah, tinggi FROM iklan_rekomendasi WHERE shop_id = ?').all(shopId)) {
     if (setelan[r.id_produk]) setelan[r.id_produk].rekomendasi = { rendah: r.rendah, tengah: r.tengah, tinggi: r.tinggi };
+  }
+  // Perubahan Target/Modal terakhir (28 hari) per produk yang sedang beriklan, dari kampanye yang
+  // sedang berjalan: dasar "tunggu 7 hari setelah diubah" dan hasil perubahan di Tugas Minggu Ini.
+  const kampanyeBerjalan = new Set([...infoKampanye.values()].filter((i) => i.status === 'ongoing').map((i) => i.campaign_id));
+  const riwayat = db.prepare(
+    `SELECT campaign_id, id_produk, tanggal, target_lama, target_baru, modal_lama, modal_baru FROM iklan_riwayat_setelan
+     WHERE shop_id = ? AND tanggal >= ? ORDER BY tanggal, id`
+  ).all(shopId, tambahHari(sampai, -28));
+  for (const r of riwayat) {
+    const s = r.id_produk && setelan[r.id_produk];
+    if (!s || !kampanyeBerjalan.has(r.campaign_id)) continue;
+    s.perubahan = { tanggal: r.tanggal, targetLama: r.target_lama || null, targetBaru: r.target_baru || null, modalLama: r.modal_lama || null, modalBaru: r.modal_baru || null };
   }
 
   return { kampanye, setelan, adaData: harian.length > 0 || toko.length > 0 };

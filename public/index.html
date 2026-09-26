@@ -69,6 +69,17 @@
           <h1>Dashboard</h1>
           <p class="keterangan">Ringkasan cepat toko HAPPY SHOP.</p>
         </div>
+        <div class="kartu kartu-tugas" id="kartuTugas">
+          <div class="tugas-kepala">
+            <h2>Tugas Minggu Ini</h2>
+            <span id="tugasTanggal" class="info-jumlah-data"></span>
+          </div>
+          <div class="tugas-untung" id="tugasUntung"><div class="keterangan">Memuat data...</div></div>
+          <div id="tugasDaftar"></div>
+          <div id="tugasLain"></div>
+          <div id="tugasHasil"></div>
+          <p class="keterangan tugas-cara">Ubah di Seller Centre → Iklan Shopee. Satu perubahan per iklan, lalu tunggu 7 hari. Perubahan terbaca otomatis setelah sinkron (tiap 30 menit).</p>
+        </div>
         <div class="grid-widget">
           <div class="widget-kartu widget-aktif">
             <div class="widget-kartu-atas">
@@ -453,7 +464,7 @@
                   <tr>
                     <th>Produk</th>
                     <th class="kolom-tengah" title="Modal Harian yang terpasang di Seller Centre → saran">Modal Harian<br><small>sekarang &rarr; saran</small></th>
-                    <th class="kolom-tengah" title="Target ROAS yang terpasang di Seller Centre. Minimal = ROAS minimum + 2.">Target ROAS<br><small>sekarang (minimal)</small></th>
+                    <th class="kolom-tengah" title="Target ROAS yang terpasang di Seller Centre → saran (naik paling banyak 20% sekali ubah)">Target ROAS<br><small>sekarang &rarr; saran</small></th>
                     <th>Keputusan</th>
                   </tr>
                 </thead>
@@ -462,14 +473,7 @@
             </div>
           </div>
 
-          <!-- 3. Mulai iklankan -->
-          <div class="kartu tersembunyi" id="kartuCobaIklan">
-            <h2><span class="langkah">3</span> Mulai Iklankan</h2>
-            <p class="keterangan keterangan-tabel">Laku tanpa iklan, margin &ge; 20%. Mulai <strong>GMV Max Auto</strong>, 7 hari, Rp 30&ndash;40 rb/hari; setelah itu mode ROAS dengan target minimal di bawah.</p>
-            <ul class="daftar-tindakan daftar-coba" id="daftarCobaIklan"></ul>
-          </div>
-
-          <!-- 4. Semua produk & rincian (dilipat) -->
+          <!-- 3. Semua produk & rincian (dilipat) -->
           <details class="kartu kartu-details">
             <summary>Semua produk &amp; rincian</summary>
             <div class="isi-details">
@@ -489,10 +493,10 @@
             </div>
             <div class="pill-filter-row">
               <button class="pill-filter aktif" data-filter-iklan="semua">Semua</button>
+              <button class="pill-filter" data-filter-iklan="untung">Untung</button>
+              <button class="pill-filter" data-filter-iklan="abu">Belum tentu</button>
+              <button class="pill-filter" data-filter-iklan="rugi">Rugi</button>
               <button class="pill-filter" data-filter-iklan="jeda">Jeda</button>
-              <button class="pill-filter" data-filter-iklan="kurangi">Kurangi</button>
-              <button class="pill-filter" data-filter-iklan="ubah-target">Ubah Target</button>
-              <button class="pill-filter" data-filter-iklan="biarkan">Biarkan</button>
               <button class="pill-filter" data-filter-iklan="tunggu">Tunggu</button>
               <button class="pill-filter" data-filter-iklan="isi-hpp">Belum Ada HPP</button>
             </div>
@@ -507,7 +511,7 @@
                     <th class="th-urut" data-urut="namaProduk">Produk</th>
                     <th class="th-urut kolom-angka" data-urut="biaya" title="Total biaya iklan produk ini dalam periode file">Biaya Iklan</th>
                     <th class="th-urut kolom-angka" data-urut="roasShopee" title="ROAS yang sedang ditampilkan Shopee (Efektifitas Iklan).">ROAS di Shopee</th>
-                    <th class="th-urut kolom-angka" data-urut="targetDisarankan" title="Target ROAS minimal = ROAS minimum + 2">Target Minimal</th>
+                    <th class="th-urut kolom-angka" data-urut="roasImpas" title="ROAS langsung minimum: di bawah ini iklan rugi dari produk itu sendiri">ROAS Minimum</th>
                     <th class="th-urut kolom-angka" data-urut="untungLuas" title="Untung setelah biaya iklan. Atas: hitungan Shopee (termasuk produk lain yang ikut terbeli). Bawah: hitungan ketat, hanya produk ini.">Untung Setelah Iklan</th>
                     <th>Di Seller Centre</th>
                   </tr>
@@ -518,11 +522,13 @@
             <details class="details-dalam">
               <summary>Cara membaca halaman ini</summary>
               <ul class="daftar-catatan">
-                <li><strong>Anggaran</strong> ditentukan dari untung toko per minggu: kalau biaya iklan naik tapi untung setelah iklan tidak naik, iklan hanya mengambil penjualan yang memang akan terjadi &rarr; kurangi Modal Harian. Saran per iklan adalah aturan praktis; hasil 2 minggu berikutnya yang memutuskan.</li>
-                <li><strong>Target ROAS minimal</strong> = ROAS minimum + 2. ROAS minimum = di bawah ini iklan pasti rugi setelah potongan Shopee (&plusmn;22%), harga modal, dan pesanan yang batal. Di atasnya belum tentu untung, karena angka Shopee juga memuat penjualan yang memang akan terjadi tanpa iklan &mdash; itu sebabnya anggaran diputuskan dari untung toko per minggu. Target yang terpasang boleh lebih tinggi; jangan di bawahnya. Diamkan 7 hari setelah diubah.</li>
+                <li><strong>Anggaran</strong> ditentukan dari untung toko per minggu: kalau biaya iklan naik tapi untung setelah iklan tidak naik, iklan hanya mengambil penjualan yang memang akan terjadi &rarr; jangan tambah Modal Harian dulu. Saran per iklan adalah aturan praktis; hasil perubahan (di Dashboard) yang memutuskan.</li>
+                <li><strong>ROAS minimum</strong> = di bawah ini iklan rugi setelah potongan Shopee (&plusmn;22%), harga modal, dan pesanan yang batal. Dibandingkan dengan ROAS <em>langsung</em>. Di atasnya belum tentu untung, karena sebagian penjualan memang akan terjadi tanpa iklan &mdash; itu sebabnya untung toko per minggu tetap dicek.</li>
                 <li><strong>Untung Setelah Iklan</strong> per produk: angka atas memakai hitungan Shopee (termasuk produk lain yang ikut terbeli dalam 7 hari), angka bawah hanya produk itu sendiri. Yang benar ada di antara keduanya. Produk yang sedang beriklan dinilai dari kampanye yang berjalan saja, bukan gabungan 3 bulan.</li>
-                <li><strong>Lanjut / Kurangi / Jeda</strong> dinilai dari <strong>ROAS langsung</strong> (hanya produk yang diiklankan) dibanding ROAS minimum &mdash; bukan angka ROAS Shopee yang besar, karena angka Shopee ikut menghitung produk lain dan penjualan yang tetap terjadi tanpa iklan. Di bawah minimum &rarr; kurangi Modal Harian; di bawah separuh minimum setelah 14 hari &rarr; jeda.</li>
-                <li><strong>Hijau</strong> lanjut &middot; <strong>Oranye</strong> kurangi modal &middot; <strong>Biru</strong> naikkan target &middot; <strong>Merah</strong> jeda &middot; <strong>Kuning</strong> isi HPP dulu &middot; <strong>Abu</strong> tunggu (belum 7 hari) atau iklan level toko.</li>
+                <li><strong>Tujuannya untung toko setelah iklan</strong>, bukan ROAS setinggi-tingginya. Iklan yang rugi tidak langsung dimatikan: target dinaikkan pelan-pelan supaya Shopee hanya membayar pembeli yang lebih mungkin beli.</li>
+                <li><strong>Untung</strong> = ROAS langsung (hanya produk yang diiklankan) &ge; ROAS minimum. Kalau Modal Harian hampir selalu habis &rarr; tambah modal 20%. <strong>Belum tentu</strong> = hanya untung kalau dihitung dengan produk lain (ROAS Shopee &ge; minimum). <strong>Rugi</strong> = ROAS Shopee pun di bawah minimum. Belum tentu dan rugi &rarr; naikkan Target ROAS 20% (panduan Shopee: paling banyak 20% sekali ubah).</li>
+                <li><strong>Batas target</strong> = rekomendasi tertinggi Shopee &times; 1,25. Di atas itu iklan hampir tidak tayang. Sudah di batas (atau di atasnya) tapi masih rugi &rarr; kurangi Modal Harian 50%, jangan naikkan target lagi. Belum tentu untung tapi target di atas batas &rarr; turunkan bertahap ke batas.</li>
+                <li><strong>Satu perubahan per iklan, lalu tunggu 7 hari.</strong> Perubahan di Seller Centre terbaca otomatis saat sinkron. <strong>Jeda</strong> hanya kalau harga di bawah modal atau tidak ada pesanan yang dibayar.</li>
               </ul>
             </details>
             </div>

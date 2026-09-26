@@ -107,20 +107,25 @@ test('pending, overlapping and mixed trials block tuning; rollback does not crea
   assert.equal(repeat.alasan, 'sudah-kembali'); assert.equal(repeat.targetBaru, null);
 });
 
-test('dashboard keeps expiry visible for unchanged and waiting ads and labels incomplete results', () => {
+test('dashboard shows numbered simple steps: HPP first, then extend period; no per-ad list', () => {
   for (const decision of ['lanjut', 'tunggu']) {
     const nodes = {}, b = { ...row(), keputusan: decision, p: { idProduk: 'p', namaProduk: 'Sample product' }, berakhir: '2026-10-02' };
+    const hpp = { ...row('h'), keputusan: 'isi-hpp', p: { idProduk: 'h', namaProduk: 'No cost product' } };
     const { data, sumber } = fixture(); data.dataSiapEvaluasi = false;
+    const dataBelumLengkap = { dasar: { alasan: 'hpp', produkTanpaHpp: [{ namaProduk: 'Best seller without HPP' }] }, sinkron: null };
     vm.runInNewContext(extract('renderTugas') + ';renderTugas()', {
       document: { getElementById: id => nodes[id] || (nodes[id] = {}) }, hariIniWib: () => '2026-09-30', formatTanggalPendek: s => s,
       untungTokoPerMinggu: () => null, untungTokoPerBulan: () => null, dataIklan: data, sumberIklan: () => sumber,
-      keputusanBerjalan: () => ({ baris: [b] }), PERLU_TINDAKAN: new Set(), namaSingkat: s => s, escapeHtml: s => s,
-      tanggalSingkat: s => s, kalimatKeputusan: () => 'Tetap dulu.', EvaluasiIklan: E, bannerDataBelumLengkap: () => '',
+      keputusanBerjalan: () => ({ baris: [b, hpp], dataBelumLengkap }), PERLU_TINDAKAN: new Set(['isi-hpp']), namaSingkat: s => s, escapeHtml: s => s,
+      tanggalSingkat: s => s, kalimatKeputusan: () => 'Tetap dulu.', EvaluasiIklan: E, labelKeputusan: () => ['', 'pill-abu'], alasanTugas: () => '',
+      formatRupiahRingkas: n => String(n),
     });
-    assert.match(nodes.tugasDaftar.innerHTML, /Tidak Terbatas/);
-    assert.match(nodes.tugasDaftar.innerHTML, /sebelum <strong>2026-10-02/);
-    assert.match(nodes.tugasHasil.innerHTML, /Data belum lengkap/);
-    assert.doesNotMatch(nodes.tugasHasil.innerHTML, /Rp ?0/);
+    const html = nodes.tugasDaftar.innerHTML;
+    assert.ok(html.indexOf('Isi HPP') < html.indexOf('Tidak Terbatas'));
+    assert.match(html, /No cost product/); assert.match(html, /Best seller without HPP/); assert.match(html, /data-ke-hpp/);
+    assert.match(html, /sebelum 2026-10-02/);
+    assert.match(nodes.tugasLain.innerHTML, /jangan diubah/); assert.doesNotMatch(nodes.tugasLain.innerHTML, /Sample product/);
+    assert.equal(nodes.tugasHasil.innerHTML, '');
   }
 });
 

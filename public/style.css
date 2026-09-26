@@ -1221,3 +1221,24 @@ tbody tr.baris-kurangi:hover td { background: #ffedd5; }
 .tugas-perpanjang .tugas-baris li { flex-direction: row; justify-content: space-between; gap: 8px; }
 .tugas-perpanjang .tugas-baris li small { flex-shrink: 0; color: #c2410c; }
 #tabelKeputusan .catatan-berakhir { color: #c2410c; font-weight: 500; }
+
+/* Tugas Minggu Ini: langkah bernomor (untuk orang tua — besar, jelas, satu hal per langkah) */
+.tugas-langkah { border: 1px solid var(--border); border-left: 5px solid var(--abu-teks); border-radius: var(--radius-kecil); padding: 14px 16px; margin-bottom: 12px; background: #fff; }
+.langkah-kepala { display: flex; align-items: center; gap: 10px; }
+.langkah-judul { font-size: 1.1rem; font-weight: 700; color: var(--teks-judul); }
+.tugas-langkah .langkah { flex-shrink: 0; }
+.langkah-daftar { list-style: none; margin: 10px 0 0; padding: 0; }
+.langkah-daftar li { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid var(--border-lemah); font-size: 0.95rem; }
+.langkah-daftar li strong { flex-shrink: 0; }
+.langkah-daftar .langkah-lagi { color: var(--abu-teks); }
+.langkah-produk { margin-top: 8px; font-size: 0.95rem; }
+.langkah-ket { display: block; margin-top: 8px; font-size: 0.85rem; color: var(--abu-teks); }
+.tombol-langkah { margin-top: 12px; padding: 10px 18px; font-size: 1rem; border: none; }
+.langkah-kuning { border-left-color: var(--kuning); background: var(--kuning-muda); }
+.langkah-oranye { border-left-color: #ea580c; background: #fff7ed; }
+.langkah-oranye .langkah-daftar li strong { color: #c2410c; }
+.langkah-merah { border-left-color: var(--merah); background: var(--merah-muda); }
+.langkah-hijau { border-left-color: var(--hijau); background: var(--hijau-muda); }
+.langkah-biru { border-left-color: #1d4ed8; background: #eff6ff; }
+.tugas-lain { margin: 4px 0 0; font-size: 0.95rem; color: var(--teks); }
+

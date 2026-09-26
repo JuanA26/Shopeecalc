@@ -2358,50 +2358,64 @@ function renderTugas() {
     untungEl.innerHTML = `<div class="label-ringkasan">Perkiraan untung toko minggu ${labelMinggu(akhir.mulai)}–${labelMinggu(akhir.selesai)} (setelah iklan)</div>
       <div class="angka-ringkasan${akhir.untungSetelahIklan < 0 ? ' angka-negatif' : ''}">${formatRupiah(akhir.untungSetelahIklan)}</div>
       ${selisih !== null ? `<div class="tugas-selisih ${selisih >= 0 ? 'untung-positif' : 'untung-negatif'}">${selisih >= 0 ? 'Naik' : 'Turun'} ${formatRupiahRingkas(Math.abs(selisih))} dari minggu sebelumnya</div>` : ''}
-      ${baris}<small class="keterangan">Belum termasuk biaya operasional di luar HPP. Pesanan belum cair dan HPP kosong masih memakai perkiraan.</small>`;
+      ${baris}<small class="keterangan">Perkiraan. Belum termasuk biaya operasional.</small>`;
   } else {
     untungEl.innerHTML = '<div class="keterangan">Untung toko muncul setelah data penjualan dan iklan termuat.</div>';
   }
 
-  // 2. Yang perlu diubah di Seller Centre.
+  // 2. Langkah bernomor untuk orang tua: satu hal per langkah, urut dari yang paling perlu.
   if (!dataIklan) { daftarEl.innerHTML = '<p class="keterangan">Memuat data iklan...</p>'; lainEl.innerHTML = ''; hasilEl.innerHTML = ''; return; }
   const kep = keputusanBerjalan();
-  const tugas = kep.baris.filter((b) => PERLU_TINDAKAN.has(b.keputusan));
-  // Perpanjang periode: satu kartu untuk semua iklan yang segera berakhir (paling dekat dulu).
-  const perpanjang = kep.baris.filter(b => b.berakhir && b.keputusan !== 'jeda').sort((a, b) => a.berakhir.localeCompare(b.berakhir));
-  const kartuPerpanjang = perpanjang.length
-    ? `<div class="tugas-item tugas-perpanjang"><div class="tugas-atas"><span class="tugas-aksi">Ubah Periode jadi Tidak Terbatas</span><span class="pill pill-oranye">${perpanjang.length} iklan berakhir</span></div>` +
-      '<ul class="tugas-baris">' + perpanjang.map(b => `<li><span>${escapeHtml(namaSingkat(b.p.namaProduk, 40))}</span><small>sebelum <strong>${tanggalSingkat(b.berakhir)}</strong></small></li>`).join('') + '</ul>' +
-      '<small class="tugas-alasan">Ubah iklan yang sama, jangan buat iklan baru. Target dan modal jangan diubah di sini.</small></div>'
+  const langkah = [];
+  const daftarNama = (nama, maks) => '<ul class="langkah-daftar">' + nama.slice(0, maks).map((n) => `<li>${escapeHtml(namaSingkat(n, 40))}</li>`).join('') +
+    (nama.length > maks ? `<li class="langkah-lagi">+ ${nama.length - maks} produk lagi</li>` : '') + '</ul>';
+
+  // a. Isi HPP: iklan tanpa HPP + produk terlaris tanpa HPP yang menahan saran iklan.
+  const info = kep.dataBelumLengkap;
+  const tanpaHpp = [...new Set([
+    ...kep.baris.filter((b) => b.keputusan === 'isi-hpp').map((b) => b.p.namaProduk),
+    ...(info && info.dasar && info.dasar.alasan === 'hpp' ? info.dasar.produkTanpaHpp.map((t) => t.namaProduk || t.idProduk) : []),
+  ])];
+  if (tanpaHpp.length) {
+    langkah.push({ warna: 'kuning', judul: 'Isi HPP (harga modal)', isi: daftarNama(tanpaHpp, 5) +
+      '<button type="button" class="tombol-utama tombol-langkah" data-ke-hpp>Isi HPP sekarang</button>' +
+      (info ? '<small class="langkah-ket">Setelah HPP diisi, saran iklan muncul lagi.</small>' : '') });
+  } else if (info) {
+    langkah.push({ warna: 'abu', judul: 'Tunggu data dari Shopee', isi: '<small class="langkah-ket">Tidak perlu melakukan apa-apa. Cek lagi besok.</small>' });
+  }
+
+  // b. Perpanjang periode iklan yang segera berakhir (paling dekat dulu).
+  const perpanjang = kep.baris.filter((b) => b.berakhir && b.keputusan !== 'jeda').sort((a, b) => a.berakhir.localeCompare(b.berakhir));
+  if (perpanjang.length) {
+    langkah.push({ warna: 'oranye', judul: 'Ubah Periode iklan jadi Tidak Terbatas', isi:
+      '<ul class="langkah-daftar">' + perpanjang.map((b) => `<li><span>${escapeHtml(namaSingkat(b.p.namaProduk, 40))}</span><strong>sebelum ${tanggalSingkat(b.berakhir)}</strong></li>`).join('') + '</ul>' +
+      '<small class="langkah-ket">Ubah iklan yang sama. Jangan buat iklan baru.</small>' });
+  }
+
+  // c. Perubahan target/modal: satu langkah per iklan.
+  for (const b of kep.baris.filter((b) => PERLU_TINDAKAN.has(b.keputusan) && b.keputusan !== 'isi-hpp')) {
+    const [, pill] = labelKeputusan(b);
+    langkah.push({ ubah: true, warna: pill.replace('pill-', ''), judul: kalimatKeputusan(b), isi:
+      `<div class="langkah-produk">${escapeHtml(namaSingkat(b.p.namaProduk, 40))}</div>` +
+      (alasanTugas(b) ? `<small class="langkah-ket">${escapeHtml(alasanTugas(b))}</small>` : '') });
+  }
+
+  daftarEl.innerHTML = langkah.length
+    ? langkah.map((l, i) => `<div class="tugas-langkah langkah-${l.warna}"><div class="langkah-kepala"><span class="langkah">${i + 1}</span><span class="langkah-judul">${escapeHtml(l.judul)}</span></div>${l.isi}</div>`).join('')
+    : '<p class="tugas-judul">Tidak ada tugas minggu ini.</p>';
+
+  // 3. Satu kalimat untuk iklan lain (tanpa daftar panjang).
+  const dicoba = kep.baris.filter((b) => b.bisaDiubahLagi && ['baru-diubah', 'uji-berjalan'].includes(b.alasan));
+  const cekLagi = dicoba.map((b) => b.bisaDiubahLagi).sort().pop();
+  lainEl.innerHTML = kep.baris.some((b) => !PERLU_TINDAKAN.has(b.keputusan) && b.keputusan !== 'toko')
+    ? `<p class="tugas-lain">Target dan modal ${langkah.some((l) => l.ubah) ? 'iklan lain' : 'semua iklan'}: <strong>jangan diubah</strong>${cekLagi ? ` sampai ${tanggalSingkat(cekLagi)}` : ' dulu'}.</p>`
     : '';
-  const banner = bannerDataBelumLengkap(kep.dataBelumLengkap);
-  daftarEl.innerHTML = banner + kartuPerpanjang + (tugas.length
-    ? `<p class="tugas-judul">${tugas.length} hal yang perlu diubah di Seller Centre</p>` + tugas.map(kartuTugas).join('')
-    : banner ? '' : '<p class="tugas-judul">Target dan modal tetap dulu.</p>');
 
-  // 3. Iklan lain: baru diubah (tunggu) dan yang dibiarkan.
-  const baruDiubah = kep.baris.filter((b) => b.alasan === 'baru-diubah');
-  const dibiarkan = kep.baris.filter((b) => !PERLU_TINDAKAN.has(b.keputusan) && b.alasan !== 'baru-diubah' && b.keputusan !== 'toko');
-  let lain = '';
-  if (baruDiubah.length) {
-    lain += `<p class="tugas-judul-kecil">Sudah diubah — tunggu hasil</p><ul class="tugas-baris">` + baruDiubah.map((b) =>
-      `<li><span>${escapeHtml(namaSingkat(b.p.namaProduk, 32))}</span><small>${escapeHtml(teksPerubahan(b.perubahan))} · ${tanggalSingkat(b.perubahan.tanggal)} · cek lagi ${tanggalSingkat(b.bisaDiubahLagi)}</small></li>`).join('') + '</ul>';
-  }
-  if (dibiarkan.length) {
-    lain += `<p class="tugas-judul-kecil">Target dan modal tetap dulu (${dibiarkan.length} iklan)</p><ul class="tugas-baris">` + dibiarkan.map((b) =>
-      `<li><span>${escapeHtml(namaSingkat(b.p.namaProduk, 32))}</span>${b.alasan === 'data-toko' ? '' : `<small>${escapeHtml(kalimatKeputusan(b))}</small>`}</li>`).join('') + '</ul>';
-  }
-  lainEl.innerHTML = lain;
-
-  // Store profit includes sales of other products. This is an observation, not causal proof.
+  // Hasil percobaan hanya ditampilkan kalau sudah ada angka (untung toko semua produk, bukan bukti sebab).
   const hasil = EvaluasiIklan.evaluasiPerubahan(dataIklan, sumberIklan(), hariIniWib());
-  if (!hasil) { hasilEl.innerHTML = ''; return; }
-  const judul = '<p class="tugas-judul-kecil">Hasil percobaan — perkiraan untung toko per hari</p>';
-  const belum = { tunggu: `Hasil masih sementara. Cek lagi ${tanggalSingkat(hasil.cekLagi)}.`,
-    data: 'Data belum lengkap. Lengkapi HPP dan periksa sinkron; hasil belum bisa dibandingkan.',
-    campur: 'Ada perubahan berdekatan. Hasil belum bisa dipisahkan; periksa bersama sebelum mencoba lagi.' };
-  hasilEl.innerHTML = judul + (belum[hasil.status] ? `<p class="keterangan">${belum[hasil.status]}</p>` :
-    `<p>${tanggalSingkat(hasil.dariSebelum)}–${tanggalSingkat(hasil.sampaiSebelum)}: ${formatRupiahRingkas(hasil.sebelum)}/hari → ${tanggalSingkat(hasil.dariSesudah)}–${tanggalSingkat(hasil.sampaiSesudah)}: <strong>${formatRupiahRingkas(hasil.sesudah)}/hari</strong>.</p><p class="keterangan">Mencakup semua produk dan biaya iklan. Stok, harga, promo, dan musim juga bisa memengaruhi hasil. Perubahan iklan belum tentu penyebabnya.</p>`);
+  hasilEl.innerHTML = hasil && ['turun', 'tetap-naik'].includes(hasil.status)
+    ? `<p class="tugas-lain">Setelah perubahan ${tanggalSingkat(hasil.tanggal)}, untung toko per hari: ${formatRupiahRingkas(hasil.sebelum)} → <strong class="${hasil.status === 'turun' ? 'untung-negatif' : 'untung-positif'}">${formatRupiahRingkas(hasil.sesudah)}</strong>.</p>`
+    : '';
 }
 
 // ====== Mulai ======

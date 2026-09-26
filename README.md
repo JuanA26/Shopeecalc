@@ -56,10 +56,12 @@ Sales data needs a one-time shop authorization at `/auth/shopee/authorize`.
 
 ### Dashboard
 - **Tugas Minggu Ini** (top): last complete week's store profit after ads (vs the week before), this
-  month so far vs last month, then one card per ad that needs a change in Seller Centre, with the
-  exact old → new value. New trials are limited to one ad at a time. Expiry reminders remain visible
-  even when targets and budgets should stay unchanged. Profit is labelled as an estimate.
-- **Hasil percobaan** compares total store contribution profit after ads per day: seven days before
+  month so far vs last month, then short numbered steps: (1) **Isi HPP** for products whose missing cost
+  price holds the ad advice, with a button to the HPP tab; (2) **Ubah Periode jadi Tidak Terbatas** for
+  ads ending soon; (3) one step per ad that needs a target/budget change, with the exact old → new
+  value. All other ads get one line ("jangan diubah"). New trials are limited to one ad at a time.
+  Profit is labelled as an estimate.
+- **Hasil percobaan** (shown on the Dashboard only once there are numbers) compares total store contribution profit after ads per day: seven days before
   vs seven days after the latest settings change, excluding the change day. Results become actionable
   on change date +15, after seven full days for delayed attribution. Missing data is never zero profit.
 - If store profit falls after a numeric target increase, the app suggests returning towards the old
@@ -124,7 +126,7 @@ from Shopee automatically. The page answers four questions:
    - **Isi HPP dulu:** the product has no HPP.
    - Each row also shows Shopee's recommended target range, and a note when the ad ends within 7 days
      (extend it as "Tidak Terbatas" instead of creating a new one, which restarts learning). The Dashboard
-     lists all expiring ads in one "Ubah Periode jadi Tidak Terbatas" card, soonest first.
+     lists all expiring ads in one "Ubah Periode jadi Tidak Terbatas" step, soonest first.
 3. **Semua produk & rincian** (collapsed): every product incl. ended ads, its zone and ROAS minimum,
    plus the reading guide.
 

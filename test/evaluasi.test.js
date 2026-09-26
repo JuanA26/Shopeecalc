@@ -114,7 +114,7 @@ test('dashboard shows numbered simple steps: HPP first, then extend period; no p
     const { data, sumber } = fixture(); data.dataSiapEvaluasi = false;
     const dataBelumLengkap = { dasar: { alasan: 'hpp', produkTanpaHpp: [{ namaProduk: 'Best seller without HPP' }] }, sinkron: null };
     vm.runInNewContext(extract('renderTugas') + ';renderTugas()', {
-      document: { getElementById: id => nodes[id] || (nodes[id] = {}) }, hariIniWib: () => '2026-09-30', formatTanggalPendek: s => s,
+      document: { getElementById: id => nodes[id] || (nodes[id] = { removeAttribute() {} }) }, hariIniWib: () => '2026-09-30', formatTanggalPendek: s => s,
       untungTokoPerMinggu: () => null, untungTokoPerBulan: () => null, dataIklan: data, sumberIklan: () => sumber,
       keputusanBerjalan: () => ({ baris: [b, hpp], dataBelumLengkap }), PERLU_TINDAKAN: new Set(['isi-hpp']), namaSingkat: s => s, escapeHtml: s => s,
       tanggalSingkat: s => s, kalimatKeputusan: () => 'Tetap dulu.', EvaluasiIklan: E, labelKeputusan: () => ['', 'pill-abu'], alasanTugas: () => '',

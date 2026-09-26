@@ -2333,6 +2333,22 @@ function kartuTugas(b) {
     </div>`;
 }
 
+// Angka untung "menghitung naik" sekali (±0,7 detik) saat pertama tampil. Tidak dijalankan kalau
+// perangkat meminta "kurangi gerakan"; angka akhir selalu sama dengan formatRupiah(nilai).
+let sudahHitungNaik = false;
+function hitungNaik(el, nilai) {
+  if (!el || sudahHitungNaik || typeof window === 'undefined' || !window.matchMedia ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  sudahHitungNaik = true;
+  const mulai = performance.now(), lama = 700;
+  const langkah = (t) => {
+    const k = Math.min(1, (t - mulai) / lama), e = 1 - Math.pow(1 - k, 3);
+    el.textContent = formatRupiah(k < 1 ? Math.round(nilai * e) : nilai);
+    if (k < 1) requestAnimationFrame(langkah);
+  };
+  requestAnimationFrame(langkah);
+}
+
 function renderTugas() {
   const untungEl = document.getElementById('tugasUntung');
   const daftarEl = document.getElementById('tugasDaftar');
@@ -2356,11 +2372,14 @@ function renderTugas() {
         (bLalu && bLalu.untungSetelahIklan !== null ? ` · ${namaBulan(bulanLalu)} (sebulan penuh): ${formatRupiahRingkas(bLalu.untungSetelahIklan)}` : '') + '</div>'
       : '';
     untungEl.innerHTML = `<div class="label-ringkasan">Perkiraan untung toko minggu ${labelMinggu(akhir.mulai)}–${labelMinggu(akhir.selesai)} (setelah iklan)</div>
-      <div class="angka-ringkasan${akhir.untungSetelahIklan < 0 ? ' angka-negatif' : ''}">${formatRupiah(akhir.untungSetelahIklan)}</div>
+      <div class="angka-ringkasan${akhir.untungSetelahIklan < 0 ? ' angka-negatif' : ''}" id="angkaUntungTugas">${formatRupiah(akhir.untungSetelahIklan)}</div>
       ${selisih !== null ? `<div class="tugas-selisih ${selisih >= 0 ? 'untung-positif' : 'untung-negatif'}">${selisih >= 0 ? 'Naik' : 'Turun'} ${formatRupiahRingkas(Math.abs(selisih))} dari minggu sebelumnya</div>` : ''}
       ${baris}<small class="keterangan">Perkiraan. Belum termasuk biaya operasional.</small>`;
+    untungEl.removeAttribute('aria-busy');
+    hitungNaik(document.getElementById('angkaUntungTugas'), akhir.untungSetelahIklan);
   } else {
     untungEl.innerHTML = '<div class="keterangan">Untung toko muncul setelah data penjualan dan iklan termuat.</div>';
+    untungEl.removeAttribute('aria-busy');
   }
 
   // 2. Langkah bernomor untuk orang tua: satu hal per langkah, urut dari yang paling perlu.

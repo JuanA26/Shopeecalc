@@ -54,6 +54,11 @@ Sales data needs a one-time shop authorization at `/auth/shopee/authorize`.
 
 ## 3. Using the site
 
+### Look and feel
+Built for older users: 16 px base text, high-contrast grey, buttons at least 44 px tall. On phones the
+menu sits at the bottom (icon + label). Short fade-in animations and a one-time profit count-up are
+skipped when the device asks for reduced motion.
+
 ### Dashboard
 On a wide screen: store profit and shortcut cards on the left, the weekly tasks on the right. On a
 phone: profit, then tasks, then shortcuts.

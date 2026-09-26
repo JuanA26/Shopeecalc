@@ -55,6 +55,8 @@ Sales data needs a one-time shop authorization at `/auth/shopee/authorize`.
 ## 3. Using the site
 
 ### Dashboard
+On a wide screen: store profit and shortcut cards on the left, the weekly tasks on the right. On a
+phone: profit, then tasks, then shortcuts.
 - **Tugas Minggu Ini** (top): last complete week's store profit after ads (vs the week before), this
   month so far vs last month, then short numbered steps: (1) **Isi HPP** for products whose missing cost
   price holds the ad advice, with a button to the HPP tab; (2) **Ubah Periode jadi Tidak Terbatas** for

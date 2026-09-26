@@ -1189,7 +1189,7 @@ tbody tr.baris-kurangi:hover td { background: #ffedd5; }
 }
 
 /* ---------- Tugas Minggu Ini (Dashboard) ---------- */
-.kartu-tugas { border-top: 3px solid var(--oranye); max-width: 760px; }
+.kartu-tugas { border-top: 3px solid var(--oranye); }
 .tugas-kepala { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .tugas-kepala h2 { margin-bottom: 10px; }
 .tugas-untung { background: var(--abu-terang); border-radius: var(--radius-kecil); padding: 12px 14px; margin-bottom: 14px; }
@@ -1241,4 +1241,21 @@ tbody tr.baris-kurangi:hover td { background: #ffedd5; }
 .langkah-hijau { border-left-color: var(--hijau); background: var(--hijau-muda); }
 .langkah-biru { border-left-color: #1d4ed8; background: #eff6ff; }
 .tugas-lain { margin: 4px 0 0; font-size: 0.95rem; color: var(--teks); }
+
+/* Dashboard layout: phone = untung → tugas → pintasan; desktop = kolom kiri (untung + pintasan), kanan tugas */
+.dash-grid { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "untung" "tugas" "widget"; }
+.dash-grid > .kartu { margin-bottom: 0; min-width: 0; }
+.kartu-untung { grid-area: untung; border-top: 3px solid var(--hijau); }
+.kartu-untung .angka-ringkasan { font-size: 1.9rem; white-space: normal; margin: 4px 0 2px; }
+.kartu-untung .keterangan { display: block; margin-top: 6px; font-size: 0.8rem; }
+.dash-grid .kartu-tugas { grid-area: tugas; }
+.dash-grid .grid-widget { grid-area: widget; }
+@media (min-width: 1000px) {
+  .dash-grid { grid-template-columns: 360px minmax(0, 1fr); grid-template-areas: "untung tugas" "widget tugas"; grid-template-rows: auto 1fr; align-items: start; }
+  .dash-grid .grid-widget { grid-template-columns: 1fr; }
+  .dash-grid .widget-kartu { min-height: 0; }
+  .dash-grid .widget-statistik-baris { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+  .dash-grid .widget-kartu .angka-ringkasan { font-size: 1.15rem; }
+  .langkah-daftar { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); column-gap: 28px; }
+}
 

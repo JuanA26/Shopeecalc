@@ -11,6 +11,8 @@ const { parseCsvLine, parseShopeeAdsCsv, hitungAnalisisIklan, RASIO_PENCAIRAN_DE
 const shopeeApi = require('./shopeeApi');
 const { sinkronkan, bacaItemPesanan, rasioPencairanToko, tingkatCairTerukur, modeEscrow, isiAntreanUlang } = require('./sinkronShopee');
 const { sinkronIklan, kampanyeDariDb } = require('./sinkronIklan');
+const { susunEkspor } = require('./eksporData');
+const { buatXlsx } = require('./xlsx');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -471,6 +473,59 @@ function statusSinkron() {
 }
 
 app.get('/api/sinkron/status', requireLogin, (req, res) => res.json(statusSinkron()));
+
+// ---------- Pengaturan: diagnostik + unduh data untuk analisis ----------
+const hariIniWibServer = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+function ringkasDiagnostik(token) {
+  const s = statusSinkron();
+  const shop = String(token.shop_id);
+  const angka = (sql, ...p) => Object.values(db.prepare(sql).get(...p) || {})[0] ?? null;
+  const terukur = tingkatCairTerukur(db, token.shop_id, hariIniWibServer());
+  return {
+    versi: (process.env.RENDER_GIT_COMMIT || 'lokal').slice(0, 7),
+    sinkron: { status: s.status, pesan: s.pesan, terakhirSelesai: s.terakhirSelesai, ulangTertunda: s.ulangTertunda, ulangMacet: s.ulangMacet,
+      iklanStatus: s.iklan.status, iklanPesan: s.iklan.pesan, iklanTerakhirSelesai: s.iklan.terakhirSelesai },
+    pesanan: { jumlah: s.jumlahPesanan, dari: s.tanggalTerlama, sampai: s.tanggalTerbaru,
+      belumCair: angka(`SELECT COUNT(*) FROM api_order o WHERE o.shop_id = ? AND NOT EXISTS (SELECT 1 FROM api_pesanan p WHERE p.order_sn = o.order_sn)`, shop) },
+    produkTanpaHpp: angka(`SELECT COUNT(DISTINCT i.id_produk) FROM api_order_item i JOIN api_order o ON o.order_sn = i.order_sn
+      WHERE o.shop_id = ? AND i.id_produk NOT IN (SELECT id_produk FROM product_hpp)`, shop),
+    produkDenganHpp: angka('SELECT COUNT(*) FROM product_hpp'),
+    iklan: { kampanyeBerjalan: angka("SELECT COUNT(*) FROM iklan_kampanye WHERE shop_id = ? AND status = 'ongoing'", shop),
+      dari: angka('SELECT MIN(tanggal) FROM iklan_toko_harian WHERE shop_id = ?', shop), sampai: angka('SELECT MAX(tanggal) FROM iklan_toko_harian WHERE shop_id = ?', shop),
+      perubahanTercatat: angka('SELECT COUNT(*) FROM iklan_riwayat_setelan WHERE shop_id = ?', shop) },
+    tingkatCairTerukur: terukur ? terukur.toko : null,
+  };
+}
+
+app.get('/api/diagnostik', requireLogin, (req, res) => {
+  const token = barisTokenAktif();
+  if (!token) return res.status(400).json({ error: 'Toko belum terhubung ke Shopee.' });
+  res.json(ringkasDiagnostik(token));
+});
+
+// Body opsional { keputusan: [...] } = saran iklan yang sedang tampil (dihitung di browser).
+app.post('/api/ekspor', requireLogin, (req, res) => {
+  const token = barisTokenAktif();
+  if (!token) return res.status(400).json({ error: 'Toko belum terhubung ke Shopee.' });
+  try {
+    const d = ringkasDiagnostik(token);
+    const sinkron = { 'sinkron.status': d.sinkron.status, 'sinkron.pesan': d.sinkron.pesan, 'sinkron.terakhir_selesai': d.sinkron.terakhirSelesai,
+      'sinkron.ulang_menunggu': d.sinkron.ulangTertunda, 'sinkron.ulang_macet': d.sinkron.ulangMacet, 'sinkron.iklan_status': d.sinkron.iklanStatus,
+      'sinkron.iklan_pesan': d.sinkron.iklanPesan, 'sinkron.iklan_terakhir_selesai': d.sinkron.iklanTerakhirSelesai,
+      tingkat_bayar_pesanan_iklan_terukur: d.tingkatCairTerukur };
+    const hariIni = hariIniWibServer();
+    const sheets = susunEkspor(db, token.shop_id, {
+      margin: (items) => hitungMargin(items, {}), bacaItemPesanan, rasioPerkiraan: rasioPencairanToko(db, token.shop_id) || RASIO_PENCAIRAN_DEFAULT,
+      hariIni, keputusan: req.body && req.body.keputusan, versi: d.versi, sinkron,
+    });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="happyshop-data-${hariIni}.xlsx"`);
+    res.send(buatXlsx(sheets));
+  } catch (err) {
+    console.error('[EKSPOR]', err);
+    res.status(500).json({ error: `Gagal membuat file: ${err.message}` });
+  }
+});
 
 // Sinkron sekarang (tombol di UI). Body opsional { hariMundur: N } untuk menarik ulang
 // riwayat N hari ke belakang (maks. 365).

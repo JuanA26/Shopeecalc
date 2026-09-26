@@ -59,6 +59,14 @@ Built for older users: 16 px base text, high-contrast grey, buttons at least 44 
 menu sits at the bottom (icon + label). Short fade-in animations and a one-time profit count-up are
 skipped when the device asks for reduced motion.
 
+### Pengaturan (gear button next to Keluar)
+- **Diagnostik:** sync and ads-sync status, orders waiting to be re-fetched, stored order range,
+  products without HPP, running ads, recorded setting changes, app version.
+- **Unduh data (Excel):** one .xlsx workbook for analysis (e.g. by Claude): README, Status, current ad
+  decisions, setting-change history with 7 days before/after (campaign ROAS and store profit per day),
+  profit per month/week/day, products, HPP, campaigns, daily ad figures and every order item. It contains
+  no passwords, Shopee tokens or buyer data. Built without extra dependencies (`xlsx.js`, `eksporData.js`).
+
 ### Dashboard
 On a wide screen: store profit and shortcut cards on the left, the weekly tasks on the right. On a
 phone: profit, then tasks, then shortcuts.
@@ -187,6 +195,8 @@ webapp/
   sinkronIklan.js   Ads sync (campaigns, daily performance, shop totals, recommended ROAS)
   analisisIklan.js  Ads maths and per-ad decision; parser for the Seller Centre ads CSV
   db.js             SQLite schema (users, HPP, settings, Shopee token, orders, payouts, ads)
+  eksporData.js     Pengaturan export: builds the analysis workbook sheets
+  xlsx.js           Minimal dependency-free .xlsx writer
   scripts/add-user.js   Create/update login accounts
   test/             Regression tests (npm test)
   public/           Frontend: index.html, app.js, style.css (no build step)

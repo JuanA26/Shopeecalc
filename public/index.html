@@ -54,6 +54,10 @@
       <div class="info-user">
         <span class="avatar" id="avatarUser"></span>
         <span id="labelUsername"></span>
+        <button type="button" class="tombol tombol-kecil tombol-pengaturan" data-buka-halaman="halamanPengaturan" title="Pengaturan &amp; unduh data" aria-label="Pengaturan">
+          <svg class="ikon" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          <span class="label-pengaturan">Pengaturan</span>
+        </button>
         <button id="tombolLogout" class="tombol tombol-kecil">Keluar</button>
       </div>
     </div>
@@ -536,6 +540,39 @@
             </details>
             </div>
           </details>
+        </div>
+      </section>
+
+      <!-- ---------- PENGATURAN: diagnostik + unduh data (untuk pemilik, bukan menu utama) ---------- -->
+      <section id="halamanPengaturan" class="halaman">
+        <div class="judul-halaman">
+          <h1>Pengaturan</h1>
+          <p class="keterangan">Untuk pemilik toko: cek kesehatan data dan unduh data untuk dianalisis.</p>
+        </div>
+        <div class="grid-pengaturan">
+          <div class="kartu kartu-ekspor">
+            <h2>Unduh data untuk analisis</h2>
+            <p>Satu file Excel berisi semua data toko. Unggah file ini ke Claude dan minta dianalisis.</p>
+            <ul class="daftar-isi-ekspor">
+              <li><strong>Untung toko</strong> per hari, minggu, dan bulan (sebelum dan sesudah iklan)</li>
+              <li><strong>Riwayat perubahan iklan</strong> dengan hasil 7 hari sebelum dan sesudah</li>
+              <li><strong>Saran aplikasi</strong> untuk tiap iklan saat ini</li>
+              <li>Iklan per hari, produk, HPP, dan semua pesanan</li>
+            </ul>
+            <button type="button" id="tombolEkspor" class="tombol tombol-utama">
+              <svg class="ikon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+              Unduh data (Excel)
+            </button>
+            <p id="pesanEkspor" class="keterangan" aria-live="polite"></p>
+            <p class="keterangan kecil">Tidak berisi kata sandi, token Shopee, atau data pembeli. Buka Analisis Iklan dulu supaya saran iklan ikut tersimpan.</p>
+          </div>
+          <div class="kartu kartu-diagnostik">
+            <div class="tugas-kepala">
+              <h2>Diagnostik</h2>
+              <button type="button" id="tombolDiagnostik" class="tombol tombol-kecil">Periksa ulang</button>
+            </div>
+            <div id="isiDiagnostik"><p class="keterangan">Memuat...</p></div>
+          </div>
         </div>
       </section>
 

@@ -144,6 +144,7 @@ function bukaHalaman(idHalaman) {
   document.querySelectorAll('.halaman').forEach((s) => s.classList.toggle('aktif', s.id === idHalaman));
   // Grafik tren diukur dari lebar kartunya — gambar ulang begitu halamannya kelihatan.
   if (idHalaman === 'halamanKalkulator' && dataHasilUpload) renderTren();
+  if (idHalaman === 'halamanPengaturan') muatDiagnostik();
 }
 
 document.querySelectorAll('.nav-item[data-page]').forEach((btn) => {
@@ -2436,6 +2437,70 @@ function renderTugas() {
     ? `<p class="tugas-lain">Setelah perubahan ${tanggalSingkat(hasil.tanggal)}, untung toko per hari: ${formatRupiahRingkas(hasil.sebelum)} → <strong class="${hasil.status === 'turun' ? 'untung-negatif' : 'untung-positif'}">${formatRupiahRingkas(hasil.sesudah)}</strong>.</p>`
     : '';
 }
+
+// ====== Pengaturan: diagnostik + unduh data ======
+const waktuWib = (iso) => (iso ? new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) : '-');
+async function muatDiagnostik() {
+  const el = document.getElementById('isiDiagnostik');
+  try {
+    const d = await apiFetch('/api/diagnostik');
+    const ok = (baik, teks) => `<span class="status-titik ${baik ? 'baik' : 'perhatian'}"></span>${teks}`;
+    const s = d.sinkron;
+    const baris = [
+      ['Sinkron pesanan', ok(s.status === 'sukses', `${escapeHtml(s.status || '-')} · ${waktuWib(s.terakhirSelesai)}`)],
+      ['Sinkron iklan', ok(s.iklanStatus === 'sukses', `${escapeHtml(s.iklanStatus || '-')} · ${waktuWib(s.iklanTerakhirSelesai)}`)],
+      ['Pesanan diambil ulang', ok(!s.ulangTertunda && !s.ulangMacet, `${s.ulangTertunda || 0} menunggu · ${s.ulangMacet || 0} macet`)],
+      ['Pesanan tersimpan', `${(d.pesanan.jumlah || 0).toLocaleString('id-ID')} (${tanggalSingkat(d.pesanan.dari)} – ${tanggalSingkat(d.pesanan.sampai)}) · ${(d.pesanan.belumCair || 0).toLocaleString('id-ID')} belum cair`],
+      ['Produk tanpa HPP', ok(!d.produkTanpaHpp, `${d.produkTanpaHpp || 0} produk (${d.produkDenganHpp || 0} sudah diisi)`)],
+      ['Iklan', `${d.iklan.kampanyeBerjalan || 0} berjalan · data ${tanggalSingkat(d.iklan.dari)} – ${tanggalSingkat(d.iklan.sampai)} · ${d.iklan.perubahanTercatat || 0} perubahan tercatat`],
+      ['Pesanan iklan dibayar', d.tingkatCairTerukur !== null ? `${Math.round(d.tingkatCairTerukur * 100)}% (terukur)` : '-'],
+      ['Versi aplikasi', escapeHtml(d.versi)],
+    ];
+    if (s.pesan || s.iklanPesan) baris.push(['Pesan terakhir', escapeHtml([s.pesan, s.iklanPesan].filter(Boolean).join(' · '))]);
+    el.innerHTML = '<dl class="daftar-diagnostik">' + baris.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('') + '</dl>';
+  } catch (err) {
+    el.innerHTML = `<p class="pesan-error">${escapeHtml(err.message)}</p>`;
+  }
+}
+document.getElementById('tombolDiagnostik').addEventListener('click', muatDiagnostik);
+
+// Saran iklan yang sedang tampil ikut dikirim, karena dihitung di browser.
+function keputusanUntukEkspor() {
+  try {
+    if (!dataIklan) return [];
+    return keputusanBerjalan().baris.map((b) => ({
+      idProduk: b.p.idProduk, namaProduk: b.p.namaProduk, keputusan: b.keputusan, label: labelKeputusan(b)[0], kalimat: kalimatKeputusan(b),
+      alasan: b.alasan || '', zona: b.p.aksi, target: b.target, targetBaru: b.targetBaru, modal: b.modal, modalBaru: b.modalBaru,
+      batasShopee: b.batasShopee, roasLangsung: metrikBerjalan(b.p).roasLangsung ?? null, roasMinimum: b.p.roasImpas ?? null,
+      berakhir: b.berakhir || '', bisaDiubahLagi: b.bisaDiubahLagi || '',
+    }));
+  } catch (_) { return []; }
+}
+document.getElementById('tombolEkspor').addEventListener('click', async () => {
+  const tombol = document.getElementById('tombolEkspor'), pesan = document.getElementById('pesanEkspor');
+  tombol.disabled = true;
+  pesan.innerHTML = '<span class="spinner"></span> Menyiapkan file... (bisa 10–30 detik)';
+  try {
+    const keputusan = keputusanUntukEkspor();
+    const res = await fetch('/api/ekspor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keputusan }) });
+    if (!res.ok) {
+      if (res.status === 401) tampilkanLogin();
+      let body = null; try { body = await res.json(); } catch (_) { /* bukan JSON */ }
+      throw new Error((body && body.error) || `Terjadi kesalahan (${res.status}).`);
+    }
+    const blob = await res.blob();
+    const nama = (/filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '') || [])[1] || 'happyshop-data.xlsx';
+    const url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = nama; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    pesan.textContent = `Selesai: ${nama} (${Math.max(1, Math.round(blob.size / 1024)).toLocaleString('id-ID')} KB)` +
+      (keputusan.length ? ` · ${keputusan.length} saran iklan ikut tersimpan.` : ' · Saran iklan belum ikut (buka Analisis Iklan dulu).');
+  } catch (err) {
+    pesan.innerHTML = `<span class="pesan-error">${escapeHtml(err.message)}</span>`;
+  } finally {
+    tombol.disabled = false;
+  }
+});
 
 // ====== Mulai ======
 cekSesi();

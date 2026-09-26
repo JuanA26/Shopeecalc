@@ -1376,3 +1376,25 @@ input[type="text"], input[type="password"], input[type="number"] { min-height: 4
   .kerangka { background: linear-gradient(90deg, #e8ebf0 0px, #f4f6f9 60px, #e8ebf0 120px) #e8ebf0; background-size: 400px 100%; animation: kilau 1.2s linear infinite; }
 }
 
+/* ---------- Pengaturan (diagnostik + unduh data) ---------- */
+.grid-pengaturan { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+.grid-pengaturan > .kartu { margin-bottom: 0; }
+@media (min-width: 1000px) { .grid-pengaturan { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
+.kartu-ekspor { border-top: 3px solid var(--oranye); }
+.kartu-ekspor p { margin: 0 0 10px; }
+.daftar-isi-ekspor { margin: 0 0 16px; padding-left: 20px; line-height: 1.7; }
+.kartu-ekspor .keterangan.kecil { font-size: 0.85rem; margin-top: 12px; }
+.daftar-diagnostik { display: grid; grid-template-columns: max-content 1fr; gap: 10px 16px; margin: 4px 0 0; }
+.daftar-diagnostik dt { color: var(--abu-teks); font-weight: 600; font-size: 0.9rem; }
+.daftar-diagnostik dd { margin: 0; overflow-wrap: anywhere; }
+.status-titik { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+.status-titik.baik { background: var(--hijau); }
+.status-titik.perhatian { background: #f59e0b; }
+.tombol-pengaturan .ikon { width: 18px; height: 18px; }
+@media (max-width: 640px) {
+  .daftar-diagnostik { grid-template-columns: 1fr; gap: 2px; }
+  .daftar-diagnostik dd { margin-bottom: 10px; }
+  .tombol-pengaturan { padding: 8px 10px; }
+  .tombol-pengaturan .label-pengaturan { display: none; }
+}
+

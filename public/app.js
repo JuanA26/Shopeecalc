@@ -1882,6 +1882,7 @@ function keputusanBerjalan() {
   const baris = [];
   if (!dataIklan) return { baris, modalSekarang: 0, modalSaran: null, belumDiisi: 0 };
   const berjalan = dataIklan.produk.filter((p) => p.sedangBerjalan > 0);
+  let dataBelumLengkap = null; // kenapa semua iklan ditahan: ditampilkan SEKALI sebagai banner
   // Untung toko mingguan turun sementara iklan naik → jangan tambah modal dulu.
   const tokoTurun = !!(aturanTerakhir && aturanTerakhir.kelas === 'aturan-kurangi');
   const hariIni = hariIniWib();
@@ -1936,13 +1937,51 @@ function keputusanBerjalan() {
   if (dariApi() && Array.isArray(dataIklan.riwayatSetelan)) {
     const evaluasi = EvaluasiIklan.evaluasiPerubahan(dataIklan, sumberIklan(), hariIni);
     const sampai = geserHari(hariIni, -8);
-    const dasarLengkap = EvaluasiIklan.untungToko(sumberIklan(), dataIklan.biayaTokoHarian, geserHari(sampai, -6), sampai) !== null;
-    EvaluasiIklan.terapkanEvaluasiToko(baris, evaluasi, dataIklan, dasarLengkap);
+    const dasar = EvaluasiIklan.rincianUntungToko(sumberIklan(), dataIklan.biayaTokoHarian, geserHari(sampai, -6), sampai);
+    dasar.dari = geserHari(sampai, -6); dasar.sampai = sampai;
+    EvaluasiIklan.terapkanEvaluasiToko(baris, evaluasi, dataIklan, dasar.nilai !== null);
+    if (baris.some((b) => b.alasan === 'data-toko')) {
+      dataBelumLengkap = { dasar: dasar.nilai === null ? dasar : null, sinkron: dataIklan.sinkronBelumSiap || (dataIklan.dataSiapEvaluasi ? null : { jenis: 'gagal' }) };
+    }
     modalSaran = baris.reduce((n, b) => n + (b.modalBaru ?? b.modal ?? 0), 0);
     baris.sort((a, b) => urutan[a.keputusan] - urutan[b.keputusan] || b.p.biaya - a.p.biaya);
   }
-  return { baris, modalSekarang, modalSaran: adaModal ? modalSaran : null, belumDiisi, tokoTurun };
+  return { baris, modalSekarang, modalSaran: adaModal ? modalSaran : null, belumDiisi, tokoTurun, dataBelumLengkap };
 }
+
+// Satu banner kuning untuk "data belum lengkap" (bukan kalimat yang sama di setiap iklan).
+function bannerDataBelumLengkap(info) {
+  if (!info) return '';
+  const alasan = [];
+  const d = info.dasar;
+  if (d && d.alasan === 'hpp') {
+    const nama = d.produkTanpaHpp.slice(0, 3).map((t) => escapeHtml(namaSingkat(t.namaProduk || t.idProduk, 32))).join(', ');
+    alasan.push(`HPP kosong untuk <strong>${Math.round(d.bagianTanpaHpp * 100)}%</strong> penjualan ${tanggalSingkat(d.dari)}–${tanggalSingkat(d.sampai)} (boleh paling banyak ${Math.round(EvaluasiIklan.BATAS_TANPA_HPP * 100)}%).` +
+      (nama ? ` Paling besar: ${nama}.` : ''));
+  } else if (d) {
+    alasan.push(`Data penjualan atau biaya iklan ${tanggalSingkat(d.dari)}–${tanggalSingkat(d.sampai)} belum lengkap. Tunggu sinkron berikutnya.`);
+  }
+  const s = info.sinkron;
+  if (s) {
+    alasan.push(s.jenis === 'antrean'
+      ? `${s.menunggu + s.macet} pesanan masih diambil ulang dari Shopee${s.macet ? ` (${s.macet} macet)` : ''}.`
+      : s.jenis === 'lama' ? 'Sinkron Shopee belum berhasil dalam 24 jam terakhir.' : 'Sinkron Shopee terakhir gagal.');
+  }
+  const tombol = d && d.alasan === 'hpp' ? '<button type="button" class="tombol-kecil" data-ke-hpp>Isi HPP</button>' : '';
+  return `<div class="banner-data"><strong>Data belum lengkap — target dan modal semua iklan tetap dulu.</strong>` +
+    alasan.map((t) => `<span>${t}</span>`).join('') + tombol + '</div>';
+}
+
+// Tombol "Isi HPP" di banner: buka Kalkulator Margin → tab HPP → filter "Belum Diisi".
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-ke-hpp]')) return;
+  bukaHalaman('halamanKalkulator');
+  const tab = document.querySelector('.pill-filter[data-subtab="subHpp"]');
+  if (tab) tab.click();
+  const belum = document.querySelector('.pill-filter[data-filter-hpp="belum"]');
+  if (belum) belum.click();
+  window.scrollTo(0, 0);
+});
 
 const LABEL_KEPUTUSAN = {
   kembalikan: ['Kembalikan target', 'pill-kuning', 'baris-peringatan'],
@@ -1957,6 +1996,21 @@ const LABEL_KEPUTUSAN = {
   lanjut: ['Biarkan', 'pill-hijau', 'baris-untung'],
   toko: ['Iklan toko', 'pill-abu', ''],
 };
+// "Tunggu" punya beberapa sebab; beri warna berbeda supaya tidak semuanya abu-abu.
+const LABEL_TUNGGU = {
+  'baru-diubah': ['Tunggu hasil', 'pill-biru'],
+  'uji-berjalan': ['Tunggu hasil', 'pill-biru'],
+  'satu-uji': ['Antre', 'pill-biru'],
+  'data-toko': ['Data belum lengkap', 'pill-kuning'],
+  'uji-campur': ['Periksa dulu', 'pill-kuning'],
+  'tinjau-hasil': ['Periksa dulu', 'pill-kuning'],
+  'sudah-kembali': ['Tetap', 'pill-abu'],
+};
+function labelKeputusan(b) {
+  const dasar = LABEL_KEPUTUSAN[b.keputusan];
+  const t = b.keputusan === 'tunggu' && LABEL_TUNGGU[b.alasan];
+  return t ? [t[0], t[1], dasar[2]] : dasar;
+}
 
 // Catatan kecil di bawah kalimat keputusan: iklan yang segera berakhir, dan target yang sudah
 // di atas batas Shopee (iklan jadi jarang tayang).
@@ -1964,7 +2018,7 @@ function catatanKeputusanTeks(b) {
   const f = formatRoas;
   const catatan = [];
   if (b.berakhir && b.keputusan !== 'jeda') {
-    catatan.push(`Berakhir ${tanggalSingkat(b.berakhir)} — ubah Periode jadi Tidak Terbatas; jangan buat iklan baru.`);
+    catatan.push(`Berakhir ${tanggalSingkat(b.berakhir)} → ubah Periode jadi Tidak Terbatas.`);
   }
   if (b.alasan === 'di-atas-batas') {
     catatan.push(`Target ${f(b.target)} sudah di atas batas Shopee (${f(b.batasShopee)}). Jangan dinaikkan lagi; iklan jadi jarang tayang.`);
@@ -1981,7 +2035,7 @@ function catatanKeputusanTeks(b) {
   return catatan;
 }
 function catatanKeputusan(b) {
-  return catatanKeputusanTeks(b).map((t) => `<small class="catatan-keputusan">${escapeHtml(t)}</small>`).join('');
+  return catatanKeputusanTeks(b).map((t) => `<small class="catatan-keputusan${t.startsWith('Berakhir') ? ' catatan-berakhir' : ''}">${escapeHtml(t)}</small>`).join('');
 }
 
 const rupiahPendek = (n) => formatRupiahRingkas(n).replace('Rp ', '');
@@ -1990,7 +2044,7 @@ function kalimatKeputusan(b) {
   const pesan = {
     'uji-berjalan': `Sedang mencoba perubahan — cek lagi ${tanggalSingkat(b.bisaDiubahLagi)}.`,
     'uji-campur': 'Ada perubahan berdekatan. Periksa hasil bersama sebelum mengubah lagi.',
-    'data-toko': 'Data belum lengkap. Lengkapi HPP dan periksa sinkron dulu.',
+    'data-toko': 'Tetap dulu. Lihat catatan kuning di atas.',
     'tinjau-hasil': 'Untung toko turun. Periksa hasil perubahan sebelum mencoba lagi.',
     'satu-uji': 'Tunggu hasil iklan yang dicoba lebih dulu.',
     'sudah-kembali': 'Target sudah diturunkan kembali. Jangan ulangi kenaikan dulu.',
@@ -2057,6 +2111,7 @@ function renderKeputusan() {
   document.getElementById('ketTabelKeputusan').innerHTML = dariApi()
     ? '<strong>Modal Harian</strong> dan <strong>Target ROAS</strong> diambil otomatis dari Seller Centre. Klik baris untuk rincian.'
     : 'Isi <strong>Modal Harian</strong> dan <strong>Target ROAS</strong> yang sekarang terpasang di Seller Centre (sekali saja, disimpan). Klik baris untuk rincian.';
+  document.getElementById('bannerKeputusan').innerHTML = bannerDataBelumLengkap(kep.dataBelumLengkap);
 
   // Baris anggaran (di kartu 1) — angka sekarang → saran, kalau modal sudah diisi.
   if (kep.modalSekarang > 0) {
@@ -2086,7 +2141,7 @@ function renderKeputusan() {
 
   isi.innerHTML = kep.baris.map((b) => {
     const p = b.p;
-    const [label, pill, kelasBaris] = LABEL_KEPUTUSAN[b.keputusan];
+    const [label, pill, kelasBaris] = labelKeputusan(b);
     const terbuka = keputusanTerbuka.has(p.idProduk);
     const toko = p.aksi === 'toko'; // iklan toko: tidak punya modal/target per produk
     const inputModal = toko ? '' : dariApi()
@@ -2268,7 +2323,7 @@ function teksPerubahan(u) {
 }
 
 function kartuTugas(b) {
-  const [label, pill] = LABEL_KEPUTUSAN[b.keputusan];
+  const [label, pill] = labelKeputusan(b);
   const catatan = catatanKeputusanTeks({ ...b, berakhir: null }).map((t) => `<small class="tugas-catatan">${escapeHtml(t)}</small>`).join('');
   const alasan = alasanTugas(b);
   return `<div class="tugas-item">
@@ -2312,12 +2367,17 @@ function renderTugas() {
   if (!dataIklan) { daftarEl.innerHTML = '<p class="keterangan">Memuat data iklan...</p>'; lainEl.innerHTML = ''; hasilEl.innerHTML = ''; return; }
   const kep = keputusanBerjalan();
   const tugas = kep.baris.filter((b) => PERLU_TINDAKAN.has(b.keputusan));
-  daftarEl.innerHTML = tugas.length
+  // Perpanjang periode: satu kartu untuk semua iklan yang segera berakhir (paling dekat dulu).
+  const perpanjang = kep.baris.filter(b => b.berakhir && b.keputusan !== 'jeda').sort((a, b) => a.berakhir.localeCompare(b.berakhir));
+  const kartuPerpanjang = perpanjang.length
+    ? `<div class="tugas-item tugas-perpanjang"><div class="tugas-atas"><span class="tugas-aksi">Ubah Periode jadi Tidak Terbatas</span><span class="pill pill-oranye">${perpanjang.length} iklan berakhir</span></div>` +
+      '<ul class="tugas-baris">' + perpanjang.map(b => `<li><span>${escapeHtml(namaSingkat(b.p.namaProduk, 40))}</span><small>sebelum <strong>${tanggalSingkat(b.berakhir)}</strong></small></li>`).join('') + '</ul>' +
+      '<small class="tugas-alasan">Ubah iklan yang sama, jangan buat iklan baru. Target dan modal jangan diubah di sini.</small></div>'
+    : '';
+  const banner = bannerDataBelumLengkap(kep.dataBelumLengkap);
+  daftarEl.innerHTML = banner + kartuPerpanjang + (tugas.length
     ? `<p class="tugas-judul">${tugas.length} hal yang perlu diubah di Seller Centre</p>` + tugas.map(kartuTugas).join('')
-    : '<p class="tugas-judul">Target dan modal tetap dulu.</p>';
-  const perpanjang = kep.baris.filter(b => b.berakhir && b.keputusan !== 'jeda');
-  if (perpanjang.length) daftarEl.innerHTML += '<p class="tugas-judul">Perpanjang periode iklan</p>' + perpanjang.map(b =>
-    `<div class="tugas-item"><div class="tugas-nama">${escapeHtml(namaSingkat(b.p.namaProduk, 40))}</div><div class="tugas-aksi">Ubah Periode jadi Tidak Terbatas sebelum ${tanggalSingkat(b.berakhir)}.</div><small>Perpanjang iklan yang sama. Target dan modal ikuti petunjuk di atas.</small></div>`).join('');
+    : banner ? '' : '<p class="tugas-judul">Target dan modal tetap dulu.</p>');
 
   // 3. Iklan lain: baru diubah (tunggu) dan yang dibiarkan.
   const baruDiubah = kep.baris.filter((b) => b.alasan === 'baru-diubah');
@@ -2329,7 +2389,7 @@ function renderTugas() {
   }
   if (dibiarkan.length) {
     lain += `<p class="tugas-judul-kecil">Target dan modal tetap dulu (${dibiarkan.length} iklan)</p><ul class="tugas-baris">` + dibiarkan.map((b) =>
-      `<li><span>${escapeHtml(namaSingkat(b.p.namaProduk, 32))}</span><small>${escapeHtml(kalimatKeputusan(b))}</small></li>`).join('') + '</ul>';
+      `<li><span>${escapeHtml(namaSingkat(b.p.namaProduk, 32))}</span>${b.alasan === 'data-toko' ? '' : `<small>${escapeHtml(kalimatKeputusan(b))}</small>`}</li>`).join('') + '</ul>';
   }
   lainEl.innerHTML = lain;
 

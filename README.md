@@ -65,8 +65,9 @@ Sales data needs a one-time shop authorization at `/auth/shopee/authorize`.
 - If store profit falls after a numeric target increase, the app suggests returning towards the old
   target (at most a 20% reduction per step), keeping budget unchanged. If profit is maintained or rises,
   it keeps the tested settings. This is an observed comparison, not proof that the ad caused the change.
-- Incomplete HPP, missing daily records, stale/failed syncs, retries, or overlapping changes block new
-  trials. Mixed target/budget changes with worse results require review. A target increase followed by
+- Missing HPP for more than 5% of the week's payout (smaller gaps are estimated at the margin of the
+  other products), missing daily records, stale/failed syncs, retries, or overlapping changes block new
+  trials. The reason is shown once as a yellow banner (with an "Isi HPP" button), not on every ad. Mixed target/budget changes with worse results require review. A target increase followed by
   a reversal is not automatically repeated while that pair remains in the 90-day change history.
 - Changes made in Seller Centre are detected automatically by the next sync; nothing to tick.
 - Two cards below: Kalkulator Margin (profit for the period chosen there) and Analisis Iklan.
@@ -117,11 +118,13 @@ from Shopee automatically. The page answers four questions:
      the budget; a lower target would spend more on a losing ad); a "belum tentu" ad above the
      limit → **Target terlalu tinggi**, lowered by at most 20% per step towards the limit.
    - **Tunggu:** there is not yet a complete mature window under current settings, no spend, or the
-     store trial/data check is pending. The UI shows a check date where known.
+     store trial/data check is pending. The UI shows a check date where known. The pill is coloured by
+     reason: blue "Tunggu hasil"/"Antre" (a trial is running), yellow "Data belum lengkap"/"Periksa dulu".
    - **Jeda:** only when price is below cost or no ad orders are ever paid.
    - **Isi HPP dulu:** the product has no HPP.
    - Each row also shows Shopee's recommended target range, and a note when the ad ends within 7 days
-     (extend it as "Tidak Terbatas" instead of creating a new one, which restarts learning).
+     (extend it as "Tidak Terbatas" instead of creating a new one, which restarts learning). The Dashboard
+     lists all expiring ads in one "Ubah Periode jadi Tidak Terbatas" card, soonest first.
 3. **Semua produk & rincian** (collapsed): every product incl. ended ads, its zone and ROAS minimum,
    plus the reading guide.
 

@@ -115,10 +115,37 @@ test('dashboard keeps expiry visible for unchanged and waiting ads and labels in
       document: { getElementById: id => nodes[id] || (nodes[id] = {}) }, hariIniWib: () => '2026-09-30', formatTanggalPendek: s => s,
       untungTokoPerMinggu: () => null, untungTokoPerBulan: () => null, dataIklan: data, sumberIklan: () => sumber,
       keputusanBerjalan: () => ({ baris: [b] }), PERLU_TINDAKAN: new Set(), namaSingkat: s => s, escapeHtml: s => s,
-      tanggalSingkat: s => s, kalimatKeputusan: () => 'Tetap dulu.', EvaluasiIklan: E,
+      tanggalSingkat: s => s, kalimatKeputusan: () => 'Tetap dulu.', EvaluasiIklan: E, bannerDataBelumLengkap: () => '',
     });
-    assert.match(nodes.tugasDaftar.innerHTML, /Tidak Terbatas sebelum 2026-10-02/);
+    assert.match(nodes.tugasDaftar.innerHTML, /Tidak Terbatas/);
+    assert.match(nodes.tugasDaftar.innerHTML, /sebelum <strong>2026-10-02/);
     assert.match(nodes.tugasHasil.innerHTML, /Data belum lengkap/);
     assert.doesNotMatch(nodes.tugasHasil.innerHTML, /Rp ?0/);
   }
+});
+
+test('a small share of sales without HPP is estimated; a large share still holds all ads', () => {
+  const { data, sumber } = fixture();
+  // Week 16-22 Sep: 7 orders of 200 rb. Add one small order without HPP (1.4% of payout).
+  sumber.items.push({ idProduk: 'baru', namaProduk: 'Produk baru', waktuPesanan: '2026-09-17', totalPenghasilan: 20000, hpp: null, untung: null });
+  const kecil = E.rincianUntungToko(sumber, data.biayaTokoHarian, '2026-09-16', '2026-09-22');
+  assert.equal(kecil.alasan, null);
+  // 80 rb profit − 20 rb ads per day; margin 40% of payout, so the 20 rb order adds 8 rb over the week.
+  assert.ok(Math.abs(kecil.nilai - (60000 + 8000 / 7)) < 0.001);
+  sumber.items.push({ idProduk: 'baru', namaProduk: 'Produk baru', waktuPesanan: '2026-09-18', totalPenghasilan: 200000, hpp: null, untung: null });
+  const besar = E.rincianUntungToko(sumber, data.biayaTokoHarian, '2026-09-16', '2026-09-22');
+  assert.equal(besar.alasan, 'hpp'); assert.equal(besar.nilai, null);
+  assert.equal(besar.produkTanpaHpp[0].namaProduk, 'Produk baru');
+  const rows = [row(), row('q')];
+  E.terapkanEvaluasiToko(rows, null, data, besar.nilai !== null);
+  assert.ok(rows.every(b => b.keputusan === 'tunggu' && b.alasan === 'data-toko'));
+});
+
+test('the missing-data banner names the reason once, with the HPP share and products', () => {
+  const ctx = { EvaluasiIklan: E, escapeHtml: s => s, namaSingkat: s => s, tanggalSingkat: s => s };
+  vm.runInNewContext(extract('bannerDataBelumLengkap') + ';globalThis.f = bannerDataBelumLengkap', ctx);
+  assert.equal(ctx.f(null), '');
+  const html = ctx.f({ dasar: { alasan: 'hpp', bagianTanpaHpp: 0.12, dari: 'a', sampai: 'b', produkTanpaHpp: [{ namaProduk: 'Blus X' }] },
+    sinkron: { jenis: 'antrean', menunggu: 3, macet: 1 } });
+  assert.match(html, /12%/); assert.match(html, /Blus X/); assert.match(html, /data-ke-hpp/); assert.match(html, /4 pesanan/);
 });

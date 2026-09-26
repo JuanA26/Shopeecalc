@@ -623,11 +623,16 @@ app.post('/api/iklan/dari-shopee', requireLogin, (req, res) => {
   const segar = iso => !!iso && Date.now() - Date.parse(iso) < 24 * 3600e3;
   const dataSiapEvaluasi = s.status === 'sukses' && s.iklan_status === 'sukses' &&
     segar(s.terakhir_selesai) && segar(s.iklan_selesai) && !antrean.menunggu && !antrean.macet;
+  // Why not ready, so the page can say it once in plain words.
+  const sinkronBelumSiap = dataSiapEvaluasi ? null
+    : s.status !== 'sukses' || s.iklan_status !== 'sukses' ? { jenis: 'gagal' }
+    : !segar(s.terakhir_selesai) || !segar(s.iklan_selesai) ? { jenis: 'lama' }
+    : { jenis: 'antrean', menunggu: antrean.menunggu || 0, macet: antrean.macet || 0 };
   const analisis = hitungAnalisisIklan(kampanye, petaHppUntukIklan(), rasio, produkIncomeDariPermintaan(body.produkIncome), opsi);
   const tampil = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
   res.json({
     ...analisis, sumber: 'api', setelanApi: setelan, rentangData: { dari, sampai }, statusIklan,
-    riwayatSetelan, biayaTokoHarian, dataSiapEvaluasi,
+    riwayatSetelan, biayaTokoHarian, dataSiapEvaluasi, sinkronBelumSiap,
     sumberRasio, sumberTingkatCair: opsi.sumberTingkatCair, tingkatCairTerukurToko: opsi.tingkatCairTerukurToko,
     periode: `${tampil(dari)} - ${tampil(sampai)}`, namaToko: '', tanggalLaporanIso: sampai,
   });

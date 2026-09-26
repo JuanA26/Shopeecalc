@@ -30,25 +30,48 @@
     return m;
   }
 
+  // Orders without HPP may be at most this share of the week's payout; they are estimated with the
+  // margin of orders that do have HPP (same method as the weekly profit card).
+  const BATAS_TANPA_HPP = 0.05;
+
   // Uses all store orders and actual shop ad spend, so cross-product sales are included.
   // A day without orders is unknown until order coverage can prove zero sales.
-  function untungToko(sumber, iklanHarian, dari, sampai) {
+  // Returns { nilai (per day) | null, alasan: null | 'periode' | 'hpp' | 'hari', bagianTanpaHpp, produkTanpaHpp }.
+  function rincianUntungToko(sumber, iklanHarian, dari, sampai) {
     const periode = sumber && sumber.ringkasan && sumber.ringkasan.periode;
-    if (!periode || periode.dari > dari || periode.sampai < sampai) return null;
-    const perHari = new Map();
+    const hasil = { nilai: null, alasan: null, bagianTanpaHpp: 0, produkTanpaHpp: [] };
+    if (!periode || periode.dari > dari || periode.sampai < sampai) return { ...hasil, alasan: 'periode' };
+    const perHari = new Map(), tanpaHpp = new Map();
+    let diketahui = 0, untungDiketahui = 0, kosong = 0;
     for (const it of sumber.items || []) {
       const d = String(it.waktuPesanan || '').slice(0, 10);
       if (d < dari || d > sampai) continue;
-      if (!Number.isFinite(it.totalPenghasilan) || (!it.dikembalikan && (!Number.isFinite(it.hpp) || !Number.isFinite(it.untung)))) return null;
-      perHari.set(d, (perHari.get(d) || 0) + (it.dikembalikan ? it.totalPenghasilan : it.untung));
+      if (!Number.isFinite(it.totalPenghasilan)) return { ...hasil, alasan: 'hari' };
+      const h = perHari.get(d) || { tetap: 0, kosong: 0 };
+      perHari.set(d, h);
+      if (it.dikembalikan) h.tetap += it.totalPenghasilan;
+      else if (Number.isFinite(it.hpp) && Number.isFinite(it.untung)) {
+        h.tetap += it.untung; diketahui += it.totalPenghasilan; untungDiketahui += it.untung;
+      } else {
+        h.kosong += it.totalPenghasilan; kosong += it.totalPenghasilan;
+        const k = it.idProduk || it.namaProduk || '?';
+        const t = tanpaHpp.get(k) || { idProduk: it.idProduk || '', namaProduk: it.namaProduk || '', penghasilan: 0 };
+        t.penghasilan += it.totalPenghasilan; tanpaHpp.set(k, t);
+      }
     }
+    hasil.bagianTanpaHpp = kosong > 0 ? kosong / (diketahui + kosong) : 0;
+    hasil.produkTanpaHpp = [...tanpaHpp.values()].sort((a, b) => b.penghasilan - a.penghasilan);
+    if (kosong > 0 && (!(diketahui > 0) || hasil.bagianTanpaHpp > BATAS_TANPA_HPP)) return { ...hasil, alasan: 'hpp' };
+    const margin = diketahui > 0 ? untungDiketahui / diketahui : 0;
     let total = 0;
     for (const d of tanggal(dari, sampai)) {
-      if (!perHari.has(d) || !iklanHarian || !Number.isFinite(iklanHarian[d])) return null;
-      total += perHari.get(d) - iklanHarian[d];
+      if (!perHari.has(d) || !iklanHarian || !Number.isFinite(iklanHarian[d])) return { ...hasil, alasan: 'hari' };
+      const h = perHari.get(d);
+      total += h.tetap + h.kosong * margin - iklanHarian[d];
     }
-    return total / 7;
+    return { ...hasil, nilai: total / 7 };
   }
+  const untungToko = (sumber, iklanHarian, dari, sampai) => rincianUntungToko(sumber, iklanHarian, dari, sampai).nilai;
 
   function evaluasiPerubahan(data, sumber, hariIni) {
     const riwayat = (data.riwayatSetelan || []).filter(u => u.tanggal <= hariIni);
@@ -115,7 +138,7 @@
     return baris;
   }
 
-  const api = { geser, metrikTerbaru, untungToko, evaluasiPerubahan, pernahDikembalikan, terapkanEvaluasiToko };
+  const api = { geser, metrikTerbaru, untungToko, rincianUntungToko, BATAS_TANPA_HPP, evaluasiPerubahan, pernahDikembalikan, terapkanEvaluasiToko };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.EvaluasiIklan = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

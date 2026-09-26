@@ -186,7 +186,7 @@ async function sinkronIklan({ db, panggil, shopId, iklanSampai, hariIni = tangga
             const tgl = dariShopee(m.date);
             if (!tgl) continue;
             const v = [angka(m.impression), angka(m.clicks), angka(m.expense), angka(m.broad_gmv), angka(m.direct_gmv), angka(m.broad_order_amount), angka(m.direct_order_amount)];
-            if (v.every((x) => x === 0)) continue;
+            // Keep explicit zero days: an absent row means unknown, not zero activity.
             simpanHarian.run(id, tgl, shopId, ...v);
             barisHarian += 1;
           }
@@ -241,7 +241,7 @@ function kampanyeDariDb(db, shopId, dari, sampai) {
     if (!k) { k = { ...kosong(), perHari: {} }; perKampanye.set(h.campaign_id, k); }
     const v = { dilihat: h.dilihat, klik: h.klik, biaya: h.biaya, omzet: h.omzet, omzetLangsung: h.omzet_langsung, terjual: h.terjual, terjualLangsung: h.terjual_langsung };
     for (const f of Object.keys(v)) k[f] += v[f];
-    k.perHari[h.tanggal] = { biaya: h.biaya, terjual: h.terjual, omzetLangsung: h.omzet_langsung };
+    k.perHari[h.tanggal] = { biaya: h.biaya, terjual: h.terjual, omzet: h.omzet, omzetLangsung: h.omzet_langsung };
     const j = jumlahPerHari.get(h.tanggal) || kosong();
     for (const f of Object.keys(v)) j[f] += v[f];
     jumlahPerHari.set(h.tanggal, j);
@@ -333,20 +333,22 @@ function kampanyeDariDb(db, shopId, dari, sampai) {
   for (const r of db.prepare('SELECT id_produk, rendah, tengah, tinggi FROM iklan_rekomendasi WHERE shop_id = ?').all(shopId)) {
     if (setelan[r.id_produk]) setelan[r.id_produk].rekomendasi = { rendah: r.rendah, tengah: r.tengah, tinggi: r.tinggi };
   }
-  // Perubahan Target/Modal terakhir (28 hari) per produk yang sedang beriklan, dari kampanye yang
-  // sedang berjalan: dasar "tunggu 7 hari setelah diubah" dan hasil perubahan di Tugas Minggu Ini.
+  // Keep 90 days of changes, including ended campaigns, to detect overlapping store trials.
   const kampanyeBerjalan = new Set([...infoKampanye.values()].filter((i) => i.status === 'ongoing').map((i) => i.campaign_id));
   const riwayat = db.prepare(
     `SELECT campaign_id, id_produk, tanggal, target_lama, target_baru, modal_lama, modal_baru FROM iklan_riwayat_setelan
      WHERE shop_id = ? AND tanggal >= ? ORDER BY tanggal, id`
-  ).all(shopId, tambahHari(sampai, -28));
+  ).all(shopId, tambahHari(sampai, -90));
+  const riwayatSetelan = riwayat.map(r => ({ campaignId: r.campaign_id, idProduk: r.id_produk, tanggal: r.tanggal,
+    targetLama: r.target_lama || null, targetBaru: r.target_baru || null,
+    modalLama: r.modal_lama || null, modalBaru: r.modal_baru || null }));
   for (const r of riwayat) {
     const s = r.id_produk && setelan[r.id_produk];
     if (!s || !kampanyeBerjalan.has(r.campaign_id)) continue;
     s.perubahan = { tanggal: r.tanggal, targetLama: r.target_lama || null, targetBaru: r.target_baru || null, modalLama: r.modal_lama || null, modalBaru: r.modal_baru || null };
   }
 
-  return { kampanye, setelan, adaData: harian.length > 0 || toko.length > 0 };
+  return { kampanye, setelan, riwayatSetelan, biayaTokoHarian: Object.fromEntries(toko.map(d => [d.tanggal, d.biaya])), adaData: harian.length > 0 || toko.length > 0 };
 }
 
 module.exports = { sinkronIklan, kampanyeDariDb, jendela };

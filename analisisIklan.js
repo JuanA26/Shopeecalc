@@ -51,6 +51,7 @@
 // bukan gabungan 3 bulan: Shopee mengulang tahap belajar tiap kampanye, jadi kampanye lama
 // tidak meramalkan yang sekarang. Gabungan tetap ada untuk tabel "Semua produk".
 
+const { metrikTerbaru } = require('./public/evaluasiIklan');
 const RASIO_PENCAIRAN_DEFAULT = 0.78;
 const TINGKAT_CAIR_DEFAULT = 0.85; // 85% pesanan iklan dianggap dibayar kalau belum ada angka toko
 const PENYANGGA_TARGET = 2;         // poin di atas ROAS minimum
@@ -240,10 +241,14 @@ function vonis(p) {
     const sampai = isoKeTampil(tambahHari(p.berjalan.tanggalMulaiIso, HARI_BELAJAR));
     return { status: 'tunggu', aksi: 'tunggu', tindakan: `Masih belajar — cek lagi ${sampai}.` };
   }
-  const m = p.berjalan || p;
+  const m = p.penilaian && p.penilaian.siap ? p.penilaian : p.berjalan || p;
   if (p.tingkatCair === 0) {
     return { status: 'rugi', aksi: 'jeda', tindakan: 'Jeda — belum ada pesanan yang menjadi penjualan pada data terukur.' };
   }
+  if (p.marginPerRp !== null && p.marginPerRp <= 0 && p.hargaRata) return { status: 'tipis', aksi: 'jeda', tindakan: 'Jeda — pendapatan setelah potongan tidak menutup HPP.' };
+  if (p.penilaian && !p.penilaian.siap) return { status: 'tunggu', aksi: 'tunggu', tindakan: p.penilaian.alasan === 'waktu'
+    ? `Tunggu penjualan terlambat tercatat${p.penilaian.siapTanggal ? ` — cek lagi ${isoKeTampil(p.penilaian.siapTanggal)}` : ''}.`
+    : 'Data harian belum lengkap — periksa sinkron.' };
   if (p.berjalan && m.biaya === 0) return { status: 'tunggu', aksi: 'tunggu', tindakan: 'Belum ada biaya iklan — tunggu data.' };
   if (!p.hargaRata) {
     return m.biaya > 0
@@ -464,6 +469,10 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
       if (p.berjalan) hitungUntung(p.berjalan, null);
     }
 
+    if (p.berjalan && opsi.setelanApi) {
+      p.penilaian = metrikTerbaru(kampanye, p.idProduk, (opsi.setelanApi[p.idProduk] || {}).perubahan, tanggalLaporanIso);
+      if (p.penilaian.siap) p.penilaian.untungLangsung = p.marginPerRp === null ? null : p.penilaian.omzetLangsung * cair * p.marginPerRp - p.penilaian.biaya;
+    }
     const v = vonis(p);
     p.status = v.status;
     p.aksi = v.aksi;

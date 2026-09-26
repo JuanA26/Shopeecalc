@@ -158,8 +158,8 @@ test('ads sync records Seller Centre target/budget changes and exposes the lates
       common_info: { item_id_list: [555], ad_name: 'Iklan', campaign_status: 'ongoing', bidding_method: 'auto', campaign_budget: setelan.budget,
         campaign_duration: { start_time: now - 20 * 86400, end_time: 0 } }, auto_bidding_info: { roas_target: setelan.target } }] } };
     if (p.endsWith('/get_product_recommended_roi_target')) return { response: { upper_bound: { value: 13 }, exact: { value: 10 }, lower_bound: { value: 8 } } };
-    if (p.endsWith('/get_product_campaign_daily_performance')) return { response: [] };
-    if (p.endsWith('/get_all_cpc_ads_daily_performance')) return { response: [] };
+    if (p.endsWith('/get_product_campaign_daily_performance')) return { response: { campaign_list: [{ campaign_id: 77, metrics_list: [{ date: '01-10-2026', expense: 0, broad_gmv: 0, direct_gmv: 0 }] }] } };
+    if (p.endsWith('/get_all_cpc_ads_daily_performance')) return { response: [{ date: '01-10-2026', expense: 0 }] };
     throw new Error('unexpected endpoint ' + p);
   };
   await sinkronIklan({ db, panggil, shopId: 'ads', hariIni: '2026-10-01' });
@@ -167,7 +167,11 @@ test('ads sync records Seller Centre target/budget changes and exposes the lates
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM iklan_riwayat_setelan WHERE shop_id = 'ads'").get().n, 0, 'unchanged settings are not history');
   setelan.target = 10.8;
   await sinkronIklan({ db, panggil, shopId: 'ads', iklanSampai: '2026-10-02', hariIni: '2026-10-03' });
-  const { setelan: s } = kampanyeDariDb(db, 'ads', '2026-09-01', '2026-10-03');
+  const { setelan: s, kampanye, riwayatSetelan, biayaTokoHarian } = kampanyeDariDb(db, 'ads', '2026-09-01', '2026-10-03');
   assert.deepEqual(s['555'].perubahan, { tanggal: '2026-10-03', targetLama: 9, targetBaru: 10.8, modalLama: 60000, modalBaru: 60000 });
   assert.equal(s['555'].rekomendasi.tinggi, 13);
+  assert.equal(riwayatSetelan.length, 1);
+  assert.equal(riwayatSetelan[0].campaignId, '77');
+  assert.equal(biayaTokoHarian['2026-10-01'], 0);
+  assert.deepEqual(kampanye[0].perHari['2026-10-01'], { biaya: 0, terjual: 0, omzet: 0, omzetLangsung: 0 });
 });

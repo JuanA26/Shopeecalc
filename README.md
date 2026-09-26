@@ -57,8 +57,17 @@ Sales data needs a one-time shop authorization at `/auth/shopee/authorize`.
 ### Dashboard
 - **Tugas Minggu Ini** (top): last complete week's store profit after ads (vs the week before), this
   month so far vs last month, then one card per ad that needs a change in Seller Centre, with the
-  exact old → new value. Below: ads changed less than 7 days ago (wait), ads to leave alone, and the
-  result of earlier changes (the ad's own profit per day, 7 days before vs after).
+  exact old → new value. New trials are limited to one ad at a time. Expiry reminders remain visible
+  even when targets and budgets should stay unchanged. Profit is labelled as an estimate.
+- **Hasil percobaan** compares total store contribution profit after ads per day: seven days before
+  vs seven days after the latest settings change, excluding the change day. Results become actionable
+  on change date +15, after seven full days for delayed attribution. Missing data is never zero profit.
+- If store profit falls after a numeric target increase, the app suggests returning towards the old
+  target (at most a 20% reduction per step), keeping budget unchanged. If profit is maintained or rises,
+  it keeps the tested settings. This is an observed comparison, not proof that the ad caused the change.
+- Incomplete HPP, missing daily records, stale/failed syncs, retries, or overlapping changes block new
+  trials. Mixed target/budget changes with worse results require review. A target increase followed by
+  a reversal is not automatically repeated while that pair remains in the 90-day change history.
 - Changes made in Seller Centre are detected automatically by the next sync; nothing to tick.
 - Two cards below: Kalkulator Margin (profit for the period chosen there) and Analisis Iklan.
 
@@ -95,17 +104,20 @@ from Shopee automatically. The page answers four questions:
 2. **Iklan yang Sedang Berjalan:** one row per running ad, showing the budget and target from Seller Centre
    and **one change**. The goal is store profit after ads, so losing ads are tuned step by step
    rather than paused. Each ad first gets a zone, from **direct ROAS** (sales of the advertised
-   product only) and Shopee's ROAS against the **ROAS minimum**:
+   product only) and Shopee's ROAS against the **ROAS minimum**. API verdicts use the latest seven
+   full days ending eight calendar days before today, entirely under the current settings, rather
+   than the running campaign's cumulative totals. History totals remain available in the details.
+   The store-profit trial checks above take priority over this candidate ladder:
    - **Untung** (direct ≥ minimum) → **Tambah modal** +20% if it spent ≥ 90% of its daily budget on
-     average over the last 7 days and weekly store profit isn't falling while ads rise; otherwise **Biarkan**.
+     average over the same seven mature days and weekly store profit isn't falling while ads rise; otherwise **Biarkan**.
    - **Belum tentu** (only Shopee's ROAS ≥ minimum) or **Rugi** (both below) → **Naikkan target**
      by 20% (Shopee's guidance: at most 20% per change). Auto ads: switch to ROAS mode at Shopee ROAS + 20%.
-   - **Target limit** = Shopee's highest recommendation × 1.25; above it ads barely deliver. A raise
+   - **Target limit** = Shopee's highest recommendation × 1.25 (an advisory delivery ceiling). A raise
      stops at the limit, with a note. At or above the limit: a losing ad → **Kurangi modal** (halve
      the budget; a lower target would spend more on a losing ad); a "belum tentu" ad above the
      limit → **Target terlalu tinggi**, lowered by at most 20% per step towards the limit.
-   - **Tunggu:** the ad is younger than 7 days, has no spend yet, or its target/budget was changed
-     less than 7 days ago.
+   - **Tunggu:** there is not yet a complete mature window under current settings, no spend, or the
+     store trial/data check is pending. The UI shows a check date where known.
    - **Jeda:** only when price is below cost or no ad orders are ever paid.
    - **Isi HPP dulu:** the product has no HPP.
    - Each row also shows Shopee's recommended target range, and a note when the ad ends within 7 days
@@ -148,7 +160,9 @@ The ads CSV from Seller Centre can still be uploaded under "Cadangan" if the aut
 
 Run `npm test` for the regression tests (profit and break-even maths, paid-order rate with partial
 returns, payout split, return deductions, ad-only weeks, retry rotation, stuck retries and historical
-recovery against a mock Shopee). No Shopee credentials are needed.
+recovery against a mock Shopee). Trial tests cover recent vs old performance, store-profit reversals,
+cross-product sales, missing/zero days, overlapping changes, one trial at a time and expiry reminders.
+No Shopee credentials are needed.
 The calculator excludes business overhead unless it is already part of HPP/payout deductions.
 
 ## 6. Project structure
@@ -164,6 +178,7 @@ webapp/
   scripts/add-user.js   Create/update login accounts
   test/             Regression tests (npm test)
   public/           Frontend: index.html, app.js, style.css (no build step)
+                    evaluasiIklan.js: shared mature-window and store-profit trial calculations
   data/app.db       SQLite database (gitignored; back it up)
   Dockerfile        For other container hosts
 ```

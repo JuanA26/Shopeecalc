@@ -143,7 +143,7 @@ test('profit zones: direct above break-even, only broad above it, both below, pr
   assert.equal(belowCost.produk[0].aksi, 'jeda');
 });
 
-test('running-ad ladder: +20% target up to Shopee cap, "too high" note, budget steps, 7-day wait', () => {
+test('running-ad ladder: target cap, budget steps on mature days, and attribution wait', () => {
   const src = ['keputusanBerjalan', 'harianProduk', 'pemakaianModal'].map((n) => sourceFunction('public/app.js', n)).join('\n');
   const run = (produk, setelan, { aturan = null, perHari = null } = {}) => vm.runInNewContext(`${src};keputusanBerjalan()`, {
     dataIklan: { sumber: 'api', produk: [{ idProduk: 'p', sedangBerjalan: 1, biaya: 1, targetDisarankan: 7, berjalan: { roasShopee: 9 }, ...produk }],
@@ -151,7 +151,7 @@ test('running-ad ladder: +20% target up to Shopee cap, "too high" note, budget s
     aturanTerakhir: aturan, hariIniWib: () => '2026-10-10',
     geserHari: (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); },
     bulatkanModal: (rp) => Math.max(0, Math.round(rp / 5000) * 5000), bulatkanTargetBawah: (n) => Math.floor(n * 10 + 1e-9) / 10,
-    LANGKAH_TARGET: 1.2, LANGKAH_MODAL: 1.2, MODAL_HABIS: 0.9, HARI_TUNGGU_UBAH: 7,
+    LANGKAH_TARGET: 1.2, LANGKAH_MODAL: 1.2, MODAL_HABIS: 0.9, HARI_TUNGGU_UBAH: 15,
     batasTargetShopee: (st) => (st.rekomendasi ? Math.floor(st.rekomendasi.tinggi * 1.25 * 10 + 1e-9) / 10 : null),
     metrikBerjalan: (p) => p.berjalan || p, dariApi: () => true, setelanProduk: () => setelan, berakhirSegera: () => null,
   }).baris[0];
@@ -174,12 +174,15 @@ test('running-ad ladder: +20% target up to Shopee cap, "too high" note, budget s
   b = run({ aksi: 'abu' }, { target_roas: 9, modal_harian: 60000, rekomendasi: rek(13.5) });
   assert.equal(b.keputusan, 'naikkan'); assert.equal(b.targetBaru, 10.8);
   // Profitable ad that spends ≥ 90% of its budget: +20% budget, unless store profit is falling.
-  const penuh = {}; for (let i = 1; i <= 7; i++) penuh[`2026-10-0${i + 2}`] = { biaya: 57000 };
+  const penuh = {}; for (let i = 8; i <= 14; i++) {
+    const d = new Date('2026-10-10T00:00:00Z'); d.setUTCDate(d.getUTCDate() - i);
+    penuh[d.toISOString().slice(0, 10)] = { biaya: 57000 };
+  }
   b = run({ aksi: 'untung' }, { target_roas: 9, modal_harian: 60000 }, { perHari: penuh });
   assert.equal(b.keputusan, 'tambah'); assert.equal(b.modalBaru, 70000);
   b = run({ aksi: 'untung' }, { target_roas: 9, modal_harian: 60000 }, { perHari: penuh, aturan: { kelas: 'aturan-kurangi' } });
   assert.equal(b.keputusan, 'lanjut'); assert.equal(b.alasan, 'toko-turun');
-  // Changed in Seller Centre 3 days ago: wait until 7 days have passed.
+  // Exclude change day, collect seven days, then allow seven full days for attribution.
   b = run({ aksi: 'rugi' }, { target_roas: 9, modal_harian: 60000, perubahan: { tanggal: '2026-10-07' } });
-  assert.equal(b.keputusan, 'tunggu'); assert.equal(b.bisaDiubahLagi, '2026-10-14');
+  assert.equal(b.keputusan, 'tunggu'); assert.equal(b.bisaDiubahLagi, '2026-10-22');
 });

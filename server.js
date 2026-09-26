@@ -612,16 +612,22 @@ app.post('/api/iklan/dari-shopee', requireLogin, (req, res) => {
   const body = req.body || {};
   const sampai = tanggalValid(body.sampai) ? body.sampai : new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
   const dari = tanggalValid(body.dari) ? body.dari : sampai;
-  const { kampanye, setelan, adaData } = kampanyeDariDb(db, token.shop_id, dari, sampai);
-  const s = db.prepare('SELECT iklan_status, iklan_pesan, iklan_selesai, iklan_sampai FROM sinkron_shopee WHERE shop_id = ?').get(token.shop_id) || {};
+  const { kampanye, setelan, adaData, riwayatSetelan, biayaTokoHarian } = kampanyeDariDb(db, token.shop_id, dari, sampai);
+  const s = db.prepare('SELECT status, terakhir_selesai, iklan_status, iklan_pesan, iklan_selesai, iklan_sampai FROM sinkron_shopee WHERE shop_id = ?').get(token.shop_id) || {};
   const statusIklan = { status: s.iklan_status || null, pesan: s.iklan_pesan || null, terakhirSelesai: s.iklan_selesai || null };
   if (!adaData && !kampanye.length) return res.json({ kosong: true, statusIklan });
   const { rasio, sumberRasio } = rasioDariPermintaan(body.rasioPencairan);
   const opsi = opsiAnalisisIklan(sampai, body.tanggalRilisTerakhir, body.tanggalDataMulai);
+  opsi.setelanApi = setelan;
+  const antrean = isiAntreanUlang(db, token.shop_id);
+  const segar = iso => !!iso && Date.now() - Date.parse(iso) < 24 * 3600e3;
+  const dataSiapEvaluasi = s.status === 'sukses' && s.iklan_status === 'sukses' &&
+    segar(s.terakhir_selesai) && segar(s.iklan_selesai) && !antrean.menunggu && !antrean.macet;
   const analisis = hitungAnalisisIklan(kampanye, petaHppUntukIklan(), rasio, produkIncomeDariPermintaan(body.produkIncome), opsi);
   const tampil = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
   res.json({
     ...analisis, sumber: 'api', setelanApi: setelan, rentangData: { dari, sampai }, statusIklan,
+    riwayatSetelan, biayaTokoHarian, dataSiapEvaluasi,
     sumberRasio, sumberTingkatCair: opsi.sumberTingkatCair, tingkatCairTerukurToko: opsi.tingkatCairTerukurToko,
     periode: `${tampil(dari)} - ${tampil(sampai)}`, namaToko: '', tanggalLaporanIso: sampai,
   });

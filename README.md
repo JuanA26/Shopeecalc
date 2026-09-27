@@ -75,9 +75,16 @@ Built for older users: 16 px base text, high-contrast grey, buttons at least 44 
 menu sits at the bottom (icon + label). Short fade-in animations and a one-time profit count-up are
 skipped when the device asks for reduced motion.
 
+### Data status (top bar, every page)
+A small button shows how fresh the data is ("Diperbarui 5 mnt lalu"; yellow after 1 hour, red if the last
+fetch failed). Pressing it fetches orders and ads from Shopee now (read-only): it shows "Memperbarui 40%"
+with a progress line under the top bar, then "✓ Selesai" for a few seconds. Scheduled syncs show up the
+same way. Read-only accounts only reload stored data. Hover (desktop) for the exact time or error.
+
 ### Pengaturan (gear button next to Keluar)
-- **Diagnostik:** sync and ads-sync status, orders waiting to be re-fetched, stored order range,
-  products without HPP, running ads, recorded setting changes, app version.
+- **Diagnostik:** sync and ads-sync status, orders waiting to be re-fetched, stored order range (not yet
+  paid out / cancelled), products sold in 30 days without HPP, running ads, recorded setting changes, app
+  version, and **Log server** (last 60 server log lines).
 - **Unduh data (Excel):** one .xlsx workbook for analysis (e.g. by Claude): README, Status, current ad
   decisions, setting-change history with 7 days before/after (campaign ROAS and store profit per day),
   profit per month/week/day, products, HPP, campaigns, daily ad figures and every order item. It contains
@@ -118,7 +125,7 @@ phone: profit, then tasks, then shortcuts.
   too, even without sales in the period. Click a column header to sort.
 - **Sync:**
   - Runs every 30 minutes and only downloads new or changed orders.
-  - "Sinkron Sekarang" forces it; a progress bar shows the steps.
+  - The data-status button in the top bar forces it and shows the progress.
   - Pending retry checks continue automatically in batches. Failed checks rotate so later records
     can still recover. After 10 failed attempts an order is listed as "belum bisa diperiksa ulang":
     it is still retried every sync, but no longer keeps the sync looking unfinished.

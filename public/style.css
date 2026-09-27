@@ -486,29 +486,53 @@ input[type="date"] {
 /* Periode angka di widget Dashboard */
 .widget-periode { display: inline-block; align-self: flex-start; font-size: 0.8rem; font-weight: 600; color: var(--abu-teks); background: #f1f3f6; border-radius: 999px; padding: 3px 10px; margin: -4px 0 12px; }
 
-/* Progress bar sinkron Shopee */
-.progres-sinkron { margin-top: 12px; }
-.progres-atas { display: flex; justify-content: space-between; gap: 10px; font-size: 0.84rem; font-weight: 600; color: var(--teks-judul); margin-bottom: 6px; }
-.progres-angka { color: var(--abu-teks); font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.progres-trek { position: relative; height: 8px; border-radius: 999px; background: #e9edf2; overflow: hidden; }
-.progres-isi { height: 100%; width: 0; border-radius: 999px; background: var(--oranye); transition: width 0.4s ease, background-color 0.3s; }
-/* Total belum diketahui (sedang mendaftar pesanan): garis bergerak bolak-balik */
-.progres-sinkron.tak-tentu .progres-isi { width: 35% !important; animation: progres-geser 1.2s ease-in-out infinite alternate; }
-@keyframes progres-geser { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
-.progres-sinkron.selesai .progres-isi { background: var(--hijau); }
-.progres-sinkron.gagal .progres-isi { background: var(--merah); }
-.progres-sinkron.selesai .progres-atas { color: var(--hijau); }
-.progres-sinkron.gagal .progres-atas { color: var(--merah); }
-.progres-sinkron.memudar { opacity: 0; transition: opacity 0.6s; }
-.progres-langkah { display: flex; gap: 16px; margin-top: 7px; font-size: 0.78rem; color: var(--abu-teks); flex-wrap: wrap; }
-.langkah-progres { display: inline-flex; align-items: center; gap: 6px; }
-.titik-langkah { width: 8px; height: 8px; border-radius: 50%; background: #d5dae1; }
-.langkah-progres.aktif { color: var(--teks-judul); font-weight: 600; }
-.langkah-progres.aktif .titik-langkah { background: var(--oranye); box-shadow: 0 0 0 3px rgba(238, 77, 45, 0.18); }
-.langkah-progres.beres .titik-langkah { background: var(--hijau); }
-@media (prefers-reduced-motion: reduce) {
-  .progres-sinkron.tak-tentu .progres-isi { animation: none; transform: none; width: 100% !important; opacity: 0.35; }
+/* Status data di bar atas: "Diperbarui 5 mnt lalu" · tekan = ambil data terbaru dari Shopee */
+.status-data {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 7px 12px;
+  border: 1px solid var(--border); border-radius: 999px; background: #fff; color: var(--teks);
+  font-family: inherit; font-size: 0.85rem; font-weight: 600; white-space: nowrap; cursor: pointer;
+  font-variant-numeric: tabular-nums;
 }
+.status-data:hover:not(:disabled) { background: var(--abu-terang); border-color: #cfd4dc; }
+.status-data:disabled { cursor: default; }
+.status-data .ikon { width: 17px; height: 17px; flex-shrink: 0; }
+.status-data-titik { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: var(--hijau); }
+.status-data-pendek { display: none; }
+.status-data.lama { background: var(--kuning-muda); border-color: #f5d9a8; color: var(--kuning); }
+.status-data.lama .status-data-titik { background: #f59e0b; }
+.status-data.gagal { background: var(--merah-muda); border-color: #f6c5c5; color: var(--merah); }
+.status-data.gagal .status-data-titik { background: var(--merah); }
+.status-data.berjalan { background: var(--oranye-muda); border-color: #f9cbbd; color: var(--oranye-gelap); }
+.status-data.berjalan .status-data-titik, .status-data.selesai .status-data-titik { display: none; }
+.status-data.selesai { background: var(--hijau-muda); border-color: #b7e4c7; color: var(--hijau); }
+.hanya-pembaca-layar { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Garis kemajuan di bawah bar atas selama data diambil */
+.progres-header { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: #f3d6ce; overflow: hidden; }
+.progres-header-isi { height: 100%; width: 0; background: var(--oranye); transition: width 0.4s ease, background-color 0.3s; }
+/* Total belum diketahui (sedang mendaftar pesanan): garis bergerak bolak-balik */
+.progres-header.tak-tentu .progres-header-isi { width: 35% !important; }
+.progres-header.selesai { background: transparent; }
+.progres-header.selesai .progres-header-isi { background: var(--hijau); }
+.progres-header.gagal .progres-header-isi { background: var(--merah); }
+@media (prefers-reduced-motion: no-preference) {
+  .progres-header.tak-tentu .progres-header-isi { animation: progres-geser 1.2s ease-in-out infinite alternate; }
+  @keyframes progres-geser { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+  .status-data.berjalan .ikon { animation: putar 1s linear infinite; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progres-header.tak-tentu .progres-header-isi { width: 100% !important; opacity: 0.4; }
+}
+/* HP: teks pendek ("5 mnt lalu"), avatar disembunyikan supaya bar atas tetap muat */
+@media (max-width: 640px) {
+  .status-data { padding: 7px 10px; gap: 6px; }
+  .status-data-panjang { display: none; }
+  .status-data-pendek { display: inline; overflow: hidden; text-overflow: ellipsis; }
+  .status-data { min-width: 0; flex-shrink: 1; }
+  .info-user { gap: 8px; min-width: 0; }
+  .info-user .avatar { display: none; }
+}
+@media (max-width: 480px) { .header-app .nama-toko { display: none; } }
 /* Catatan di bawah kartu ringkasan: berapa bagian yang masih perkiraan (dana belum cair) */
 .tanda-kira { font-size: 0.6em; font-weight: 600; vertical-align: 0.35em; margin-right: 3px; opacity: 0.8; }
 .catatan-perkiraan { font-size: 0.84rem; color: var(--abu-teks); margin: -6px 0 16px; }
@@ -1323,10 +1347,6 @@ input[type="text"], input[type="password"], input[type="number"] { min-height: 4
   .tombol-pengaturan { padding: 8px 10px; }
   .tombol-pengaturan .label-pengaturan { display: none; }
 }
-.kartu-perbarui { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
-.kartu-perbarui h2 { margin-bottom: 4px; }
-.kartu-perbarui .keterangan { margin: 0; }
-@media (max-width: 640px) { .kartu-perbarui .tombol { width: 100%; } }
 .log-server { margin-top: 16px; }
 .log-server summary { cursor: pointer; font-weight: 600; min-height: 40px; display: flex; align-items: center; }
 .daftar-log { list-style: none; margin: 8px 0 0; padding: 0; max-height: 360px; overflow-y: auto; font-size: 0.82rem; font-family: ui-monospace, Consolas, monospace; }
@@ -1351,6 +1371,19 @@ input[type="text"], input[type="password"], input[type="number"] { min-height: 4
 .tombol-langkah-kedua { margin-top: 12px; }
 @media (max-width: 640px) {
   .isi-hpp-kotak { width: 100%; }
-  .isi-hpp-kotak input { flex: 1; width: auto; }
+  .isi-hpp-kotak input { flex: 1; width: auto; min-width: 0; } /* tanpa min-width: 0 tombol Simpan terdorong keluar layar */
+  .isi-hpp-kotak .tombol { flex-shrink: 0; }
 }
 
+/* Tablet (641–1180 px): logo + status + akun di baris atas, menu di baris sendiri di bawahnya
+   (dalam satu baris menu tidak muat dan "Analisis Iklan" tersembunyi). */
+@media (min-width: 641px) and (max-width: 1180px) {
+  .header-isi { height: auto; flex-wrap: wrap; padding: 10px 24px 6px; row-gap: 6px; }
+  .nav-atas { order: 3; flex-basis: 100%; border-left: none; padding-left: 0; margin-left: -14px; }
+  .info-user #labelUsername { display: none; }
+}
+/* Laptop kecil: satu baris muat kalau nama akun dan tulisan "Pengaturan" disembunyikan (ikon tetap). */
+@media (min-width: 641px) and (max-width: 1400px) {
+  .info-user #labelUsername, .tombol-pengaturan .label-pengaturan { display: none; }
+  .tombol-pengaturan { padding: 8px 10px; }
+}

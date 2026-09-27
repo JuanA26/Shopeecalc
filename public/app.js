@@ -199,7 +199,6 @@ function terapkanDataPenjualan(body) {
 const tanggalDari = document.getElementById('tanggalDari');
 const tanggalSampai = document.getElementById('tanggalSampai');
 const tombolTampilkan = document.getElementById('tombolTampilkan');
-const tombolSinkron = document.getElementById('tombolSinkron');
 const teksStatusSinkron = document.getElementById('statusSinkron');
 const pesanErrorSinkron = document.getElementById('pesanErrorSinkron');
 const pesanLoadingSinkron = document.getElementById('pesanLoadingSinkron');
@@ -277,11 +276,11 @@ async function muatDataPenjualan() {
 function renderStatusSinkron(s) {
   statusSinkronTerakhir = s;
   const terhubung = !!(s && s.terhubung);
-  tombolSinkron.classList.toggle('tersembunyi', !terhubung);
   document.getElementById('tautanHubungkan').classList.toggle('tersembunyi', terhubung);
   tombolTampilkan.disabled = !terhubung;
   if (!terhubung) {
     teksStatusSinkron.textContent = 'Toko belum terhubung ke Shopee. Hubungkan sekali, setelah itu data diambil otomatis.';
+    renderStatusData();
     return;
   }
   const bagian = [];
@@ -295,81 +294,114 @@ function renderStatusSinkron(s) {
   if (s.ulangTertunda) bagian.push(`${s.ulangTertunda} pemeriksaan menunggu — dilanjutkan otomatis`);
   if (s.ulangMacet) bagian.push(`${s.ulangMacet} pesanan belum bisa diperiksa ulang — tetap dicoba otomatis`);
   teksStatusSinkron.textContent = bagian.join(' · ');
-  tombolSinkron.disabled = !!s.sedangBerjalan;
   tampilkanErrorSinkron(s.status === 'gagal' && s.pesan ? `Sinkron terakhir gagal: ${s.pesan}` : '');
-  renderProgres(s);
+  renderStatusData();
 }
 
-// ====== Progress bar sinkron ======
-// Dua langkah jadi satu bar 0–100%: langkah 1 (pesanan) = 0–50%, langkah 2 (rincian dana cair)
-// = 50–100%. Selama jumlahnya belum diketahui (server masih mendaftar pesanan), bar bergerak
-// bolak-balik. Setelah selesai: hijau "Selesai" beberapa detik lalu menghilang; gagal: merah.
+// ====== Status data di bar atas (semua halaman) ======
+// Satu tombol kecil: "Diperbarui 5 mnt lalu" → tekan untuk ambil data terbaru dari Shopee.
+// Saat berjalan: "Memperbarui 40%" + garis kemajuan di bawah bar atas. Langkah 1 (pesanan) =
+// 0–50%, langkah 2 (dana cair / iklan) = 50–100%; selama jumlahnya belum diketahui garisnya
+// bergerak bolak-balik. Selesai: "✓ Selesai" beberapa detik; gagal: merah "Gagal · coba lagi".
+const tombolStatusData = document.getElementById('tombolStatusData');
+const LAMA_DATA_MS = 60 * 60 * 1000; // jadwal tiap 30 menit: > 1 jam berarti ada yang terlewat
+let hasilSinkronBaru = null;         // { gagal, teks } — tampil sebentar setelah sinkron selesai
+let jedaHasilSinkron = null;
 let progresTadiBerjalan = false;
-let jedaPudarProgres = null;
-function renderProgres(s) {
-  const el = document.getElementById('progresSinkron');
-  const isi = document.getElementById('progresIsi');
-  const trek = document.getElementById('progresTrek');
-  const label = document.getElementById('progresLabel');
-  const angka = document.getElementById('progresAngka');
-  const lPesanan = document.getElementById('langkahPesanan');
-  const lDana = document.getElementById('langkahDana');
+let sinkronKlienAktif = false;       // sinkron dipicu dari browser ini dan belum selesai
+let sinkronKlien = null;             // janjinya (klik ganda / unduh Excel menunggu yang sama)
+let sinkronDilewati = false;         // tidak ada sinkron baru (baca saja / < 1 menit): jangan ulangi angka lama
 
-  if (s && s.sedangBerjalan) {
-    clearTimeout(jedaPudarProgres);
+function waktuRelatif(iso) {
+  const menit = Math.floor((Date.now() - Date.parse(iso)) / 60000);
+  if (!(menit >= 1)) return 'baru saja';
+  if (menit < 60) return `${menit} mnt lalu`;
+  const jam = Math.floor(menit / 60);
+  if (jam < 24) return `${jam} jam lalu`;
+  return `${Math.floor(jam / 24)} hari lalu`;
+}
+
+function aturStatusData(kelas, panjang, pendek, judul) {
+  tombolStatusData.className = `status-data ${kelas}`;
+  document.getElementById('statusDataPanjang').textContent = panjang;
+  document.getElementById('statusDataPendek').textContent = pendek;
+  tombolStatusData.title = judul;
+  tombolStatusData.setAttribute('aria-label', `${panjang}. ${judul}`);
+}
+function umumkanStatusData(teks) { document.getElementById('umumkanStatusData').textContent = teks; }
+
+function renderStatusData() {
+  const s = statusSinkronTerakhir;
+  const bar = document.getElementById('progresHeader');
+  const isi = document.getElementById('progresHeaderIsi');
+  if (!s || !s.terhubung) { tombolStatusData.classList.add('tersembunyi'); bar.classList.add('tersembunyi'); return; }
+  const otomatis = 'Data diambil otomatis tiap 30 menit.';
+  const caraTekan = akunBacaSaja ? 'Akun baca saja: tekan untuk memuat ulang data tersimpan.' : 'Tekan untuk ambil data terbaru sekarang.';
+
+  if (s.sedangBerjalan || sinkronKlienAktif) {
+    clearTimeout(jedaHasilSinkron); hasilSinkronBaru = null;
+    if (!progresTadiBerjalan) umumkanStatusData('Memperbarui data dari Shopee...');
     progresTadiBerjalan = true;
-    el.classList.remove('tersembunyi', 'selesai', 'gagal', 'memudar');
-    const p = s.progres || { tahap: 'pesanan', selesai: 0, total: null };
-    const idx = p.tahap === 'pesanan' ? 0 : 1; // 'dana' & 'iklan' = langkah 2
-    lPesanan.className = 'langkah-progres ' + (idx === 0 ? 'aktif' : 'beres');
-    lDana.className = 'langkah-progres' + (idx === 1 ? ' aktif' : '');
-    const namaLangkah = idx === 0 ? 'Mengambil pesanan' : p.tahap === 'iklan' ? 'Mengambil data iklan' : 'Mengambil rincian dana cair';
-    if (p.total === null || p.total === undefined) {
-      el.classList.add('tak-tentu');
-      label.textContent = `Langkah ${idx + 1} dari 2 · ${idx === 0 ? 'Mencari pesanan di Shopee...' : p.tahap === 'iklan' ? 'Mengambil data iklan dari Shopee...' : 'Mencari pesanan yang dananya cair...'}`;
-      angka.textContent = '';
-      trek.removeAttribute('aria-valuenow');
-      return;
-    }
-    el.classList.remove('tak-tentu');
-    const persen = Math.round(((idx + (p.total ? p.selesai / p.total : 1)) / 2) * 100);
-    isi.style.width = `${persen}%`;
-    trek.setAttribute('aria-valuenow', String(persen));
-    label.textContent = `Langkah ${idx + 1} dari 2 · ${namaLangkah}`;
-    angka.textContent = p.total
-      ? `${p.selesai.toLocaleString('id-ID')} / ${p.total.toLocaleString('id-ID')} · ${persen}%`
-      : `tidak ada yang berubah · ${persen}%`;
+    const p = s.sedangBerjalan ? s.progres : null;
+    const idx = !p || p.tahap === 'pesanan' ? 0 : 1;
+    const nama = !p ? 'Menghubungi Shopee' : idx === 0 ? 'Mengambil pesanan' : p.tahap === 'iklan' ? 'Mengambil data iklan' : 'Mengambil dana cair';
+    const tentu = !!p && p.total !== null && p.total !== undefined;
+    const persen = tentu ? Math.round(((idx + (p.total ? p.selesai / p.total : 1)) / 2) * 100) : null;
+    bar.classList.remove('tersembunyi', 'selesai', 'gagal');
+    bar.classList.toggle('tak-tentu', !tentu);
+    if (tentu) { isi.style.width = `${persen}%`; bar.setAttribute('aria-valuenow', String(persen)); } else bar.removeAttribute('aria-valuenow');
+    const rincian = tentu && p.total ? ` · ${p.selesai.toLocaleString('id-ID')} dari ${p.total.toLocaleString('id-ID')}` : '';
+    aturStatusData('berjalan', persen !== null ? `Memperbarui ${persen}%` : 'Memperbarui...', persen !== null ? `${persen}%` : 'Memperbarui',
+      `Langkah ${idx + 1} dari 2: ${nama}${rincian}. Data lama tetap bisa dilihat.`);
+    tombolStatusData.disabled = true;
     return;
   }
 
-  if (!progresTadiBerjalan) return; // tidak sedang (dan tidak baru saja) sinkron: biarkan tersembunyi
-  progresTadiBerjalan = false;
-  const gagal = s && s.status === 'gagal';
-  el.classList.remove('tak-tentu', 'memudar', 'tersembunyi');
-  el.classList.add(gagal ? 'gagal' : 'selesai');
-  isi.style.width = '100%';
-  trek.setAttribute('aria-valuenow', '100');
-  // Gagal: jangan tandai langkah mana pun "beres" — belum tentu langkah 1 selesai.
-  lPesanan.className = 'langkah-progres' + (gagal ? '' : ' beres');
-  lDana.className = 'langkah-progres' + (gagal ? '' : ' beres');
-  // Ringkasan hasil: tidak ada yang baru → "Data sudah terbaru"; kalau ada, sebutkan berapa.
-  const nOrder = (s && s.jumlahOrderBerubah) || 0, nDana = (s && s.jumlahBaru) || 0;
-  const bagianBaru = [];
-  if (nOrder) bagianBaru.push(`${nOrder.toLocaleString('id-ID')} pesanan baru/berubah`);
-  if (nDana) bagianBaru.push(`${nDana.toLocaleString('id-ID')} dana cair baru`);
-  label.textContent = gagal
-    ? '✕ Gagal mengambil data — lihat pesan di bawah'
-    : s && s.ulangTertunda ? `Pemeriksaan bertahap — ${s.ulangTertunda} masih menunggu`
-    : bagianBaru.length ? `✓ Selesai — ${bagianBaru.join(' · ')}` : '✓ Data sudah terbaru — tidak ada pesanan baru';
-  angka.textContent = '';
-  clearTimeout(jedaPudarProgres);
-  if (!gagal) {
-    jedaPudarProgres = setTimeout(() => {
-      el.classList.add('memudar');
-      jedaPudarProgres = setTimeout(() => el.classList.add('tersembunyi'), 600);
-    }, 3500);
+  tombolStatusData.disabled = false;
+  if (progresTadiBerjalan) {
+    // Baru saja selesai: tampilkan hasilnya sebentar.
+    progresTadiBerjalan = false;
+    const gagal = s.status === 'gagal';
+    const nOrder = s.jumlahOrderBerubah || 0, nDana = s.jumlahBaru || 0;
+    const baru = [];
+    if (nOrder) baru.push(`${nOrder.toLocaleString('id-ID')} pesanan baru/berubah`);
+    if (nDana) baru.push(`${nDana.toLocaleString('id-ID')} dana cair baru`);
+    hasilSinkronBaru = {
+      gagal,
+      teks: gagal ? 'Gagal mengambil data' : sinkronDilewati ? 'Selesai · data sudah terbaru' : baru.length ? `Selesai · ${baru.join(' · ')}` : 'Selesai · tidak ada pesanan baru',
+      singkat: nOrder && !sinkronDilewati ? `✓ ${nOrder.toLocaleString('id-ID')} pesanan baru` : '✓ Data sudah terbaru',
+    };
+    sinkronDilewati = false;
+    umumkanStatusData(hasilSinkronBaru.teks);
+    isi.style.width = '100%';
+    bar.classList.remove('tak-tentu');
+    bar.classList.add(gagal ? 'gagal' : 'selesai');
+    clearTimeout(jedaHasilSinkron);
+    jedaHasilSinkron = setTimeout(() => { hasilSinkronBaru = null; renderStatusData(); }, 4000);
   }
+  if (hasilSinkronBaru && !hasilSinkronBaru.gagal) {
+    aturStatusData('selesai', hasilSinkronBaru.singkat, '✓ Selesai', `${hasilSinkronBaru.teks}. ${otomatis}`);
+    return;
+  }
+  if (!hasilSinkronBaru) {
+    bar.classList.add('tersembunyi');
+    bar.classList.remove('selesai', 'gagal');
+    isi.style.width = '0';
+  }
+
+  if (s.status === 'gagal') {
+    aturStatusData('gagal', 'Gagal · coba lagi', 'Gagal',
+      `Gagal mengambil data dari Shopee${s.pesan ? `: ${s.pesan.replace(/\.+$/, '')}` : ''}. Data lama tetap dipakai. ${caraTekan}`);
+    return;
+  }
+  if (!s.terakhirSelesai) { aturStatusData('lama', 'Belum pernah diperbarui', 'Belum', `${otomatis} ${caraTekan}`); return; }
+  const rel = waktuRelatif(s.terakhirSelesai);
+  const lama = Date.now() - Date.parse(s.terakhirSelesai) > LAMA_DATA_MS;
+  aturStatusData(lama ? 'lama' : 'segar', `Diperbarui ${rel}`, rel,
+    `Terakhir diperbarui ${waktuWib(s.terakhirSelesai)} WIB. ${otomatis} ${caraTekan}`);
 }
+// "5 mnt lalu" ikut bertambah walau halaman dibiarkan terbuka.
+setInterval(() => { if (statusSinkronTerakhir && !statusSinkronTerakhir.sedangBerjalan && !sinkronKlienAktif) renderStatusData(); }, 30 * 1000);
 
 async function muatStatusSinkron() {
   try {
@@ -379,39 +411,48 @@ async function muatStatusSinkron() {
   }
 }
 
-async function sinkronSekarang() {
-  // Akun baca-saja tidak memicu permintaan ke Shopee; cukup muat ulang data yang tersimpan.
-  if (akunBacaSaja) { await muatStatusSinkron(); await muatDataPenjualan(); await muatDataPenjualanIklan(); return; }
-  tombolSinkron.disabled = true;
+function sinkronSekarang() {
+  if (sinkronKlien) return sinkronKlien;
+  sinkronKlienAktif = true;
   sedangMengikutiSinkron = true; // pemeriksa semenit tidak perlu ikut memantau
-  tampilkanErrorSinkron('');
-  renderProgres({ sedangBerjalan: true, progres: null });
-  // Pantau kemajuan selama permintaan sinkron berjalan (respons POST baru datang setelah selesai).
-  let pantau = true;
-  const penjadwal = setInterval(async () => {
+  renderStatusData();
+  sinkronKlien = (async () => {
+    // Akun baca-saja tidak memicu permintaan ke Shopee; cukup muat ulang data yang tersimpan.
+    if (akunBacaSaja) {
+      try { await muatDataPenjualan(); await muatDataPenjualanIklan(); } finally { sinkronKlienAktif = false; sinkronDilewati = true; await muatStatusSinkron(); }
+      return;
+    }
+    tampilkanErrorSinkron('');
+    // Pantau kemajuan selama permintaan sinkron berjalan (respons POST baru datang setelah selesai).
+    let pantau = true;
+    const penjadwal = setInterval(async () => {
+      try {
+        const s = await apiFetch('/api/sinkron/status');
+        if (pantau && s.sedangBerjalan) renderStatusSinkron(s);
+      } catch (_) { /* abaikan, coba lagi di putaran berikutnya */ }
+    }, 1500);
     try {
-      const s = await apiFetch('/api/sinkron/status');
-      if (pantau && s.sedangBerjalan) renderStatusSinkron(s);
-    } catch (_) { /* abaikan, coba lagi di putaran berikutnya */ }
-  }, 1500);
-  try {
-    const hasil = await apiFetch('/api/sinkron', { method: 'POST', body: '{}' });
-    pantau = false; clearInterval(penjadwal);
-    renderStatusSinkron(hasil);
-    await muatDataPenjualan();
-    await muatDataPenjualanIklan();
-  } catch (err) {
-    pantau = false; clearInterval(penjadwal);
-    await muatStatusSinkron(); // status "gagal" → bar merah
-    tampilkanErrorSinkron(err.message);
-    await muatDataPenjualanDiam(); // tetap tampilkan data yang sudah tersimpan, pesan error dibiarkan
-  } finally {
-    pantau = false; clearInterval(penjadwal);
-    sedangMengikutiSinkron = false;
-    tombolSinkron.disabled = false;
-  }
+      const hasil = await apiFetch('/api/sinkron', { method: 'POST', body: '{}' });
+      pantau = false; clearInterval(penjadwal);
+      sinkronKlienAktif = false;
+      sinkronDilewati = !!hasil.dilewati;
+      renderStatusSinkron(hasil);
+      await muatDataPenjualan();
+      await muatDataPenjualanIklan();
+    } catch (err) {
+      pantau = false; clearInterval(penjadwal);
+      sinkronKlienAktif = false;
+      await muatStatusSinkron(); // status "gagal" → tombol merah
+      tampilkanErrorSinkron(err.message);
+      await muatDataPenjualanDiam(); // tetap tampilkan data yang sudah tersimpan, pesan error dibiarkan
+    } finally {
+      pantau = false; clearInterval(penjadwal);
+      if (document.getElementById('halamanPengaturan').classList.contains('aktif')) muatDiagnostik();
+    }
+  })().finally(() => { sinkronKlien = null; sinkronKlienAktif = false; sedangMengikutiSinkron = false; });
+  return sinkronKlien;
 }
-tombolSinkron.addEventListener('click', () => sinkronSekarang());
+tombolStatusData.addEventListener('click', () => sinkronSekarang());
 
 async function muatDataPenjualanIklan() {
   const sampai = hariIniWib();
@@ -2509,58 +2550,9 @@ async function muatLogServer() {
 }
 document.getElementById('tombolDiagnostik').addEventListener('click', muatDiagnostik);
 
-// "Ambil data terbaru": sinkron pesanan + iklan dari Shopee (hanya membaca), lalu muat ulang semua
-// data halaman. Dijalankan otomatis saat Pengaturan dibuka kalau data lebih tua dari 30 menit.
-const BASI_PENGATURAN_MS = 30 * 60 * 1000; // sama dengan jadwal otomatis; lebih sering memicu "rate limit" Shopee
-let perbaruiBerjalan = null;
-function teksTerakhirDiambil() {
-  const s = statusSinkronTerakhir;
-  if (!s || !s.terhubung) return 'Toko belum terhubung ke Shopee.';
-  return s.terakhirSelesai ? `Terakhir diambil ${waktuWib(s.terakhirSelesai)}. Otomatis tiap 30 menit.` : 'Belum pernah diambil.';
-}
-async function perbaruiSemuaData() {
-  if (perbaruiBerjalan) return perbaruiBerjalan;
-  const tombol = document.getElementById('tombolPerbarui'), teks = document.getElementById('teksPerbarui'), ekspor = document.getElementById('tombolEkspor');
-  perbaruiBerjalan = (async () => {
-    tombol.disabled = true; ekspor.disabled = true;
-    teks.innerHTML = '<span class="spinner"></span> Mengambil data terbaru dari Shopee...';
-    const pantau = setInterval(async () => {
-      try {
-        const st = await apiFetch('/api/sinkron/status');
-        const p = st.progres;
-        if (!st.sedangBerjalan || !p) return;
-        const nama = p.tahap === 'pesanan' ? 'Mengambil pesanan' : p.tahap === 'iklan' ? 'Mengambil data iklan' : 'Mengambil dana cair';
-        teks.innerHTML = `<span class="spinner"></span> ${nama}${p.total ? ` · ${p.selesai || 0} dari ${p.total}` : '...'}`;
-      } catch (_) { /* coba lagi */ }
-    }, 1500);
-    try {
-      await sinkronSekarang(); // menangani error sendiri; hasilnya dibaca dari status sinkron
-      const st = statusSinkronTerakhir || {};
-      if (st.status === 'sukses') teks.innerHTML = `<span class="status-titik baik"></span>Data terbaru sudah diambil. ${escapeHtml(teksTerakhirDiambil())}`;
-      else teks.innerHTML = `<span class="status-titik perhatian"></span>Gagal mengambil data dari Shopee${st.pesan ? `: ${escapeHtml(st.pesan)}` : ''}. Data lama tetap dipakai. Coba lagi nanti.`;
-    } catch (err) {
-      teks.innerHTML = `<span class="pesan-error">${escapeHtml(err.message)}</span>`;
-    } finally {
-      clearInterval(pantau);
-      tombol.disabled = false; ekspor.disabled = false;
-      muatDiagnostik();
-    }
-  })().finally(() => { perbaruiBerjalan = null; });
-  return perbaruiBerjalan;
-}
-document.getElementById('tombolPerbarui').addEventListener('click', () => perbaruiSemuaData());
-
-async function bukaPengaturan() {
+// Ambil data terbaru dari Shopee: tombol status di bar atas (renderStatusData).
+function bukaPengaturan() {
   muatDiagnostik();
-  await muatStatusSinkron();
-  const s = statusSinkronTerakhir;
-  const teks = document.getElementById('teksPerbarui');
-  document.getElementById('tombolPerbarui').disabled = akunBacaSaja;
-  if (!s || !s.terhubung) { teks.textContent = teksTerakhirDiambil(); return; }
-  if (akunBacaSaja) { teks.textContent = `${teksTerakhirDiambil()} Akun baca saja tidak mengambil data sendiri.`; return; }
-  const basi = !s.terakhirSelesai || Date.now() - Date.parse(s.terakhirSelesai) > BASI_PENGATURAN_MS;
-  if (perbaruiBerjalan || s.sedangBerjalan || basi) perbaruiSemuaData();
-  else teks.textContent = teksTerakhirDiambil();
 }
 
 // Saran iklan yang sedang tampil ikut dikirim, karena dihitung di browser.
@@ -2580,7 +2572,7 @@ document.getElementById('tombolEkspor').addEventListener('click', async () => {
   tombol.disabled = true;
   pesan.innerHTML = '<span class="spinner"></span> Menyiapkan file... (bisa 10–30 detik)';
   try {
-    if (perbaruiBerjalan) await perbaruiBerjalan;
+    if (sinkronKlien) await sinkronKlien;
     pesan.innerHTML = '<span class="spinner"></span> Menyiapkan file... (bisa 10–30 detik)';
     if (muatIklanBerjalan) await muatIklanBerjalan;
     else if (!dataIklan) await muatDataPenjualanIklan();

@@ -35,7 +35,7 @@
     <div class="header-isi">
       <h1>
         <span class="logo-kotak"><svg class="ikon" viewBox="0 0 24 24"><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24L4 3a1 1 0 0 0-1 1l.24 5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.82Z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg></span>
-        HAPPY SHOP
+        <span class="nama-toko">HAPPY SHOP</span>
       </h1>
       <nav class="nav-atas">
         <button class="nav-item aktif" data-page="halamanDashboard">
@@ -52,6 +52,13 @@
         </button>
       </nav>
       <div class="info-user">
+        <button type="button" id="tombolStatusData" class="status-data tersembunyi" title="Perbarui data dari Shopee">
+          <svg class="ikon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></svg>
+          <span class="status-data-titik"></span>
+          <span id="statusDataPanjang" class="status-data-panjang"></span>
+          <span id="statusDataPendek" class="status-data-pendek"></span>
+        </button>
+        <span id="umumkanStatusData" class="hanya-pembaca-layar" aria-live="polite"></span>
         <span class="avatar" id="avatarUser"></span>
         <span id="labelUsername"></span>
         <span id="labelBacaSaja" class="pill pill-abu tersembunyi" title="Akun ini hanya bisa melihat, tidak bisa mengubah data">baca saja</span>
@@ -61,6 +68,9 @@
         </button>
         <button id="tombolLogout" class="tombol tombol-kecil">Keluar</button>
       </div>
+    </div>
+    <div id="progresHeader" class="progres-header tersembunyi" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Kemajuan mengambil data dari Shopee">
+      <div class="progres-header-isi" id="progresHeaderIsi"></div>
     </div>
   </header>
 
@@ -166,24 +176,7 @@
       </div>
       <div class="baris-status-sinkron">
         <span id="statusSinkron" class="keterangan">Memeriksa koneksi ke Shopee...</span>
-        <button type="button" id="tombolSinkron" class="tombol tombol-kecil tersembunyi">
-          <svg class="ikon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></svg>
-          Sinkron Sekarang
-        </button>
         <a href="/auth/shopee/authorize" id="tautanHubungkan" class="tombol tombol-utama tersembunyi">Hubungkan Toko Shopee</a>
-      </div>
-      <div id="progresSinkron" class="progres-sinkron tersembunyi" aria-live="polite">
-        <div class="progres-atas">
-          <span id="progresLabel">Menghubungi Shopee...</span>
-          <span id="progresAngka" class="progres-angka"></span>
-        </div>
-        <div class="progres-trek" id="progresTrek" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Kemajuan mengambil data dari Shopee">
-          <div class="progres-isi" id="progresIsi"></div>
-        </div>
-        <div class="progres-langkah">
-          <span id="langkahPesanan" class="langkah-progres"><span class="titik-langkah"></span>1. Pesanan</span>
-          <span id="langkahDana" class="langkah-progres"><span class="titik-langkah"></span>2. Rincian dana cair</span>
-        </div>
       </div>
       <p id="pesanErrorSinkron" class="pesan-error tersembunyi"></p>
       <p id="pesanLoadingSinkron" class="pesan-loading tersembunyi"><span class="spinner"></span> <span id="teksLoadingSinkron">Memuat data...</span></p>
@@ -549,16 +542,6 @@
         <div class="judul-halaman">
           <h1>Pengaturan</h1>
           <p class="keterangan">Untuk pemilik toko: cek kesehatan data dan unduh data untuk dianalisis.</p>
-        </div>
-        <div class="kartu kartu-perbarui">
-          <div>
-            <h2>Ambil data terbaru dari Shopee</h2>
-            <p id="teksPerbarui" class="keterangan">Memeriksa...</p>
-          </div>
-          <button type="button" id="tombolPerbarui" class="tombol tombol-utama">
-            <svg class="ikon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></svg>
-            Perbarui sekarang
-          </button>
         </div>
         <div class="grid-pengaturan">
           <div class="kartu kartu-ekspor">

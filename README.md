@@ -88,7 +88,7 @@ On a wide screen: store profit and shortcut cards on the left, the weekly tasks 
 phone: profit, then tasks, then shortcuts.
 - **Tugas Minggu Ini** (top): last complete week's store profit after ads (vs the week before), this
   month so far vs last month, then short numbered steps: (1) **Isi HPP** for products whose missing cost
-  price holds the ad advice, with a button to the HPP tab; (2) **Ubah Periode jadi Tidak Terbatas** for
+  price holds the ad advice, with a price box + Simpan per product (and a button to the HPP tab); (2) **Ubah Periode jadi Tidak Terbatas** for
   ads ending soon; (3) one step per ad that needs a target/budget change, with the exact old → new
   value. All other ads get one line ("jangan diubah"). New trials are limited to one ad at a time.
   Profit is labelled as an estimate.
@@ -114,7 +114,8 @@ phone: profit, then tasks, then shortcuts.
     replaces it automatically. Cancelled and unpaid orders are left out.
 - **Atur Harga Modal (HPP):** set the cost price per Product ID (shared by all users). Bulk CSV
   import/export. The "Belum Diisi" filter lists products without HPP, best sellers first.
-- Yellow rows = no HPP yet (type it straight into the row). Click a column header to sort.
+- Yellow rows = no HPP yet (type it straight into the row). Running-ad products without HPP are listed
+  too, even without sales in the period. Click a column header to sort.
 - **Sync:**
   - Runs every 30 minutes and only downloads new or changed orders.
   - "Sinkron Sekarang" forces it; a progress bar shows the steps.

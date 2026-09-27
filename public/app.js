@@ -988,6 +988,13 @@ function gabunganProdukUntukTabelHpp() {
     }
   }
 
+  // Produk yang sedang diiklankan tapi belum laku di periode ini tetap perlu HPP: tanpa itu iklannya
+  // tidak bisa dinilai (langkah "Isi HPP" di Dashboard menampilkannya).
+  for (const p of (dataIklan && dataIklan.produk) || []) {
+    if (!(p.sedangBerjalan > 0) || p.aksi === 'toko' || sudahAda.has(p.idProduk) || belumPunyaHpp.some((r) => r.id_produk === p.idProduk)) continue;
+    belumPunyaHpp.push({ id_produk: p.idProduk, nama_produk: p.namaProduk, hpp: null, updated_at: null, updated_by: null });
+  }
+
   const tempel = (r) => {
     const p = penjualan.get(r.id_produk);
     return { ...r, terjualPcs: p ? p.pcs : 0, terjualRp: p ? p.penghasilan : 0 };
@@ -1380,6 +1387,7 @@ async function muatIklanDariShopee() {
       if (body.kosong) return;
       dataIklan = body;
       renderIklan();
+      renderTabelHpp(); // produk iklan tanpa HPP ikut muncul di tab HPP
       areaIklan.classList.remove('tersembunyi');
     } catch (err) {
       if (!dataIklan || dataIklan.sumber === 'api') statusIklanShopee.textContent = `Gagal memuat data iklan: ${err.message}`;
@@ -1948,7 +1956,7 @@ function keputusanBerjalan() {
     if (modal !== null) { modalSekarang += modal; adaModal = true; modalSaran += modalBaru !== null ? modalBaru : modal; }
     else if (!tanpaBatas && p.aksi !== 'toko') belumDiisi += 1; // iklan toko tidak punya modal harian sendiri
     baris.push({ p, target, modal, minimal: p.targetDisarankan, keputusan, modalBaru, targetBaru, alasan, tanpaBatas, modeAuto,
-      rekomendasi: st.rekomendasi || null, batasShopee, perubahan, bisaDiubahLagi, berakhir: berakhirSegera(p.idProduk) });
+      rekomendasi: st.rekomendasi || null, batasShopee, perubahan, bisaDiubahLagi, berakhir: p.aksi === 'toko' ? null : berakhirSegera(p.idProduk) });
   }
   const urutan = { jeda: 0, kembalikan: 1, tinjau: 1, kurangi: 2, turunkan: 3, naikkan: 4, tambah: 5, 'isi-hpp': 6, tunggu: 7, lanjut: 8, toko: 9 };
   baris.sort((a, b) => urutan[a.keputusan] - urutan[b.keputusan] || b.p.biaya - a.p.biaya);
@@ -1989,6 +1997,25 @@ function bannerDataBelumLengkap(info) {
   return `<div class="banner-data"><strong>Data belum lengkap — target dan modal semua iklan tetap dulu.</strong>` +
     alasan.map((t) => `<span>${t}</span>`).join('') + tombol + '</div>';
 }
+
+// Kotak harga modal di langkah "Isi HPP" (Dashboard): simpan lewat simpanHpp() yang sama dengan tab HPP;
+// setelah data dimuat ulang, produk itu hilang dari langkah.
+async function simpanHppLangkah(input) {
+  if (!input || !input.value) { if (input) input.focus(); return; }
+  const tombol = input.parentElement.querySelector('[data-simpan-hpp]');
+  tombol.disabled = true; input.disabled = true;
+  tombol.textContent = 'Menyimpan...';
+  await simpanHpp(input.dataset.hppId, input.dataset.hppNama, input.value);
+  tombol.disabled = false; input.disabled = false;
+  tombol.textContent = 'Simpan';
+}
+document.addEventListener('click', (e) => {
+  const tombol = e.target.closest('[data-simpan-hpp]');
+  if (tombol) simpanHppLangkah(tombol.parentElement.querySelector('input[data-hpp-id]'));
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.matches && e.target.matches('input[data-hpp-id]')) simpanHppLangkah(e.target);
+});
 
 // Tombol "Isi HPP" di banner: buka Kalkulator Margin → tab HPP → filter "Belum Diisi".
 document.addEventListener('click', (e) => {
@@ -2384,19 +2411,24 @@ function renderTugas() {
   if (!dataIklan) { daftarEl.innerHTML = '<p class="keterangan">Memuat data iklan...</p>'; lainEl.innerHTML = ''; hasilEl.innerHTML = ''; return; }
   const kep = keputusanBerjalan();
   const langkah = [];
-  const daftarNama = (nama, maks) => '<ul class="langkah-daftar">' + nama.slice(0, maks).map((n) => `<li>${escapeHtml(namaSingkat(n, 40))}</li>`).join('') +
-    (nama.length > maks ? `<li class="langkah-lagi">+ ${nama.length - maks} produk lagi</li>` : '') + '</ul>';
 
   // a. Isi HPP: iklan tanpa HPP + produk terlaris tanpa HPP yang menahan saran iklan.
   const info = kep.dataBelumLengkap;
-  const tanpaHpp = [...new Set([
-    ...kep.baris.filter((b) => b.keputusan === 'isi-hpp').map((b) => b.p.namaProduk),
-    ...(info && info.dasar && info.dasar.alasan === 'hpp' ? info.dasar.produkTanpaHpp.map((t) => t.namaProduk || t.idProduk) : []),
-  ])];
-  if (tanpaHpp.length) {
-    langkah.push({ warna: 'kuning', judul: 'Isi HPP (harga modal)', isi: daftarNama(tanpaHpp, 5) +
-      '<button type="button" class="tombol-utama tombol-langkah" data-ke-hpp>Isi HPP sekarang</button>' +
-      (info ? '<small class="langkah-ket">Setelah HPP diisi, saran iklan muncul lagi.</small>' : '') });
+  const tanpaHpp = new Map(); // idProduk → nama
+  for (const b of kep.baris.filter((b) => b.keputusan === 'isi-hpp')) tanpaHpp.set(b.p.idProduk, b.p.namaProduk);
+  if (info && info.dasar && info.dasar.alasan === 'hpp') {
+    for (const t of info.dasar.produkTanpaHpp) if (!tanpaHpp.has(t.idProduk)) tanpaHpp.set(t.idProduk, t.namaProduk || t.idProduk);
+  }
+  if (tanpaHpp.size) {
+    const MAKS_ISI = 5;
+    const daftar = [...tanpaHpp];
+    const baris = daftar.slice(0, MAKS_ISI).map(([id, nama]) => `<li class="isi-hpp-baris"><span>${escapeHtml(namaSingkat(nama, 40))}</span>` +
+      (akunBacaSaja ? '' : `<span class="isi-hpp-kotak"><span class="prefix">Rp</span><input type="number" inputmode="numeric" min="0" step="500" placeholder="harga modal" aria-label="Harga modal ${escapeHtml(nama)}" data-hpp-id="${escapeHtml(id)}" data-hpp-nama="${escapeHtml(nama)}"><button type="button" class="tombol tombol-utama" data-simpan-hpp>Simpan</button></span>`) +
+      '</li>').join('');
+    const lagi = daftar.length > MAKS_ISI ? `<li class="langkah-lagi">+ ${daftar.length - MAKS_ISI} produk lagi</li>` : '';
+    langkah.push({ warna: 'kuning', judul: 'Isi HPP (harga modal)', isi: `<ul class="langkah-daftar daftar-isi-hpp">${baris}${lagi}</ul>` +
+      '<button type="button" class="tombol tombol-kecil tombol-langkah-kedua" data-ke-hpp>Buka daftar HPP</button>' +
+      `<small class="langkah-ket">Isi harga modal per pcs, lalu tekan Simpan.${info ? ' Setelah itu saran iklan muncul lagi.' : ''}</small>` });
   } else if (info) {
     langkah.push({ warna: 'abu', judul: 'Tunggu data dari Shopee', isi: '<small class="langkah-ket">Tidak perlu melakukan apa-apa. Cek lagi besok.</small>' });
   }

@@ -1340,3 +1340,17 @@ input[type="text"], input[type="password"], input[type="number"] { min-height: 4
   #labelBacaSaja { padding: 2px 8px; }
 }
 
+/* Langkah "Isi HPP": kotak harga modal langsung di Dashboard (satu kolom, kotak besar untuk HP). */
+.daftar-isi-hpp { display: block !important; }
+.daftar-isi-hpp .isi-hpp-baris { flex-wrap: wrap; align-items: center; }
+.daftar-isi-hpp .isi-hpp-baris > span:first-child { flex: 1 1 220px; min-width: 0; }
+.isi-hpp-kotak { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; }
+.isi-hpp-kotak .prefix { color: var(--abu-teks); font-weight: 600; }
+.isi-hpp-kotak input { width: 150px; font-size: 16px; } /* ≥ 16 px: iPhone tidak memperbesar layar saat diketuk */
+.isi-hpp-kotak .tombol { min-height: 44px; }
+.tombol-langkah-kedua { margin-top: 12px; }
+@media (max-width: 640px) {
+  .isi-hpp-kotak { width: 100%; }
+  .isi-hpp-kotak input { flex: 1; width: auto; }
+}
+

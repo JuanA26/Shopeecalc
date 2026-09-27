@@ -117,12 +117,14 @@ test('dashboard shows numbered simple steps: HPP first, then extend period; no p
       document: { getElementById: id => nodes[id] || (nodes[id] = { removeAttribute() {} }) }, hariIniWib: () => '2026-09-30', formatTanggalPendek: s => s,
       untungTokoPerMinggu: () => null, untungTokoPerBulan: () => null, dataIklan: data, sumberIklan: () => sumber,
       keputusanBerjalan: () => ({ baris: [b, hpp], dataBelumLengkap }), PERLU_TINDAKAN: new Set(['isi-hpp']), namaSingkat: s => s, escapeHtml: s => s,
-      tanggalSingkat: s => s, kalimatKeputusan: () => 'Tetap dulu.', EvaluasiIklan: E, labelKeputusan: () => ['', 'pill-abu'], alasanTugas: () => '',
+      tanggalSingkat: s => s, kalimatKeputusan: () => 'Tetap dulu.', EvaluasiIklan: E, labelKeputusan: () => ['', 'pill-abu'], alasanTugas: () => '', akunBacaSaja: false,
       formatRupiahRingkas: n => String(n),
     });
     const html = nodes.tugasDaftar.innerHTML;
     assert.ok(html.indexOf('Isi HPP') < html.indexOf('Tidak Terbatas'));
     assert.match(html, /No cost product/); assert.match(html, /Best seller without HPP/); assert.match(html, /data-ke-hpp/);
+    // A price box per product (saved on the Dashboard itself), keyed by product ID.
+    assert.match(html, /data-hpp-id="h"/); assert.equal((html.match(/data-simpan-hpp/g) || []).length, 2);
     assert.match(html, /sebelum 2026-10-02/);
     assert.match(nodes.tugasLain.innerHTML, /jangan diubah/); assert.doesNotMatch(nodes.tugasLain.innerHTML, /Sample product/);
     assert.equal(nodes.tugasHasil.innerHTML, '');

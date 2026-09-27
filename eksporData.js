@@ -1,7 +1,7 @@
 // Ekspor data diagnostik (halaman Pengaturan → "Unduh data"): satu workbook Excel untuk dianalisis
 // Claude/pemilik. Hanya data toko (pesanan, HPP, iklan, riwayat setelan, status sinkron). TIDAK
 // memuat token, kata sandi, atau data pembeli (username pembeli memang tidak disimpan).
-const geser = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const { geserHari: geser } = require('./util');
 const seninDari = (iso) => { const d = new Date(iso + 'T00:00:00Z'); return geser(iso, -((d.getUTCDay() + 6) % 7)); };
 const bagi = (a, b) => (b ? a / b : null);
 const bulat = (n, d = 0) => (n === null || n === undefined || !Number.isFinite(n) ? null : Math.round(n * 10 ** d) / 10 ** d);

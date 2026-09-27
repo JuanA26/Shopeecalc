@@ -400,18 +400,6 @@ a.tombol { display: inline-flex; text-decoration: none; }
 .widget-aktif .tombol { margin-top: auto; }
 .widget-statistik-baris { display: flex; gap: 24px; flex-wrap: wrap; }
 
-.widget-segera {
-  background: var(--abu-terang);
-  border-style: dashed;
-  box-shadow: none;
-  justify-content: center;
-  align-items: center;
-  color: var(--abu-teks);
-}
-.widget-segera .widget-kartu-atas { flex-direction: column; gap: 8px; }
-.widget-segera .widget-kartu-atas h3 { color: var(--abu-teks); font-weight: 600; }
-.widget-segera .widget-ikon { background: #e9edf2; color: var(--abu-teks); }
-
 .kartu {
   background: #fff;
   border: 1px solid var(--border);
@@ -826,31 +814,6 @@ tbody tr.baris-dikembalikan:hover td { background: var(--abu-hover); }
 /* Kolom "Jumlah": kotak isian kecil, default 1, bisa dikoreksi manual. Border oranye +
    tombol "Reset" kecil muncul kalau nilainya beda dari tebakan otomatis. */
 .kolom-jumlah { white-space: normal; overflow: visible; }
-.sel-jumlah { display: flex; flex-direction: column; gap: 2px; align-items: center; }
-.input-jumlah {
-  width: 100%;
-  max-width: 52px;
-  padding: 4px 4px;
-  font-size: 0.8rem;
-  font-family: inherit;
-  font-weight: 600;
-  text-align: center;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-.input-jumlah.diubah-manual { border-color: var(--oranye); color: var(--oranye); background: var(--oranye-muda); }
-.tombol-reset-jumlah {
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--abu-teks);
-  font-size: 0.66rem;
-  font-family: inherit;
-  text-decoration: underline;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.tombol-reset-jumlah:hover { color: var(--oranye); }
 
 /* ---------- Analisis Iklan ---------- */
 /* Catatan kecil di atas kartu ringkasan: periode file + rasio pencairan yang dipakai. */
@@ -886,24 +849,6 @@ tbody tr.baris-ragu:hover td { background: #dbeafe; }
 .untung-dua .versi-shopee { font-size: 0.64rem; color: var(--abu-teks); font-weight: 400; white-space: nowrap; }
 
 /* Kartu "Yang Perlu Dilakukan di Seller Centre": satu kolom per tindakan. */
-.grid-tindakan { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; align-items: start; }
-.kolom-tindakan-grup { border: 1px solid var(--border); border-radius: var(--radius-kecil); padding: 12px 14px; background: #fff; border-top-width: 3px; }
-.kolom-tindakan-grup.grup-jeda { border-top-color: var(--merah); }
-.kolom-tindakan-grup.grup-ubah-target { border-top-color: #2563eb; }
-.kolom-tindakan-grup.grup-biarkan { border-top-color: var(--hijau); }
-.kolom-tindakan-grup.grup-coba { border-top-color: var(--oranye); }
-.kolom-tindakan-grup.grup-isi-hpp { border-top-color: #f59e0b; }
-.kolom-tindakan-grup h3 { margin: 0 0 2px; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; }
-.kolom-tindakan-grup h3 .jumlah { margin-left: auto; font-size: 0.72rem; color: var(--abu-teks); font-weight: 600; }
-.kolom-tindakan-grup .ket { margin: 0 0 8px; font-size: 0.78rem; color: var(--abu-teks); line-height: 1.4; }
-.daftar-tindakan { list-style: none; margin: 0; padding: 0; font-size: 0.8rem; }
-.daftar-tindakan li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 5px 0; border-bottom: 1px dashed var(--border-lemah); }
-.daftar-tindakan li:last-child { border-bottom: none; }
-.daftar-tindakan .nama-singkat { color: var(--teks-judul); min-width: 0; line-height: 1.3; }
-.daftar-tindakan .nama-singkat small { display: block; color: var(--abu-teks); font-size: 0.68rem; }
-.daftar-tindakan .nilai { flex-shrink: 0; font-weight: 600; white-space: nowrap; }
-.daftar-tindakan .nilai small { font-weight: 400; color: var(--abu-teks); }
-.daftar-tindakan .kosong { color: var(--abu-teks); font-style: italic; }
 
 /* Nama produk + ID kecil di bawahnya + pill mode bidding. */
 .produk-iklan { display: flex; flex-direction: column; gap: 2px; }
@@ -1090,7 +1035,6 @@ tbody tr.baris-kurangi:hover td { background: #ffedd5; }
 .kartu-details .isi-details .daftar-catatan { padding: 0 0 0 18px; }
 
 /* Kartu catatan "Cara membaca tabel ini" */
-.kartu-catatan h2 { margin-bottom: 8px; }
 .daftar-catatan { margin: 0; padding-left: 18px; font-size: 0.86rem; color: var(--teks); line-height: 1.55; }
 .daftar-catatan li { margin-bottom: 4px; }
 .daftar-catatan strong { color: var(--teks-judul); }
@@ -1177,7 +1121,6 @@ tbody tr.baris-kurangi:hover td { background: #ffedd5; }
   }
   #tabelData td.kolom-total, #tabelData td.kolom-hpp, #tabelHpp td.kolom-hpp { text-align: left !important; }
   #tabelData td.kolom-total .pill { margin-left: 6px; margin-top: 0; }
-  .sel-jumlah { align-items: flex-end; }
   .input-hpp-tabel { max-width: none; }
   /* Tabel iklan jadi blok penuh supaya tabel rincian di dalamnya (min-width 640px) tidak
      melebarkan seluruh tabel luar melebihi layar — geser horizontalnya cukup di sel rincian. */
@@ -1193,23 +1136,10 @@ tbody tr.baris-kurangi:hover td { background: #ffedd5; }
 .kartu-tugas { border-top: 3px solid var(--oranye); }
 .tugas-kepala { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .tugas-kepala h2 { margin-bottom: 10px; }
-.tugas-untung { background: var(--abu-terang); border-radius: var(--radius-kecil); padding: 12px 14px; margin-bottom: 14px; }
-.tugas-untung .angka-ringkasan { white-space: normal; }
 .tugas-selisih { font-size: 0.85rem; margin-top: 4px; }
 .tugas-bulan { font-size: 0.85rem; color: var(--abu-teks); margin-top: 4px; }
 .tugas-bulan strong { color: var(--teks-judul); }
 .tugas-judul { font-weight: 600; color: var(--teks-judul); margin: 0 0 8px; }
-.tugas-judul-kecil { font-size: 0.8rem; font-weight: 600; color: var(--abu-teks); margin: 16px 0 6px; }
-.tugas-item { border: 1px solid var(--border); border-radius: var(--radius-kecil); padding: 10px 12px; margin-bottom: 8px; }
-.tugas-atas { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-.tugas-atas .pill { flex-shrink: 0; }
-.tugas-nama { font-weight: 600; color: var(--teks-judul); overflow-wrap: anywhere; }
-.tugas-aksi { font-size: 1rem; font-weight: 600; margin-top: 4px; color: var(--teks); }
-.tugas-alasan, .tugas-catatan { display: block; font-size: 0.8rem; color: var(--abu-teks); margin-top: 2px; }
-.tugas-catatan { color: var(--kuning); }
-.tugas-baris { list-style: none; margin: 0; padding: 0; }
-.tugas-baris li { display: flex; flex-direction: column; padding: 6px 0; border-top: 1px solid var(--border-lemah); font-size: 0.9rem; }
-.tugas-baris li small { color: var(--abu-teks); font-size: 0.8rem; }
 .tugas-cara { margin: 14px 0 0; font-size: 0.8rem; }
 .sel-setelan .saran.naik { color: var(--hijau); }
 
@@ -1217,10 +1147,6 @@ tbody tr.baris-kurangi:hover td { background: #ffedd5; }
 .banner-data { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; background: var(--kuning-muda); border: 1px solid #fde68a; border-left: 4px solid var(--kuning); border-radius: var(--radius-kecil); padding: 10px 12px; margin: 0 0 12px; font-size: 0.9rem; color: var(--teks); }
 .banner-data > strong { color: var(--kuning); }
 .banner-data .tombol-kecil { margin-top: 4px; }
-.tugas-perpanjang { border-left: 4px solid #ea580c; background: #fff7ed; }
-.tugas-perpanjang .tugas-aksi { margin-top: 0; }
-.tugas-perpanjang .tugas-baris li { flex-direction: row; justify-content: space-between; gap: 8px; }
-.tugas-perpanjang .tugas-baris li small { flex-shrink: 0; color: #c2410c; }
 #tabelKeputusan .catatan-berakhir { color: #c2410c; font-weight: 500; }
 
 /* Tugas Minggu Ini: langkah bernomor (untuk orang tua — besar, jelas, satu hal per langkah) */
@@ -1283,7 +1209,7 @@ tbody td { padding: 9px 10px; }
 .tabel-detail thead th, #tabelKeputusan > thead th small { font-size: 0.72rem; }
 .keterangan-tabel { font-size: 0.92rem; }
 .info-jumlah-data { font-size: 0.85rem; }
-.tugas-alasan, .tugas-catatan, .langkah-ket, #tabelKeputusan .catatan-keputusan { font-size: 0.9rem; }
+.langkah-ket, #tabelKeputusan .catatan-keputusan { font-size: 0.9rem; }
 
 /* Tombol dan isian: target sentuh ≥ 44 px, huruf 16 px (HP tidak auto-zoom) */
 .tombol { min-height: 44px; font-size: 0.95rem; padding: 10px 18px; border-radius: 12px; }
@@ -1397,4 +1323,8 @@ input[type="text"], input[type="password"], input[type="number"] { min-height: 4
   .tombol-pengaturan { padding: 8px 10px; }
   .tombol-pengaturan .label-pengaturan { display: none; }
 }
+.kartu-perbarui { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.kartu-perbarui h2 { margin-bottom: 4px; }
+.kartu-perbarui .keterangan { margin: 0; }
+@media (max-width: 640px) { .kartu-perbarui .tombol { width: 100%; } }
 

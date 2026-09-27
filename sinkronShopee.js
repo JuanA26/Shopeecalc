@@ -11,6 +11,7 @@
 //   3. get_order_detail     — tanggal pesanan dibuat + status.
 //   4. get_return_detail    — hanya untuk pesanan yang punya retur: barang mana yang diretur.
 // Semua endpoint di atas baca-saja (lihat ENDPOINT_BACA_SAJA di shopeeApi.js).
+const { tanggalWib, geserHari, potong, cekError } = require('./util');
 
 const JENDELA_HARI = 14; // get_escrow_list: rentang per panggilan dibuat pendek supaya aman
 const UKURAN_BATCH = 50; // batas order_sn per panggilan get_escrow_detail_batch / get_order_detail
@@ -57,19 +58,6 @@ function isiAntreanUlang(db, shopId) {
   return { menunggu: r.menunggu || 0, macet: r.macet || 0 };
 }
 
-// Tanggal WIB (GMT+7, zona waktu Shopee Indonesia & file Excel-nya) dari unix detik.
-function tanggalWib(ts) {
-  if (!ts) return '';
-  return new Date((Number(ts) + 7 * 3600) * 1000).toISOString().slice(0, 10);
-}
-
-function cekError(hasil, namaEndpoint) {
-  if (hasil && hasil.error) {
-    throw new Error(`Shopee menolak ${namaEndpoint}: ${hasil.error}${hasil.message ? ' — ' + hasil.message : ''}`);
-  }
-  return (hasil && hasil.response) || {};
-}
-
 // Jalankan fn untuk tiap potongan (batch) dengan paling banyak `n` sekaligus, urutan hasil tetap.
 async function paralel(daftar, n, fn) {
   const hasil = new Array(daftar.length);
@@ -89,7 +77,6 @@ async function paralel(daftar, n, fn) {
   await Promise.all(pekerja);
   return hasil;
 }
-const potong = (daftar, ukuran) => Array.from({ length: Math.ceil(daftar.length / ukuran) }, (_, i) => daftar.slice(i * ukuran, (i + 1) * ukuran));
 
 // Status retur yang dianggap barangnya benar-benar kembali & uangnya dikembalikan.
 // Pesanan di sini semuanya sudah dilepas dananya, jadi retur yang masih "diproses" jarang;
@@ -473,11 +460,10 @@ const STATUS_TIDAK_DIBAYAR = ['UNPAID', 'CANCELLED', 'IN_CANCEL', 'TO_RETURN'];
 const PENYANGGA_CAIR = 20;
 function tingkatCairTerukur(db, shopId, hariIni) {
   shopId = String(shopId);
-  const geser = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-  const sampai = geser(hariIni, -14);
+  const sampai = geserHari(hariIni, -14);
   const tertua = (db.prepare('SELECT MIN(tanggal_pesanan) AS t FROM api_order WHERE shop_id = ?').get(shopId) || {}).t;
   if (!tertua) return null;
-  const dari = tertua > geser(hariIni, -90) ? tertua : geser(hariIni, -90);
+  const dari = tertua > geserHari(hariIni, -90) ? tertua : geserHari(hariIni, -90);
   if (dari > sampai) return null;
   const rows = db.prepare(
     `WITH ordered AS (
@@ -563,4 +549,4 @@ function bacaItemPesanan(db, shopId, dari, sampai, rasioPerkiraan) {
   );
 }
 
-module.exports = { modeEscrow, sinkronkan, bacaItemPesanan, rasioPencairanToko, tingkatCairTerukur, susunBarisPesanan, tanggalWib, isiAntreanUlang, HARI_AWAL_DEFAULT, BATAS_PERCOBAAN };
+module.exports = { modeEscrow, sinkronkan, bacaItemPesanan, rasioPencairanToko, tingkatCairTerukur, susunBarisPesanan, tanggalWib, isiAntreanUlang, HARI_AWAL_DEFAULT, BATAS_PERCOBAAN, STATUS_BUKAN_PENJUALAN };

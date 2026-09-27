@@ -9,10 +9,12 @@ const bcrypt = require('bcryptjs');
 const db = require('./db');
 const { parseCsvLine, parseShopeeAdsCsv, hitungAnalisisIklan, RASIO_PENCAIRAN_DEFAULT, TINGKAT_CAIR_DEFAULT } = require('./analisisIklan');
 const shopeeApi = require('./shopeeApi');
-const { sinkronkan, bacaItemPesanan, rasioPencairanToko, tingkatCairTerukur, modeEscrow, isiAntreanUlang } = require('./sinkronShopee');
+const { sinkronkan, bacaItemPesanan, rasioPencairanToko, tingkatCairTerukur, modeEscrow, isiAntreanUlang, STATUS_BUKAN_PENJUALAN } = require('./sinkronShopee');
 const { sinkronIklan, kampanyeDariDb } = require('./sinkronIklan');
 const { susunEkspor } = require('./eksporData');
 const { buatXlsx } = require('./xlsx');
+const SesiSqlite = require('./sesiSqlite');
+const { hariIniWib, geserHari, tanggalValid, escapeHtml } = require('./util');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -66,6 +68,34 @@ app.set('trust proxy', 1); // perlu kalau dideploy di belakang reverse proxy/htt
 
 // Batas dinaikkan dari 100 kb bawaan: /api/iklan/hitung-ulang mengirim balik semua baris
 // kampanye (ratusan baris × ~0,5 kb) supaya tidak perlu unggah ulang file.
+// Header keamanan untuk semua respons. CSP: hanya skrip dari situs ini sendiri (tidak ada
+// skrip inline), font dari Google Fonts; halaman tidak boleh dibingkai situs lain.
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    'font-src https://fonts.gstatic.com', "img-src 'self' data: blob:", "connect-src 'self'", "object-src 'none'",
+    "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'",
+  ].join('; '));
+  if (req.secure) res.setHeader('Strict-Transport-Security', 'max-age=15552000');
+  next();
+});
+
+// Permintaan yang mengubah data harus datang dari halaman aplikasi ini sendiri (lapisan tambahan
+// di atas cookie SameSite=Lax). Permintaan tanpa header Origin (curl, skrip) tetap butuh login.
+app.use((req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  const origin = req.get('origin');
+  if (!origin) return next();
+  let host = null;
+  try { host = new URL(origin).host; } catch (_) { /* Origin "null" atau rusak */ }
+  const hostKita = [req.get('host'), req.get('x-forwarded-host')].filter(Boolean);
+  if (!host || !hostKita.includes(host)) return res.status(403).json({ error: 'Permintaan ditolak (bukan dari halaman aplikasi ini).' });
+  next();
+});
+
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -73,6 +103,8 @@ app.use(
   session({
     name: 'smc.sid',
     secret: SESSION_SECRET,
+    // Disimpan di SQLite: login tetap berlaku walau server restart (setiap deploy).
+    store: new SesiSqlite(db),
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -101,25 +133,44 @@ function requireLogin(req, res, next) {
 }
 
 // ---------- Rute Auth ----------
+// Batas tebak password: 10 kali gagal per IP dalam 15 menit → tunggu dulu.
+const BATAS_GAGAL_LOGIN = 10;
+const JEDA_GAGAL_LOGIN_MS = 15 * 60 * 1000;
+const gagalLogin = new Map(); // ip → { n, sejak }
+// Username salah dicek terhadap hash palsu supaya lamanya sama dengan password salah
+// (tidak bisa menebak username mana yang ada dari waktu respons).
+const HASH_PALSU = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 12);
+
 app.post('/api/login', (req, res) => {
+  const ip = req.ip;
+  const catatan = gagalLogin.get(ip);
+  if (catatan && Date.now() - catatan.sejak > JEDA_GAGAL_LOGIN_MS) gagalLogin.delete(ip);
+  else if (catatan && catatan.n >= BATAS_GAGAL_LOGIN) {
+    return res.status(429).json({ error: 'Terlalu banyak percobaan login. Coba lagi 15 menit lagi.' });
+  }
+
   const { username, password } = req.body || {};
-  if (!username || !password) {
+  if (typeof username !== 'string' || typeof password !== 'string' || !username.trim() || !password) {
     return res.status(400).json({ error: 'Username dan password wajib diisi.' });
   }
-
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username.trim());
-  if (!user) {
+  const cocok = bcrypt.compareSync(password, user ? user.password_hash : HASH_PALSU);
+  if (!user || !cocok) {
+    if (gagalLogin.size > 5000) gagalLogin.clear(); // jangan tumbuh tanpa batas
+    const c = gagalLogin.get(ip) || { n: 0, sejak: Date.now() };
+    c.n += 1;
+    gagalLogin.set(ip, c);
     return res.status(401).json({ error: 'Username atau password salah.' });
   }
+  gagalLogin.delete(ip);
 
-  const ok = bcrypt.compareSync(password, user.password_hash);
-  if (!ok) {
-    return res.status(401).json({ error: 'Username atau password salah.' });
-  }
-
-  req.session.userId = user.id;
-  req.session.username = user.username;
-  res.json({ ok: true, username: user.username });
+  // Sesi baru setiap login (mencegah session fixation).
+  req.session.regenerate((err) => {
+    if (err) return res.status(500).json({ error: 'Gagal membuat sesi login.' });
+    req.session.userId = user.id;
+    req.session.username = user.username;
+    res.json({ ok: true, username: user.username });
+  });
 });
 
 app.post('/api/logout', (req, res) => {
@@ -160,7 +211,7 @@ app.put('/api/hpp/:idProduk', requireLogin, (req, res) => {
        nama_produk = COALESCE(NULLIF(excluded.nama_produk, ''), product_hpp.nama_produk),
        updated_at = excluded.updated_at,
        updated_by = excluded.updated_by`
-  ).run(idProduk, namaProduk || '', hppNum, req.session.username);
+  ).run(idProduk, typeof namaProduk === 'string' ? namaProduk : '', hppNum, req.session.username);
 
   const row = db.prepare('SELECT * FROM product_hpp WHERE id_produk = ?').get(idProduk);
   res.json(row);
@@ -349,7 +400,6 @@ function hitungMargin(items, infoTambahan) {
 }
 
 // ---------- Data pesanan dari sinkron Shopee API ----------
-const tanggalValid = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
 
 // Token toko untuk environment yang sedang aktif (production di Render, bisa sandbox di lokal).
 function barisTokenAktif() {
@@ -475,20 +525,36 @@ function statusSinkron() {
 app.get('/api/sinkron/status', requireLogin, (req, res) => res.json(statusSinkron()));
 
 // ---------- Pengaturan: diagnostik + unduh data untuk analisis ----------
-const hariIniWibServer = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+const BUKAN_PENJUALAN_SQL = [...STATUS_BUKAN_PENJUALAN].map((x) => `'${x}'`).join(', ');
+function produkTanpaHppTerjual(shopId, dari, sampai) {
+  const items = bacaItemPesanan(db, shopId, dari, sampai, rasioPencairanToko(db, shopId) || RASIO_PENCAIRAN_DEFAULT);
+  const adaHpp = new Set(db.prepare('SELECT id_produk FROM product_hpp').all().map((r) => r.id_produk));
+  const tanpa = new Set();
+  let total = 0, kosong = 0;
+  for (const it of items) {
+    if (it.dikembalikan) continue;
+    total += it.totalPenghasilan || 0;
+    if (!adaHpp.has(it.idProduk)) { tanpa.add(it.idProduk); kosong += it.totalPenghasilan || 0; }
+  }
+  return { dari, sampai, produk: tanpa.size, penghasilan: kosong, bagian: total ? kosong / total : null };
+}
 function ringkasDiagnostik(token) {
   const s = statusSinkron();
   const shop = String(token.shop_id);
   const angka = (sql, ...p) => Object.values(db.prepare(sql).get(...p) || {})[0] ?? null;
-  const terukur = tingkatCairTerukur(db, token.shop_id, hariIniWibServer());
+  const terukur = tingkatCairTerukur(db, token.shop_id, hariIniWib());
   return {
     versi: (process.env.RENDER_GIT_COMMIT || 'lokal').slice(0, 7),
     sinkron: { status: s.status, pesan: s.pesan, terakhirSelesai: s.terakhirSelesai, ulangTertunda: s.ulangTertunda, ulangMacet: s.ulangMacet,
       iklanStatus: s.iklan.status, iklanPesan: s.iklan.pesan, iklanTerakhirSelesai: s.iklan.terakhirSelesai },
     pesanan: { jumlah: s.jumlahPesanan, dari: s.tanggalTerlama, sampai: s.tanggalTerbaru,
-      belumCair: angka(`SELECT COUNT(*) FROM api_order o WHERE o.shop_id = ? AND NOT EXISTS (SELECT 1 FROM api_pesanan p WHERE p.order_sn = o.order_sn)`, shop) },
-    produkTanpaHpp: angka(`SELECT COUNT(DISTINCT i.id_produk) FROM api_order_item i JOIN api_order o ON o.order_sn = i.order_sn
-      WHERE o.shop_id = ? AND i.id_produk NOT IN (SELECT id_produk FROM product_hpp)`, shop),
+      // Belum cair = pesanan sah yang dananya belum dilepas; batal/belum dibayar dihitung terpisah.
+      belumCair: angka(`SELECT COUNT(*) FROM api_order o WHERE o.shop_id = ? AND o.status NOT IN (${BUKAN_PENJUALAN_SQL})
+        AND NOT EXISTS (SELECT 1 FROM api_pesanan p WHERE p.order_sn = o.order_sn)`, shop),
+      batal: angka(`SELECT COUNT(*) FROM api_order o WHERE o.shop_id = ? AND o.status IN (${BUKAN_PENJUALAN_SQL})
+        AND NOT EXISTS (SELECT 1 FROM api_pesanan p WHERE p.order_sn = o.order_sn)`, shop) },
+    // Sama dengan tab HPP (periode 30 hari): produk yang laku (tidak batal/retur) tanpa HPP.
+    tanpaHpp30: produkTanpaHppTerjual(token.shop_id, geserHari(hariIniWib(), -29), hariIniWib()),
     produkDenganHpp: angka('SELECT COUNT(*) FROM product_hpp'),
     iklan: { kampanyeBerjalan: angka("SELECT COUNT(*) FROM iklan_kampanye WHERE shop_id = ? AND status = 'ongoing'", shop),
       dari: angka('SELECT MIN(tanggal) FROM iklan_toko_harian WHERE shop_id = ?', shop), sampai: angka('SELECT MAX(tanggal) FROM iklan_toko_harian WHERE shop_id = ?', shop),
@@ -513,7 +579,7 @@ app.post('/api/ekspor', requireLogin, (req, res) => {
       'sinkron.ulang_menunggu': d.sinkron.ulangTertunda, 'sinkron.ulang_macet': d.sinkron.ulangMacet, 'sinkron.iklan_status': d.sinkron.iklanStatus,
       'sinkron.iklan_pesan': d.sinkron.iklanPesan, 'sinkron.iklan_terakhir_selesai': d.sinkron.iklanTerakhirSelesai,
       tingkat_bayar_pesanan_iklan_terukur: d.tingkatCairTerukur };
-    const hariIni = hariIniWibServer();
+    const hariIni = hariIniWib();
     const sheets = susunEkspor(db, token.shop_id, {
       margin: (items) => hitungMargin(items, {}), bacaItemPesanan, rasioPerkiraan: rasioPencairanToko(db, token.shop_id) || RASIO_PENCAIRAN_DEFAULT,
       hariIni, keputusan: req.body && req.body.keputusan, versi: d.versi, sinkron,
@@ -596,7 +662,7 @@ function bacaPengaturan(kunci) {
 // default 85%. tingkatCairTerukur ikut dikirim ke klien supaya kotak isian bisa menunjukkannya.
 function tingkatCairSaatIni() {
   const token = barisTokenAktif();
-  const terukur = token ? tingkatCairTerukur(db, token.shop_id, new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10)) : null;
+  const terukur = token ? tingkatCairTerukur(db, token.shop_id, hariIniWib()) : null;
   const tingkatCairTerukurToko = terukur ? terukur.toko : null;
   const n = Number(bacaPengaturan('tingkat_cair'));
   if (Number.isFinite(n) && n > 0 && n <= 1) return { tingkatCair: n, sumberTingkatCair: 'pengaturan', tingkatCairTerukurToko };
@@ -605,7 +671,7 @@ function tingkatCairSaatIni() {
 }
 
 function opsiAnalisisIklan(tanggalLaporanIso, tanggalRilisTerakhir, tanggalDataMulai) {
-  const iso = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : '');
+  const iso = (v) => (tanggalValid(v) ? String(v) : '');
   return { ...tingkatCairSaatIni(), tanggalLaporanIso: iso(tanggalLaporanIso), tanggalRilisTerakhir: iso(tanggalRilisTerakhir), tanggalDataMulai: iso(tanggalDataMulai) };
 }
 
@@ -665,7 +731,7 @@ app.post('/api/iklan/dari-shopee', requireLogin, (req, res) => {
   const token = barisTokenAktif();
   if (!token) return res.status(400).json({ error: 'Toko belum terhubung ke Shopee.' });
   const body = req.body || {};
-  const sampai = tanggalValid(body.sampai) ? body.sampai : new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+  const sampai = tanggalValid(body.sampai) ? body.sampai : hariIniWib();
   const dari = tanggalValid(body.dari) ? body.dari : sampai;
   const { kampanye, setelan, adaData, riwayatSetelan, biayaTokoHarian } = kampanyeDariDb(db, token.shop_id, dari, sampai);
   const s = db.prepare('SELECT status, terakhir_selesai, iklan_status, iklan_pesan, iklan_selesai, iklan_sampai FROM sinkron_shopee WHERE shop_id = ?').get(token.shop_id) || {};
@@ -790,7 +856,7 @@ app.get('/auth/shopee/authorize', requireLogin, (req, res) => {
     const url = shopeeApi.buildAuthUrl(redirectUriDariRequest(req), req.session.userId);
     res.redirect(url);
   } catch (err) {
-    res.status(500).send(`Gagal bikin link otorisasi: ${err.message}`);
+    res.status(500).send(`Gagal bikin link otorisasi: ${escapeHtml(err.message)}`);
   }
 });
 
@@ -806,7 +872,7 @@ app.get('/auth/shopee/callback', requireLogin, async (req, res) => {
   try {
     const hasil = await shopeeApi.getAccessToken({ code: String(code), shopId: String(shopId) });
     if (hasil.error) {
-      return res.status(400).send(`Shopee menolak tukar token: ${hasil.error} — ${hasil.message || ''}`);
+      return res.status(400).send(`Shopee menolak tukar token: ${escapeHtml(hasil.error)} — ${escapeHtml(hasil.message || '')}`);
     }
     db.prepare(
       `INSERT INTO shopee_token (shop_id, env, access_token, refresh_token, expire_in, obtained_at, updated_at)
@@ -818,8 +884,16 @@ app.get('/auth/shopee/callback', requireLogin, async (req, res) => {
     jalankanSinkron().catch(() => { /* status gagal tercatat, terlihat di halaman Kalkulator */ });
     res.send(`Otorisasi berhasil untuk shop_id ${shopId} (environment: ${shopeeApi.getEnv()}). Data penjualan sedang diambil otomatis — <a href="/">kembali ke aplikasi</a>.`);
   } catch (err) {
-    res.status(500).send(`Gagal tukar code jadi token: ${err.message}`);
+    res.status(500).send(`Gagal tukar code jadi token: ${escapeHtml(err.message)}`);
   }
+});
+
+// Error yang tidak tertangkap (JSON rusak, file terlalu besar, bug): balas JSON singkat, bukan
+// halaman HTML berisi detail teknis.
+app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+  const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : err.status || err.statusCode || 500;
+  if (status >= 500) console.error('[SERVER]', err);
+  res.status(status).json({ error: status === 413 ? 'File atau data terlalu besar.' : status < 500 ? 'Permintaan tidak valid.' : 'Terjadi kesalahan di server.' });
 });
 
 app.listen(PORT, () => {

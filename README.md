@@ -50,6 +50,10 @@ Sales data needs a one-time shop authorization at `/auth/shopee/authorize`.
 **Access and privacy:**
 - Every route except login requires a session. Only create accounts for people you trust, with long,
   unique passwords.
+- Sessions are stored in SQLite (table `sesi`), so a redeploy does not log anyone out. Login is paused
+  for 15 minutes after 10 wrong passwords from one IP. Responses carry a Content Security Policy (no
+  inline scripts), `X-Frame-Options: DENY` and `nosniff`; data-changing requests from other origins are
+  refused.
 - Back up the database (`app.db`): it holds the HPP list and accounts.
 
 ## 3. Using the site
@@ -182,7 +186,8 @@ Run `npm test` for the regression tests (profit and break-even maths, paid-order
 returns, payout split, return deductions, ad-only weeks, retry rotation, stuck retries and historical
 recovery against a mock Shopee). Trial tests cover recent vs old performance, store-profit reversals,
 cross-product sales, missing/zero days, overlapping changes, one trial at a time and expiry reminders.
-No Shopee credentials are needed.
+`keamanan.test.js` starts the real server and checks headers, the cross-site block, the login limit and
+that sessions survive a restart. `ekspor.test.js` checks the Excel export. No Shopee credentials are needed.
 The calculator excludes business overhead unless it is already part of HPP/payout deductions.
 
 ## 6. Project structure
@@ -197,6 +202,8 @@ webapp/
   db.js             SQLite schema (users, HPP, settings, Shopee token, orders, payouts, ads)
   eksporData.js     Pengaturan export: builds the analysis workbook sheets
   xlsx.js           Minimal dependency-free .xlsx writer
+  util.js           Shared helpers (WIB dates, batching, Shopee error check, HTML escaping)
+  sesiSqlite.js     Login sessions stored in SQLite
   scripts/add-user.js   Create/update login accounts
   test/             Regression tests (npm test)
   public/           Frontend: index.html, app.js, style.css (no build step)

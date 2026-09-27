@@ -34,6 +34,17 @@ function getConfig() {
   return { env, partnerId, partnerKey, api: HOST[env].api, auth: HOST[env].auth };
 }
 
+// Shopee kadang membalas halaman HTML (gangguan/gateway 5xx). Tanpa ini error-nya berbunyi
+// "Unexpected token <" yang tidak menjelaskan apa-apa.
+async function bacaJson(res) {
+  const teks = await res.text();
+  try {
+    return JSON.parse(teks);
+  } catch (_) {
+    throw new Error(`Shopee membalas bukan JSON (HTTP ${res.status}). Coba lagi nanti.`);
+  }
+}
+
 function hmac(partnerKey, baseString) {
   return crypto.createHmac('sha256', partnerKey).update(baseString).digest('hex');
 }
@@ -105,7 +116,7 @@ async function callPublicApi(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ partner_id: partnerId, ...body }),
   });
-  return res.json();
+  return bacaJson(res);
 }
 
 // shop_id WAJIB angka di body JSON: disimpan sebagai teks di SQLite, dan access_token/get
@@ -148,7 +159,7 @@ async function callShopApi(path, { shopId, accessToken, method = 'GET', query = 
     headers: { 'Content-Type': 'application/json' },
     body: method === 'POST' ? JSON.stringify(body || {}) : undefined,
   });
-  return res.json();
+  return bacaJson(res);
 }
 
 module.exports = { getEnv, buildAuthUrl, getAccessToken, refreshAccessToken, callShopApi };

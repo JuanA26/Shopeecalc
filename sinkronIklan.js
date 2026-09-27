@@ -8,7 +8,7 @@
 //     bukan array seperti di dokumentasi; maks 100 kampanye per panggilan; rentang ≤ 1 bulan.
 //   - Tanggal di API Ads berformat DD-MM-YYYY.
 const crypto = require('crypto');
-const { tanggalWib } = require('./sinkronShopee');
+const { tanggalWib, geserHari: tambahHari, potong, cekError } = require('./util');
 const { KODE_IKLAN_TOKO } = require('./analisisIklan');
 
 const HARI_AWAL = 90;        // sinkron pertama: 90 hari ke belakang (sama dengan data penjualan halaman iklan)
@@ -17,22 +17,9 @@ const JENDELA_HARI = 28;     // rentang per panggilan harian (batas Shopee 1 bul
 const MAKS_ID = 100;         // batas campaign_id_list per panggilan
 const STATUS_SELESAI = new Set(['closed', 'ended', 'deleted']);
 
-const tambahHari = (iso, n) => {
-  const d = new Date(iso + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-};
 const keShopee = (iso) => `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}`; // 2026-09-25 → 25-09-2026
 const dariShopee = (t) => { const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(String(t || '')); return m ? `${m[3]}-${m[2]}-${m[1]}` : ''; };
-const potong = (daftar, ukuran) => Array.from({ length: Math.ceil(daftar.length / ukuran) }, (_, i) => daftar.slice(i * ukuran, (i + 1) * ukuran));
 const angka = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-
-function cekError(hasil, namaEndpoint) {
-  if (hasil && hasil.error) {
-    throw new Error(`Shopee menolak ${namaEndpoint}: ${hasil.error}${hasil.message ? ' — ' + hasil.message : ''}`);
-  }
-  return (hasil && hasil.response) || {};
-}
 
 // Rentang [dari, sampai] dipecah jadi jendela ≤ JENDELA_HARI. Jendela satu hari dimundurkan
 // sehari (sebagian endpoint Ads menolak tanggal mulai = tanggal selesai).

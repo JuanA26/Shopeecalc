@@ -105,7 +105,7 @@ const pesanSuksesCsv = document.getElementById('pesanSuksesCsv');
 async function cekSesi() {
   const info = await apiFetch('/api/me');
   if (info.loggedIn) {
-    tampilkanAplikasi(info.username);
+    tampilkanAplikasi(info.username, info.bacaSaja);
   } else {
     tampilkanLogin();
   }
@@ -116,10 +116,15 @@ function tampilkanLogin() {
   aplikasiUtama.classList.add('tersembunyi');
 }
 
-function tampilkanAplikasi(username) {
+// Akun baca-saja (AKUN_BACA_SAJA di server): bisa melihat semua, tidak memicu sinkron/mengubah data.
+let akunBacaSaja = false;
+function tampilkanAplikasi(username, bacaSaja = false) {
+  akunBacaSaja = !!bacaSaja;
   halamanLogin.classList.add('tersembunyi');
   aplikasiUtama.classList.remove('tersembunyi');
   labelUsername.textContent = username;
+  document.getElementById('labelBacaSaja').classList.toggle('tersembunyi', !akunBacaSaja);
+  document.body.classList.toggle('akun-baca-saja', akunBacaSaja);
   document.getElementById('avatarUser').textContent = String(username || '?').slice(0, 1);
   muatDaftarHpp();
   muatSetelanIklan();
@@ -134,7 +139,7 @@ formLogin.addEventListener('submit', async (e) => {
   const password = document.getElementById('inputPassword').value;
   try {
     const hasil = await apiFetch('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) });
-    tampilkanAplikasi(hasil.username);
+    tampilkanAplikasi(hasil.username, hasil.bacaSaja);
   } catch (err) {
     pesanErrorLogin.textContent = err.message;
     pesanErrorLogin.classList.remove('tersembunyi');
@@ -375,6 +380,8 @@ async function muatStatusSinkron() {
 }
 
 async function sinkronSekarang() {
+  // Akun baca-saja tidak memicu permintaan ke Shopee; cukup muat ulang data yang tersimpan.
+  if (akunBacaSaja) { await muatStatusSinkron(); await muatDataPenjualan(); await muatDataPenjualanIklan(); return; }
   tombolSinkron.disabled = true;
   sedangMengikutiSinkron = true; // pemeriksa semenit tidak perlu ikut memantau
   tampilkanErrorSinkron('');
@@ -2453,12 +2460,26 @@ async function muatDiagnostik() {
   } catch (err) {
     el.innerHTML = `<p class="pesan-error">${escapeHtml(err.message)}</p>`;
   }
+  muatLogServer();
+}
+
+// Log server terbaru (sinkron selesai/gagal, penolakan Shopee), terbaru di atas.
+async function muatLogServer() {
+  const el = document.getElementById('isiLogServer');
+  try {
+    const log = await apiFetch('/api/log?n=60');
+    el.innerHTML = log.length
+      ? '<ol class="daftar-log">' + log.map((l) => `<li class="log-${escapeHtml(l.level)}"><time>${waktuWib(l.waktu)}</time> ${escapeHtml(l.pesan)}</li>`).join('') + '</ol>'
+      : '<p class="keterangan">Belum ada log.</p>';
+  } catch (err) {
+    el.innerHTML = `<p class="pesan-error">${escapeHtml(err.message)}</p>`;
+  }
 }
 document.getElementById('tombolDiagnostik').addEventListener('click', muatDiagnostik);
 
 // "Ambil data terbaru": sinkron pesanan + iklan dari Shopee (hanya membaca), lalu muat ulang semua
-// data halaman. Dijalankan otomatis saat Pengaturan dibuka kalau data lebih tua dari 10 menit.
-const BASI_PENGATURAN_MS = 10 * 60 * 1000;
+// data halaman. Dijalankan otomatis saat Pengaturan dibuka kalau data lebih tua dari 30 menit.
+const BASI_PENGATURAN_MS = 30 * 60 * 1000; // sama dengan jadwal otomatis; lebih sering memicu "rate limit" Shopee
 let perbaruiBerjalan = null;
 function teksTerakhirDiambil() {
   const s = statusSinkronTerakhir;
@@ -2502,7 +2523,9 @@ async function bukaPengaturan() {
   await muatStatusSinkron();
   const s = statusSinkronTerakhir;
   const teks = document.getElementById('teksPerbarui');
+  document.getElementById('tombolPerbarui').disabled = akunBacaSaja;
   if (!s || !s.terhubung) { teks.textContent = teksTerakhirDiambil(); return; }
+  if (akunBacaSaja) { teks.textContent = `${teksTerakhirDiambil()} Akun baca saja tidak mengambil data sendiri.`; return; }
   const basi = !s.terakhirSelesai || Date.now() - Date.parse(s.terakhirSelesai) > BASI_PENGATURAN_MS;
   if (perbaruiBerjalan || s.sedangBerjalan || basi) perbaruiSemuaData();
   else teks.textContent = teksTerakhirDiambil();

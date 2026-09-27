@@ -1327,4 +1327,16 @@ input[type="text"], input[type="password"], input[type="number"] { min-height: 4
 .kartu-perbarui h2 { margin-bottom: 4px; }
 .kartu-perbarui .keterangan { margin: 0; }
 @media (max-width: 640px) { .kartu-perbarui .tombol { width: 100%; } }
+.log-server { margin-top: 16px; }
+.log-server summary { cursor: pointer; font-weight: 600; min-height: 40px; display: flex; align-items: center; }
+.daftar-log { list-style: none; margin: 8px 0 0; padding: 0; max-height: 360px; overflow-y: auto; font-size: 0.82rem; font-family: ui-monospace, Consolas, monospace; }
+.daftar-log li { padding: 6px 0; border-top: 1px solid var(--border-lemah); overflow-wrap: anywhere; }
+.daftar-log time { color: var(--abu-teks); margin-right: 6px; }
+.daftar-log .log-peringatan { color: var(--kuning); }
+.daftar-log .log-error { color: var(--merah); }
+/* Akun baca-saja di HP: label "baca saja" menggantikan avatar supaya header tetap muat. */
+@media (max-width: 640px) {
+  .akun-baca-saja .info-user .avatar { display: none; }
+  #labelBacaSaja { padding: 2px 8px; }
+}
 

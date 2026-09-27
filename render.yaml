@@ -21,6 +21,9 @@ services:
       # Format: "username1:password1,username2:password2" (boleh 1 orang atau lebih).
       - key: ADMIN_ACCOUNTS
         sync: false
+      # Username di ADMIN_ACCOUNTS yang hanya boleh MELIHAT (mis. "claude" untuk agen). Dipisah koma.
+      - key: AKUN_BACA_SAJA
+        sync: false
       # ---- Shopee Open Platform API (§10/§19/§20 PROJECT_NOTES.md) ----
       # Isi ketiganya di dashboard Render SETELAH App di-Go Live disetujui (jangan sebelum —
       # Live Partner ID/Key cuma valid untuk environment production, bukan sandbox testing).

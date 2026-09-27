@@ -14,7 +14,7 @@ let server = null;
 
 async function nyalakan() {
   server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, SESSION_SECRET: 'tes-rahasia', ADMIN_ACCOUNTS: 'tes:benar123',
+    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, SESSION_SECRET: 'tes-rahasia', ADMIN_ACCOUNTS: 'tes:benar123,claude:lihat123', AKUN_BACA_SAJA: 'claude',
       SINKRON_OTOMATIS: 'off', SHOPEE_PARTNER_ID: '', SHOPEE_PARTNER_KEY: '' },
     stdio: 'ignore',
   });
@@ -63,6 +63,30 @@ test('security headers, cross-site block, login limit, and login survives a rest
   await matikan();
   await nyalakan();
   assert.equal((await (await fetch(`${BASE}/api/me`, { headers: { Cookie: sid } })).json()).loggedIn, true);
+
+  // Public health check: no login, no sales data or log text.
+  const sehat = await fetch(`${BASE}/api/kesehatan`);
+  assert.equal(sehat.status, 200);
+  const k = await sehat.json();
+  assert.equal(k.ok, true);
+  assert.deepEqual(Object.keys(k).sort(), ['antreanUlang', 'iklan', 'log24Jam', 'ok', 'pesanan', 'sinkronBerjalan', 'terhubungShopee', 'versi', 'waktuServer']);
+  // The server log needs a login and contains the start-up lines.
+  assert.equal((await fetch(`${BASE}/api/log`)).status, 401);
+  const log = await (await fetch(`${BASE}/api/log`, { headers: { Cookie: sid } })).json();
+  assert.ok(log.some((l) => l.pesan.includes('[SETUP]')));
+
+  // Read-only account: can read, cannot change data or ask Shopee for a sync.
+  const lihat = await login('claude', 'lihat123');
+  const sidLihat = lihat.headers.get('set-cookie').split(';')[0];
+  const sebagai = (url, opsi = {}) => fetch(`${BASE}${url}`, { ...opsi, headers: { 'Content-Type': 'application/json', Cookie: sidLihat, ...(opsi.headers || {}) } });
+  assert.equal((await (await sebagai('/api/me')).json()).bacaSaja, true);
+  assert.equal((await sebagai('/api/hpp')).status, 200);
+  assert.equal((await sebagai('/api/hpp/123', { method: 'PUT', body: '{"hpp":5}' })).status, 403);
+  assert.equal((await sebagai('/api/sinkron', { method: 'POST', body: '{}' })).status, 403);
+  assert.equal((await sebagai('/auth/shopee/authorize')).status, 403);
+  assert.notEqual((await sebagai('/api/ekspor', { method: 'POST', body: '{}' })).status, 403); // reading is allowed
+  // A normal account can still write.
+  assert.equal((await fetch(`${BASE}/api/hpp/123`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: sid }, body: '{"hpp":5}' })).status, 200);
 
   // After 10 wrong passwords, even the right one is refused for a while.
   for (let i = 0; i < 10; i++) assert.equal((await login('tes', 'salah')).status, 401);

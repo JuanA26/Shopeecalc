@@ -7,6 +7,8 @@ const multer = require('multer');
 const bcrypt = require('bcryptjs');
 
 const db = require('./db');
+// Pasang paling awal supaya semua console.* (termasuk saat start) ikut tersimpan.
+const logServer = require('./logServer').pasangLogServer(db);
 const { parseCsvLine, parseShopeeAdsCsv, hitungAnalisisIklan, RASIO_PENCAIRAN_DEFAULT, TINGKAT_CAIR_DEFAULT } = require('./analisisIklan');
 const shopeeApi = require('./shopeeApi');
 const { sinkronkan, bacaItemPesanan, rasioPencairanToko, tingkatCairTerukur, modeEscrow, isiAntreanUlang, STATUS_BUKAN_PENJUALAN } = require('./sinkronShopee');
@@ -18,6 +20,10 @@ const { hariIniWib, geserHari, tanggalValid, escapeHtml } = require('./util');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const VERSI = (process.env.RENDER_GIT_COMMIT || 'lokal').slice(0, 7);
+// Akun "baca saja" (mis. untuk agen/Claude): bisa melihat semua, tidak bisa mengubah apa pun.
+// Env AKUN_BACA_SAJA = daftar username dipisah koma; akunnya sendiri dibuat lewat ADMIN_ACCOUNTS.
+const AKUN_BACA_SAJA = new Set(String(process.env.AKUN_BACA_SAJA || '').split(',').map((u) => u.trim()).filter(Boolean));
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 
 if (!process.env.SESSION_SECRET) {
@@ -127,9 +133,17 @@ const upload = multer({
 });
 
 // ---------- Auth middleware ----------
+// Selain GET, akun baca-saja hanya boleh memanggil rute yang menghitung/membaca tanpa menyimpan.
+const BACA_SAJA_BOLEH_POST = new Set(['/api/ekspor', '/api/iklan/dari-shopee', '/api/iklan/hitung-ulang', '/api/iklan/upload']);
+const bacaSaja = (req) => !!(req.session && AKUN_BACA_SAJA.has(req.session.username));
+
 function requireLogin(req, res, next) {
-  if (req.session && req.session.userId) return next();
-  return res.status(401).json({ error: 'Belum login.' });
+  if (!(req.session && req.session.userId)) return res.status(401).json({ error: 'Belum login.' });
+  // Termasuk memicu sinkron Shopee dan menghubungkan ulang toko (/auth/shopee/*).
+  if (bacaSaja(req) && ((req.method !== 'GET' && !BACA_SAJA_BOLEH_POST.has(req.path)) || req.path.startsWith('/auth/'))) {
+    return res.status(403).json({ error: 'Akun ini hanya bisa melihat (baca saja).' });
+  }
+  return next();
 }
 
 // ---------- Rute Auth ----------
@@ -169,7 +183,7 @@ app.post('/api/login', (req, res) => {
     if (err) return res.status(500).json({ error: 'Gagal membuat sesi login.' });
     req.session.userId = user.id;
     req.session.username = user.username;
-    res.json({ ok: true, username: user.username });
+    res.json({ ok: true, username: user.username, bacaSaja: bacaSaja(req) });
   });
 });
 
@@ -182,7 +196,7 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/me', (req, res) => {
   if (req.session && req.session.userId) {
-    return res.json({ loggedIn: true, username: req.session.username });
+    return res.json({ loggedIn: true, username: req.session.username, bacaSaja: bacaSaja(req) });
   }
   res.json({ loggedIn: false });
 });
@@ -524,6 +538,25 @@ function statusSinkron() {
 
 app.get('/api/sinkron/status', requireLogin, (req, res) => res.json(statusSinkron()));
 
+// Cek kesehatan PUBLIK (tanpa login) untuk debugging dari luar: versi, status sinkron + pesan
+// errornya, antrean ambil-ulang, jumlah peringatan/error 24 jam. SENGAJA tanpa angka penjualan,
+// nama produk, nomor pesanan, atau isi log.
+app.get('/api/kesehatan', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const token = barisTokenAktif();
+  const s = token ? db.prepare('SELECT * FROM sinkron_shopee WHERE shop_id = ?').get(token.shop_id) || {} : {};
+  res.json({
+    ok: true, versi: VERSI, waktuServer: new Date().toISOString(), terhubungShopee: !!token, sinkronBerjalan: !!sinkronBerjalan,
+    pesanan: { status: s.status || null, terakhirSelesai: s.terakhir_selesai || null, pesan: s.pesan || null },
+    iklan: { status: s.iklan_status || null, terakhirSelesai: s.iklan_selesai || null, pesan: s.iklan_pesan || null },
+    antreanUlang: token ? isiAntreanUlang(db, token.shop_id) : null,
+    log24Jam: logServer.ringkas24Jam(),
+  });
+});
+
+// Log server terbaru (butuh login): sinkron selesai/gagal, penolakan Shopee, error server.
+app.get('/api/log', requireLogin, (req, res) => res.json(logServer.terbaru(Number(req.query.n) || 100)));
+
 // ---------- Pengaturan: diagnostik + unduh data untuk analisis ----------
 const BUKAN_PENJUALAN_SQL = [...STATUS_BUKAN_PENJUALAN].map((x) => `'${x}'`).join(', ');
 function produkTanpaHppTerjual(shopId, dari, sampai) {
@@ -544,7 +577,7 @@ function ringkasDiagnostik(token) {
   const angka = (sql, ...p) => Object.values(db.prepare(sql).get(...p) || {})[0] ?? null;
   const terukur = tingkatCairTerukur(db, token.shop_id, hariIniWib());
   return {
-    versi: (process.env.RENDER_GIT_COMMIT || 'lokal').slice(0, 7),
+    versi: VERSI,
     sinkron: { status: s.status, pesan: s.pesan, terakhirSelesai: s.terakhirSelesai, ulangTertunda: s.ulangTertunda, ulangMacet: s.ulangMacet,
       iklanStatus: s.iklan.status, iklanPesan: s.iklan.pesan, iklanTerakhirSelesai: s.iklan.terakhirSelesai },
     pesanan: { jumlah: s.jumlahPesanan, dari: s.tanggalTerlama, sampai: s.tanggalTerbaru,
@@ -599,6 +632,12 @@ app.post('/api/sinkron', requireLogin, async (req, res) => {
   const n = Number(req.body && req.body.hariMundur);
   const hariMundur = Number.isInteger(n) && n > 0 ? Math.min(n, 365) : undefined;
   if (hariMundur && sinkronBerjalan) return res.status(409).json({ error: 'Sinkron masih berjalan. Coba periksa ulang setelah selesai.' });
+  // Baru saja sinkron (< 1 menit): jangan tanya Shopee lagi — klik berulang memicu "rate limit".
+  const token = barisTokenAktif();
+  const terakhir = token && (db.prepare('SELECT terakhir_selesai, status FROM sinkron_shopee WHERE shop_id = ?').get(token.shop_id) || {});
+  if (!hariMundur && !sinkronBerjalan && terakhir && terakhir.status === 'sukses' && Date.now() - Date.parse(terakhir.terakhir_selesai || 0) < JEDA_SINKRON_MANUAL_MS) {
+    return res.json({ ...statusSinkron(), dilewati: true });
+  }
   try {
     await jalankanSinkron({ hariMundur });
     res.json(statusSinkron());
@@ -611,6 +650,7 @@ app.post('/api/sinkron', requireLogin, async (req, res) => {
 // beberapa panggilan API, jadi murah; penjualan hari ini jadi hampir langsung terlihat). Diam saja kalau toko
 // belum terhubung atau partner key belum diisi (mis. lokal tanpa .env Shopee).
 const JEDA_SINKRON_MS = 30 * 60 * 1000;
+const JEDA_SINKRON_MANUAL_MS = 60 * 1000;
 function sinkronTerjadwal() {
   if (!process.env.SHOPEE_PARTNER_ID || !process.env.SHOPEE_PARTNER_KEY || !barisTokenAktif()) return;
   jalankanSinkron().catch(() => { /* sudah dicatat di sinkron_shopee + log */ });

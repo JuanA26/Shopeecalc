@@ -45,6 +45,12 @@ async function bacaJson(res) {
   }
 }
 
+// Shopee menolak dengan error_rate_limit kalau terlalu banyak permintaan dalam waktu singkat.
+// Tunggu sebentar lalu coba lagi (bisa diubah tes supaya cepat).
+const JEDA_BATAS_LAJU_MS = [2000, 5000, 10000];
+const kenaBatasLaju = (h) => !!h && (h.error === 'error_rate_limit' || /rate.?limit|too many requests/i.test(String(h.message || '')));
+const tidur = (ms) => new Promise((r) => setTimeout(r, ms));
+
 function hmac(partnerKey, baseString) {
   return crypto.createHmac('sha256', partnerKey).update(baseString).digest('hex');
 }
@@ -142,24 +148,29 @@ async function callShopApi(path, { shopId, accessToken, method = 'GET', query = 
     );
   }
   const { partnerId, partnerKey, api } = getConfig();
-  const timestamp = Math.floor(Date.now() / 1000);
-  const sign = hmac(partnerKey, `${partnerId}${path}${timestamp}${accessToken}${shopId}`);
-  const params = new URLSearchParams({
-    partner_id: String(partnerId),
-    timestamp: String(timestamp),
-    access_token: accessToken,
-    shop_id: String(shopId),
-    sign,
-  });
-  for (const [k, v] of Object.entries(query)) params.set(k, v);
-  const url = `${api}${path}?${params.toString()}`;
-  const res = await fetch(url, {
-    signal: AbortSignal.timeout(BATAS_WAKTU_MS),
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: method === 'POST' ? JSON.stringify(body || {}) : undefined,
-  });
-  return bacaJson(res);
+  for (let percobaan = 0; ; percobaan++) {
+    // Ditandatangani ulang tiap percobaan: tanda tangan memuat timestamp.
+    const timestamp = Math.floor(Date.now() / 1000);
+    const sign = hmac(partnerKey, `${partnerId}${path}${timestamp}${accessToken}${shopId}`);
+    const params = new URLSearchParams({
+      partner_id: String(partnerId),
+      timestamp: String(timestamp),
+      access_token: accessToken,
+      shop_id: String(shopId),
+      sign,
+    });
+    for (const [k, v] of Object.entries(query)) params.set(k, v);
+    const res = await fetch(`${api}${path}?${params.toString()}`, {
+      signal: AbortSignal.timeout(BATAS_WAKTU_MS),
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: method === 'POST' ? JSON.stringify(body || {}) : undefined,
+    });
+    const hasil = res.status === 429 ? { error: 'error_rate_limit', message: 'HTTP 429' } : await bacaJson(res);
+    if (!kenaBatasLaju(hasil) || percobaan >= JEDA_BATAS_LAJU_MS.length) return hasil;
+    console.warn(`[SHOPEE] ${path} kena batas laju — coba lagi dalam ${JEDA_BATAS_LAJU_MS[percobaan] / 1000} detik.`);
+    await tidur(JEDA_BATAS_LAJU_MS[percobaan]);
+  }
 }
 
-module.exports = { getEnv, buildAuthUrl, getAccessToken, refreshAccessToken, callShopApi };
+module.exports = { getEnv, buildAuthUrl, getAccessToken, refreshAccessToken, callShopApi, JEDA_BATAS_LAJU_MS };

@@ -54,6 +54,7 @@
       <div class="info-user">
         <span class="avatar" id="avatarUser"></span>
         <span id="labelUsername"></span>
+        <span id="labelBacaSaja" class="pill pill-abu tersembunyi" title="Akun ini hanya bisa melihat, tidak bisa mengubah data">baca saja</span>
         <button type="button" class="tombol tombol-kecil tombol-pengaturan" data-buka-halaman="halamanPengaturan" title="Pengaturan &amp; unduh data" aria-label="Pengaturan">
           <svg class="ikon" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
           <span class="label-pengaturan">Pengaturan</span>
@@ -582,6 +583,10 @@
               <button type="button" id="tombolDiagnostik" class="tombol tombol-kecil">Periksa ulang</button>
             </div>
             <div id="isiDiagnostik"><p class="keterangan">Memuat...</p></div>
+            <details class="log-server">
+              <summary>Log server (60 terbaru)</summary>
+              <div id="isiLogServer"><p class="keterangan">Memuat...</p></div>
+            </details>
           </div>
         </div>
       </section>

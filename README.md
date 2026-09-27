@@ -56,6 +56,18 @@ Sales data needs a one-time shop authorization at `/auth/shopee/authorize`.
   refused.
 - Back up the database (`app.db`): it holds the HPP list and accounts.
 
+**Debugging and read-only access** (for the owner or a helper/agent, without sharing a password):
+- `GET /api/kesehatan` — public, no login. Version, last order/ads sync (status, time, error text),
+  retry queue, and how many warnings/errors were logged in 24 h. No sales figures, product names,
+  order numbers or log text.
+- `GET /api/log?n=100` — login required. The server's last log lines (sync results, Shopee refusals,
+  errors; kept in the `log_server` table, max 500). Also on Pengaturan → Diagnostik → "Log server".
+- **Read-only accounts:** list usernames in `AKUN_BACA_SAJA` (comma-separated) and create them via
+  `ADMIN_ACCOUNTS` as usual. They see everything and can download the Excel, but can't change HPP or
+  settings, start a Shopee sync or reconnect the shop (403). The header shows "baca saja".
+- Shopee "rate limit" replies are retried after 2, 5 and 10 s. A manual sync within 1 minute of a
+  successful one is skipped, and Pengaturan only fetches on open when data is over 30 minutes old.
+
 ## 3. Using the site
 
 ### Look and feel
@@ -186,8 +198,9 @@ Run `npm test` for the regression tests (profit and break-even maths, paid-order
 returns, payout split, return deductions, ad-only weeks, retry rotation, stuck retries and historical
 recovery against a mock Shopee). Trial tests cover recent vs old performance, store-profit reversals,
 cross-product sales, missing/zero days, overlapping changes, one trial at a time and expiry reminders.
-`keamanan.test.js` starts the real server and checks headers, the cross-site block, the login limit and
-that sessions survive a restart. `ekspor.test.js` checks the Excel export. No Shopee credentials are needed.
+`keamanan.test.js` starts the real server and checks headers, the cross-site block, the login limit,
+that sessions survive a restart, the public health check, the log and read-only accounts.
+`shopeeApi.test.js` checks the rate-limit retry and the read-only endpoint guard. `ekspor.test.js` checks the Excel export. No Shopee credentials are needed.
 The calculator excludes business overhead unless it is already part of HPP/payout deductions.
 
 ## 6. Project structure
@@ -204,6 +217,7 @@ webapp/
   xlsx.js           Minimal dependency-free .xlsx writer
   util.js           Shared helpers (WIB dates, batching, Shopee error check, HTML escaping)
   sesiSqlite.js     Login sessions stored in SQLite
+  logServer.js      Keeps the last 500 server log lines in SQLite (/api/log, Pengaturan)
   scripts/add-user.js   Create/update login accounts
   test/             Regression tests (npm test)
   public/           Frontend: index.html, app.js, style.css (no build step)

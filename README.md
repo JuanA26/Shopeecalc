@@ -99,17 +99,28 @@ phone: profit, then tasks, then shortcuts.
   ads ending soon; (3) one step per ad that needs a target/budget change, with the exact old → new
   value. All other ads get one line ("jangan diubah"). New trials are limited to one ad at a time.
   Profit is labelled as an estimate.
-- **Hasil percobaan** (shown on the Dashboard only once there are numbers) compares total store contribution profit after ads per day: seven days before
-  vs seven days after the latest settings change, excluding the change day. Results become actionable
-  on change date +15, after seven full days for delayed attribution. Missing data is never zero profit.
-- If store profit falls after a numeric target increase, the app suggests returning towards the old
-  target (at most a 20% reduction per step), keeping budget unchanged. If profit is maintained or rises,
-  it keeps the tested settings. This is an observed comparison, not proof that the ad caused the change.
+- **Hasil percobaan:** each settings change is judged by **the changed ad's own profit**, seven days
+  before vs seven days after (the change day is skipped), on change date +15 after seven full days for
+  delayed attribution. Two numbers per day at the product's ROAS minimum: direct (advertised product only)
+  and Shopee version (all products Shopee credits to the ad). A move under 20 rb/day (direct) or
+  60 rb/day (Shopee version) counts as noise: these are the 80th percentile of no-change windows on
+  this shop's ads (Jul–Sep 2026). **Lebih baik** (one clearly up, neither clearly down) keeps the
+  setting and the steps continue; **lebih buruk** returns towards the old target or budget (at most 20%
+  per step); **belum jelas** keeps the setting, and after a target raise that ad's target is not raised
+  again. Missing data is never zero profit.
+- **Store safety check:** total store profit per day before/after the latest change. Store profit swings
+  about ±400 rb/day between ordinary weeks, more than one ad can move it, so it never reverses anything;
+  a drop of 700 rb/day or more holds new trials for one week. This is an observed comparison, not proof.
 - Missing HPP for more than 5% of the week's payout (smaller gaps are estimated at the margin of the
   other products), missing daily records, stale/failed syncs, retries, or overlapping changes block new
   trials. The reason is shown once as a yellow banner (with an "Isi HPP" button), not on every ad. Mixed target/budget changes with worse results require review. A target increase followed by
   a reversal is not automatically repeated while that pair remains in the 90-day change history.
 - Changes made in Seller Centre are detected automatically by the next sync; nothing to tick.
+- **Saran iklan** (collapsed dropdown under the tasks; suggestions, not tasks). Measured up to today−7
+  with the product's own margin and break-even ROAS: **Iklankan lagi** = not advertised now, ≥ 150 rb past
+  spend, past direct ROAS ≥ 1.2 × break-even with a profit, still ≥ 4 pcs in the last 4 weeks;
+  **Coba iklankan** = (almost) never advertised, ≥ 8 pcs in 4 weeks, margin ≥ 20%, returns ≤ 5%;
+  **Boleh diganti** = running ≥ 10 days with a direct loss ≥ 100 rb and ROAS < 0.6 × break-even.
 - Two cards below: Kalkulator Margin (profit for the period chosen there) and Analisis Iklan.
 
 ### Kalkulator Margin
@@ -149,7 +160,7 @@ from Shopee automatically. The page answers four questions:
    product only) and Shopee's ROAS against the **ROAS minimum**. API verdicts use the latest seven
    full days ending eight calendar days before today, entirely under the current settings, rather
    than the running campaign's cumulative totals. History totals remain available in the details.
-   The store-profit trial checks above take priority over this candidate ladder:
+   The trial checks above take priority over this candidate ladder:
    - **Untung** (direct ≥ minimum) → **Tambah modal** +20% if it spent ≥ 90% of its daily budget on
      average over the same seven mature days and weekly store profit isn't falling while ads rise; otherwise **Biarkan**.
    - **Belum tentu** (only Shopee's ROAS ≥ minimum) or **Rugi** (both below) → **Naikkan target**

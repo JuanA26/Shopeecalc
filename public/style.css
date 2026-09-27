@@ -1165,6 +1165,9 @@ tbody tr.baris-kurangi:hover td { background: #ffedd5; }
 .tugas-bulan strong { color: var(--teks-judul); }
 .tugas-judul { font-weight: 600; color: var(--teks-judul); margin: 0 0 8px; }
 .tugas-cara { margin: 14px 0 0; font-size: 0.8rem; }
+.saran-iklan { margin-top: 14px; border-top: 1px solid var(--border-lemah); padding-top: 4px; }
+.saran-iklan > summary { font-size: 1rem; min-height: 44px; }
+.saran-judul { font-size: 1rem; margin: 14px 0 2px; }
 .sel-setelan .saran.naik { color: var(--hijau); }
 
 /* Satu banner "data belum lengkap" (Analisis Iklan + Tugas) dan kartu perpanjang periode */

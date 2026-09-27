@@ -55,11 +55,29 @@ test('daily evidence distinguishes missing days from explicit zeros and excludes
   delete k.perHari['2026-09-19']; assert.equal(E.metrikTerbaru([k], 'p', change, '2026-09-30').siap, false);
 });
 
+// The changed ad (campaign 1, product p): 40 rb spend a day, ROAS minimum 6.
+// Days 1–15 before the change on 15/09, days 16–30 after. omzet = Shopee-credited sales.
+function iklan(data, sebelum, sesudah) {
+  const perHari = {};
+  for (let i = 1; i <= 30; i++) {
+    const [langsung, shopee] = i <= 15 ? sebelum : sesudah;
+    perHari[`2026-09-${String(i).padStart(2, '0')}`] = { biaya: 40000, omzetLangsung: langsung, omzet: shopee };
+  }
+  data.kampanye = [{ campaignId: '1', kodeProduk: 'p', status: 'Berjalan', perHari }];
+  return data;
+}
+const SEBELUM = [300000, 600000]; // langsung 10 rb/day, Shopee 60 rb/day
+const BURUK = [120000, 240000];   // −30 rb and −60 rb
+const BAIK = [480000, 960000];    // +30 rb and +60 rb
+const KECIL = [330000, 660000];   // +5 rb and +10 rb: noise
+const rowP = (extra = {}) => ({ ...row(), p: { idProduk: 'p', roasImpas: 6 }, ...extra });
+const rowQ = () => ({ ...row('q'), p: { idProduk: 'q', roasImpas: 6 } });
+
 test('store comparison includes other products and return costs; requires mature complete evidence', () => {
   const { data, sumber } = fixture();
   assert.equal(E.evaluasiPerubahan(data, sumber, '2026-09-29').status, 'tunggu');
-  let r = E.evaluasiPerubahan(data, sumber, '2026-09-30');
-  assert.equal(r.status, 'turun'); assert.equal(r.sebelum, 100000); assert.equal(r.sesudah, 60000);
+  const r = E.evaluasiPerubahan(data, sumber, '2026-09-30');
+  assert.equal(r.status, 'selesai'); assert.equal(r.sebelum, 100000); assert.equal(r.sesudah, 60000); assert.equal(r.turunJauh, false);
   sumber.items.push({ waktuPesanan: '2026-09-16', dikembalikan: true, totalPenghasilan: -7000 });
   assert.equal(E.evaluasiPerubahan(data, sumber, '2026-09-30').sesudah, 59000);
   data.dataSiapEvaluasi = false; assert.equal(E.evaluasiPerubahan(data, sumber, '2026-09-30').status, 'data');
@@ -72,36 +90,78 @@ test('store comparison includes other products and return costs; requires mature
   assert.equal(E.evaluasiPerubahan(data, sumber, '2026-09-30').status, 'data');
 });
 
-test('lower store profit reverses a numeric target raise even when direct ROAS improves', () => {
-  const { data, sumber } = fixture();
-  const b = row(); b.keputusan = 'tambah'; b.p.aksi = 'untung';
-  const other = row('other');
-  E.terapkanEvaluasiToko([b, other], E.evaluasiPerubahan(data, sumber, '2026-09-30'), data, true);
-  assert.equal(b.keputusan, 'kembalikan'); assert.equal(b.targetBaru, 9); assert.equal(b.modalBaru, 60000);
-  assert.equal(other.keputusan, 'tunggu');
+test('each change is judged by its own ad: 20 rb direct / 60 rb Shopee thresholds, noise is "belum jelas"', () => {
+  const { data } = fixture();
+  iklan(data, SEBELUM, BURUK);
+  assert.equal(E.hasilIklan(data, 'p', '2026-09-29', 6).status, 'tunggu');
+  const h = E.hasilIklan(data, 'p', '2026-09-30', 6);
+  assert.equal(h.status, 'buruk'); assert.equal(h.bedaLangsung, -30000); assert.equal(h.bedaShopee, -60000);
+  assert.equal(E.hasilIklan(iklan(data, SEBELUM, BAIK), 'p', '2026-09-30', 6).status, 'baik');
+  assert.equal(E.hasilIklan(iklan(data, SEBELUM, KECIL), 'p', '2026-09-30', 6).status, 'belum-jelas');
+  // Direct up 25 rb but Shopee down 100 rb: the two disagree.
+  assert.equal(E.hasilIklan(iklan(data, [300000, 1200000], [450000, 600000]), 'p', '2026-09-30', 6).status, 'belum-jelas');
+  iklan(data, SEBELUM, BURUK); delete data.kampanye[0].perHari['2026-09-19'];
+  assert.equal(E.hasilIklan(data, 'p', '2026-09-30', 6).status, 'data');
+  iklan(data, SEBELUM, BURUK); data.riwayatSetelan.unshift({ ...change, tanggal: '2026-09-10' });
+  assert.equal(E.hasilIklan(data, 'p', '2026-09-30', 6).status, 'campur');
+});
+
+test('a worse ad is reversed even when store profit is flat; a store drop alone reverses nothing', () => {
+  const { data, sumber } = fixture(120000);
+  iklan(data, SEBELUM, BURUK);
+  const rows = [rowP(), rowQ()];
+  E.terapkanEvaluasiToko(rows, E.evaluasiPerubahan(data, sumber, '2026-09-30'), data, true, '2026-09-30');
+  assert.equal(rows[0].keputusan, 'kembalikan'); assert.equal(rows[0].targetBaru, 9); assert.equal(rows[0].modalBaru, 60000);
+  assert.equal(rows[1].alasan, 'satu-uji');
+  const lagi = fixture(80000); iklan(lagi.data, SEBELUM, KECIL);
+  const tetap = rowP({ keputusan: 'lanjut', targetBaru: null });
+  E.terapkanEvaluasiToko([tetap], E.evaluasiPerubahan(lagi.data, lagi.sumber, '2026-09-30'), lagi.data, true, '2026-09-30');
+  assert.equal(tetap.keputusan, 'lanjut'); assert.equal(tetap.alasan, 'belum-jelas');
   const pause = { ...row('unsafe'), keputusan: 'jeda', modalBaru: 0 };
-  E.terapkanEvaluasiToko([pause], E.evaluasiPerubahan(data, sumber, '2026-09-29'), data, false);
+  E.terapkanEvaluasiToko([pause], E.evaluasiPerubahan(data, sumber, '2026-09-29'), data, false, '2026-09-29');
   assert.equal(pause.keputusan, 'jeda');
 });
 
-test('improving store profit preserves tested settings; only one new ad can be tried', () => {
-  const { data, sumber } = fixture(180000);
-  const rows = [row(), row('q'), row('r')];
-  E.terapkanEvaluasiToko(rows, E.evaluasiPerubahan(data, sumber, '2026-09-30'), data, true);
-  assert.equal(rows[0].keputusan, 'lanjut'); assert.equal(rows[0].targetBaru, null);
-  assert.equal(rows[1].keputusan, 'naikkan'); assert.equal(rows[2].alasan, 'satu-uji');
+test('an unclear raise is not repeated; a good result lets the steps continue; one new trial at a time', () => {
+  const { data, sumber } = fixture(120000);
+  iklan(data, SEBELUM, KECIL);
+  let rows = [rowP(), rowQ()];
+  E.terapkanEvaluasiToko(rows, E.evaluasiPerubahan(data, sumber, '2026-09-30'), data, true, '2026-09-30');
+  assert.equal(rows[0].keputusan, 'lanjut'); assert.equal(rows[0].alasan, 'belum-jelas'); assert.equal(rows[0].targetBaru, null);
+  assert.equal(rows[1].keputusan, 'naikkan');
+  // Still blocked after the 28-day result window: no clear gain was ever shown.
+  rows = [rowP()]; E.terapkanEvaluasiToko(rows, null, data, true, '2026-11-01');
+  assert.equal(rows[0].keputusan, 'lanjut');
+  iklan(data, SEBELUM, BAIK);
+  rows = [rowP(), rowQ(), { ...row('r'), p: { idProduk: 'r', roasImpas: 6 } }];
+  E.terapkanEvaluasiToko(rows, E.evaluasiPerubahan(data, sumber, '2026-09-30'), data, true, '2026-09-30');
+  assert.equal(rows[0].keputusan, 'naikkan'); assert.equal(rows[1].alasan, 'satu-uji'); assert.equal(rows[2].alasan, 'satu-uji');
+});
+
+test('budget-only changes reverse the budget; a large store drop holds new trials for a week', () => {
+  const { data, sumber } = fixture(-580000); // store after ads: 100 rb → −600 rb a day
+  data.riwayatSetelan = [{ ...change, targetLama: 10.8, targetBaru: 10.8, modalLama: 50000, modalBaru: 60000 }];
+  iklan(data, SEBELUM, BURUK);
+  const ev = E.evaluasiPerubahan(data, sumber, '2026-09-30');
+  assert.equal(ev.turunJauh, true);
+  const rows = [rowP(), rowQ()];
+  E.terapkanEvaluasiToko(rows, ev, data, true, '2026-09-30');
+  assert.equal(rows[0].keputusan, 'kembalikan'); assert.equal(rows[0].modalBaru, 50000); assert.equal(rows[0].targetBaru, null);
+  assert.equal(rows[1].alasan, 'toko-turun-jauh'); assert.equal(rows[1].bisaDiubahLagi, '2026-10-07');
+  assert.equal(E.evaluasiPerubahan(data, sumber, '2026-10-07').turunJauh, false);
 });
 
 test('pending, overlapping and mixed trials block tuning; rollback does not create a raise/lower loop', () => {
   const { data, sumber } = fixture();
-  const rows = [row(), row('q')];
-  E.terapkanEvaluasiToko(rows, E.evaluasiPerubahan(data, sumber, '2026-09-29'), data, true);
+  iklan(data, SEBELUM, BURUK);
+  const rows = [rowP(), rowQ()];
+  E.terapkanEvaluasiToko(rows, E.evaluasiPerubahan(data, sumber, '2026-09-29'), data, true, '2026-09-29');
   assert.ok(rows.every(b => b.keputusan === 'tunggu'));
   data.riwayatSetelan.unshift({ ...change, idProduk: 'q', campaignId: '2', tanggal: '2026-09-10' });
   assert.equal(E.evaluasiPerubahan(data, sumber, '2026-09-30').status, 'campur');
   data.riwayatSetelan.shift(); data.riwayatSetelan[0].modalBaru = 70000;
-  const mixed = row(); E.terapkanEvaluasiToko([mixed], E.evaluasiPerubahan(data, sumber, '2026-09-30'), data, true);
-  assert.equal(mixed.keputusan, 'tinjau');
+  const mixed = rowP(); E.terapkanEvaluasiToko([mixed], E.evaluasiPerubahan(data, sumber, '2026-09-30'), data, true, '2026-09-30');
+  assert.equal(mixed.keputusan, 'tinjau'); assert.equal(mixed.alasan, 'tinjau-iklan');
   data.riwayatSetelan = [{ ...change }, { ...change, tanggal: '2026-09-30', targetLama: 10.8, targetBaru: 9 }];
   const repeat = row(); E.terapkanEvaluasiToko([repeat], null, data, true);
   assert.equal(repeat.alasan, 'sudah-kembali'); assert.equal(repeat.targetBaru, null);
@@ -118,7 +178,7 @@ test('dashboard shows numbered simple steps: HPP first, then extend period; no p
       untungTokoPerMinggu: () => null, untungTokoPerBulan: () => null, dataIklan: data, sumberIklan: () => sumber,
       keputusanBerjalan: () => ({ baris: [b, hpp], dataBelumLengkap }), PERLU_TINDAKAN: new Set(['isi-hpp']), namaSingkat: s => s, escapeHtml: s => s,
       tanggalSingkat: s => s, kalimatKeputusan: () => 'Tetap dulu.', EvaluasiIklan: E, labelKeputusan: () => ['', 'pill-abu'], alasanTugas: () => '', akunBacaSaja: false,
-      formatRupiahRingkas: n => String(n),
+      formatRupiahRingkas: n => String(n), renderSaranIklan: () => {},
     });
     const html = nodes.tugasDaftar.innerHTML;
     assert.ok(html.indexOf('Isi HPP') < html.indexOf('Tidak Terbatas'));

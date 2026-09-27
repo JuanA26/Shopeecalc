@@ -73,6 +73,50 @@
   }
   const untungToko = (sumber, iklanHarian, dari, sampai) => rincianUntungToko(sumber, iklanHarian, dari, sampai).nilai;
 
+  // Each change is judged by the changed ad's own profit (user, 2026-09-27). Store profit swings
+  // ±400 rb/day between ordinary weeks, far more than one ad can move it, so it is only a safety check.
+  // Thresholds = 80th percentile of |after − before| over 150 no-change windows on this shop's ads
+  // (Jul–Sep 2026); smaller moves count as noise. Store limit ≈ 90th percentile of store windows.
+  const BEDA_LANGSUNG = 20000;
+  const BEDA_SHOPEE = 60000;
+  const BATAS_TURUN_TOKO = 700000;
+
+  // Per day over seven full days of one campaign: profit on the advertised product (langsung) and
+  // on all products Shopee credits to the ad (shopee), both at the product's ROAS minimum.
+  function untungIklanHarian(k, dari, sampai, roasMin) {
+    let biaya = 0, omzet = 0, omzetLangsung = 0;
+    for (const d of tanggal(dari, sampai)) {
+      const v = k.perHari && k.perHari[d];
+      if (!v || !['biaya', 'omzet', 'omzetLangsung'].every(f => Number.isFinite(v[f]))) return null;
+      biaya += v.biaya; omzet += v.omzet; omzetLangsung += v.omzetLangsung;
+    }
+    return { biaya: biaya / 7, langsung: (omzetLangsung / roasMin - biaya) / 7, shopee: (omzet / roasMin - biaya) / 7 };
+  }
+
+  // The product's latest recorded change (last 90 days), judged at T+15:
+  // 'baik' = one number clearly up and neither clearly down; 'buruk' = the reverse; otherwise 'belum-jelas'.
+  function hasilIklan(data, idProduk, hariIni, roasMin) {
+    const riwayat = (data.riwayatSetelan || []).filter(u => u.idProduk === idProduk && u.tanggal <= hariIni);
+    const u = riwayat[riwayat.length - 1];
+    if (!u) return null;
+    const t = u.tanggal;
+    const hasil = { u, tanggal: t, cekLagi: geser(t, 15), baru: hariIni <= geser(t, 28) };
+    if (hariIni < hasil.cekLagi) return { ...hasil, status: 'tunggu' };
+    // Another edit of this product on the same day or in the seven days before is not a clean comparison.
+    if (riwayat.some(v => v !== u && v.tanggal >= geser(t, -7))) return { ...hasil, status: 'campur' };
+    const k = (data.kampanye || []).find(k => k.campaignId === u.campaignId);
+    if (!k || !(roasMin > 0) || !data.dataSiapEvaluasi) return { ...hasil, status: 'data' };
+    const sebelum = untungIklanHarian(k, geser(t, -7), geser(t, -1), roasMin);
+    const sesudah = untungIklanHarian(k, geser(t, 1), geser(t, 7), roasMin);
+    if (!sebelum || !sesudah) return { ...hasil, status: 'data' };
+    const bedaLangsung = sesudah.langsung - sebelum.langsung, bedaShopee = sesudah.shopee - sebelum.shopee;
+    const naik = bedaLangsung >= BEDA_LANGSUNG || bedaShopee >= BEDA_SHOPEE;
+    const turun = bedaLangsung <= -BEDA_LANGSUNG || bedaShopee <= -BEDA_SHOPEE;
+    return { ...hasil, sebelum, sesudah, bedaLangsung, bedaShopee, status: naik && !turun ? 'baik' : turun && !naik ? 'buruk' : 'belum-jelas' };
+  }
+
+  // Store safety check for the latest batch of changes. It never reverses anything; a large drop
+  // holds new trials for one week after the check date.
   function evaluasiPerubahan(data, sumber, hariIni) {
     const riwayat = (data.riwayatSetelan || []).filter(u => u.tanggal <= hariIni);
     const t = riwayat.map(u => u.tanggal).sort().pop();
@@ -88,8 +132,8 @@
     const sebelum = untungToko(sumber, data.biayaTokoHarian, hasil.dariSebelum, hasil.sampaiSebelum);
     const sesudah = untungToko(sumber, data.biayaTokoHarian, hasil.dariSesudah, hasil.sampaiSesudah);
     if (!data.dataSiapEvaluasi || sebelum === null || sesudah === null) return { ...hasil, status: 'data' };
-    // Compare rounded rupiah so floating point noise cannot trigger a reversal.
-    return { ...hasil, sebelum, sesudah, status: Math.round(sesudah) < Math.round(sebelum) ? 'turun' : 'tetap-naik' };
+    const turunJauh = sesudah - sebelum <= -BATAS_TURUN_TOKO && hariIni < geser(cekLagi, 7);
+    return { ...hasil, sebelum, sesudah, status: 'selesai', turunJauh };
   }
 
   // Remember a raise followed by a return towards the old target; do not immediately repeat it.
@@ -102,34 +146,53 @@
     });
   }
 
-  function terapkanEvaluasiToko(baris, evaluasi, data, dasarLengkap) {
+  function terapkanEvaluasiToko(baris, evaluasi, data, dasarLengkap, hariIni) {
     const ubah = new Set(['naikkan', 'turunkan', 'tambah', 'kurangi']);
     const tahan = (b, alasan) => { b.keputusan = 'tunggu'; b.alasan = alasan; b.targetBaru = null; b.modalBaru = b.modal; };
-    let tertahan = !data.dataSiapEvaluasi || !dasarLengkap;
+    // New trials wait for complete data, the running trial and the store safety check.
+    const tahanUji = !data.dataSiapEvaluasi || !dasarLengkap ? 'data-toko'
+      : !evaluasi ? null
+      : evaluasi.status === 'tunggu' ? 'uji-berjalan'
+      : evaluasi.status === 'campur' ? 'uji-campur'
+      : evaluasi.status === 'data' ? 'data-toko'
+      : evaluasi.turunJauh ? 'toko-turun-jauh' : null;
     for (const b of baris) {
       b.evaluasi = evaluasi;
       if (['jeda', 'isi-hpp', 'toko'].includes(b.keputusan)) continue;
-      const u = evaluasi && evaluasi.kelompok.find(u => u.idProduk === b.p.idProduk);
-      if (evaluasi && ['tunggu', 'data', 'campur', 'turun'].includes(evaluasi.status)) tertahan = true;
-      if (u && evaluasi.status === 'turun' && data.dataSiapEvaluasi) {
-        const hanyaNaikTarget = evaluasi.kelompok.every(v => v.targetLama > 0 && v.targetBaru > v.targetLama && v.modalLama === v.modalBaru);
-        if (hanyaNaikTarget && b.target === u.targetBaru && b.modal === u.modalBaru) {
-          b.keputusan = 'kembalikan'; b.alasan = 'untung-turun'; b.modalBaru = b.modal;
-          b.targetBaru = Math.max(u.targetLama, Math.ceil((b.target / 1.2) * 10 - 1e-9) / 10);
-        } else { tahan(b, 'tinjau-hasil'); b.keputusan = 'tinjau'; }
-      } else if (u && evaluasi.status === 'tetap-naik') {
-        b.keputusan = 'lanjut'; b.alasan = 'hasil-baik'; b.targetBaru = null; b.modalBaru = b.modal;
+      const h = hariIni ? hasilIklan(data, b.p.idProduk, hariIni, b.p.roasImpas) : null;
+      b.hasilIklan = h;
+      const u = h && h.u;
+      const hanyaTarget = !!u && u.targetLama > 0 && u.targetBaru > 0 && u.targetBaru !== u.targetLama && u.modalLama === u.modalBaru;
+      const hanyaModal = !!u && u.modalLama > 0 && u.modalBaru > 0 && u.modalBaru !== u.modalLama && u.targetLama === u.targetBaru;
+      const naikTarget = hanyaTarget && u.targetBaru > u.targetLama;
+      if (h && h.status === 'buruk' && b.target === u.targetBaru && b.modal === u.modalBaru && (hanyaTarget || hanyaModal)) {
+        // Back towards the old value, at most 20% per step.
+        b.keputusan = 'kembalikan'; b.alasan = 'untung-iklan-turun'; b.targetBaru = null; b.modalBaru = b.modal;
+        if (hanyaModal) b.modalBaru = u.modalLama;
+        else b.targetBaru = naikTarget ? Math.max(u.targetLama, Math.ceil((b.target / 1.2) * 10 - 1e-9) / 10)
+          : Math.min(u.targetLama, Math.floor(b.target * 1.2 * 10 + 1e-9) / 10);
+      } else if (h && h.baru && h.status === 'buruk') {
+        tahan(b, 'tinjau-iklan'); b.keputusan = 'tinjau'; // several settings changed together: the owner decides
+      } else if (h && h.baru && ['campur', 'data'].includes(h.status)) {
+        tahan(b, h.status === 'campur' ? 'uji-campur' : 'data-iklan');
+      } else if (h && naikTarget && ['belum-jelas', 'buruk'].includes(h.status) && b.keputusan === 'naikkan') {
+        // A raise without a clear gain is not repeated: higher targets shrink volume.
+        b.keputusan = 'lanjut'; b.alasan = 'belum-jelas'; b.targetBaru = null; b.modalBaru = b.modal;
       } else if (ubah.has(b.keputusan) && pernahDikembalikan(data.riwayatSetelan, b.p.idProduk)) {
         tahan(b, 'sudah-kembali');
+      } else if (h && h.baru && h.status === 'baik' && b.keputusan === 'lanjut') {
+        b.alasan = 'hasil-baik';
+      } else if (h && h.baru && h.status === 'belum-jelas' && b.keputusan === 'lanjut') {
+        b.alasan = 'belum-jelas';
       }
     }
-    // A rollback takes priority. Otherwise offer just one new store-level experiment.
-    let dipilih = false;
+    // A reversal is this round's one change. Otherwise offer just one new trial.
+    let dipilih = baris.some(b => ['kembalikan', 'tinjau'].includes(b.keputusan));
     for (const b of baris) {
       if (['jeda', 'isi-hpp', 'toko', 'kembalikan', 'tinjau'].includes(b.keputusan)) continue;
-      if (tertahan) {
-        tahan(b, evaluasi && evaluasi.status === 'tunggu' ? 'uji-berjalan' : evaluasi && evaluasi.status === 'campur' ? 'uji-campur' : evaluasi && evaluasi.status === 'turun' ? 'tinjau-hasil' : 'data-toko');
-        if (evaluasi) b.bisaDiubahLagi = evaluasi.cekLagi;
+      if (tahanUji) {
+        tahan(b, tahanUji);
+        if (evaluasi) b.bisaDiubahLagi = tahanUji === 'toko-turun-jauh' ? geser(evaluasi.cekLagi, 7) : evaluasi.cekLagi;
       } else if (ubah.has(b.keputusan)) {
         if (dipilih) tahan(b, 'satu-uji');
         else dipilih = true;
@@ -138,7 +201,8 @@
     return baris;
   }
 
-  const api = { geser, metrikTerbaru, untungToko, rincianUntungToko, BATAS_TANPA_HPP, evaluasiPerubahan, pernahDikembalikan, terapkanEvaluasiToko };
+  const api = { geser, metrikTerbaru, untungToko, rincianUntungToko, BATAS_TANPA_HPP, BEDA_LANGSUNG, BEDA_SHOPEE, BATAS_TURUN_TOKO,
+    untungIklanHarian, hasilIklan, evaluasiPerubahan, pernahDikembalikan, terapkanEvaluasiToko };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.EvaluasiIklan = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

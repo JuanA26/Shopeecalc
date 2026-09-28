@@ -27,7 +27,7 @@
     const ambil = (id, nama) => {
       let p = produk.get(id);
       if (!p) produk.set(id, p = { idProduk: id, nama: nama || id, pcsA: 0, pcs: 0, retur: 0, harga: 0, hargaHpp: 0, untung: 0,
-        biaya: 0, omzetLangsung: 0, hari: 0, berjalan: false });
+        biaya: 0, omzetLangsung: 0, hari: 0, berjalan: false, kampanye: [] });
       if (nama && p.nama === id) p.nama = nama;
       return p;
     };
@@ -45,11 +45,14 @@
       if (k.tokoLevel || !k.kodeProduk) continue;
       const p = ambil(k.kodeProduk, k.namaProduk || k.namaIklan);
       if (k.status === 'Berjalan') p.berjalan = true;
+      const c = { targetRoas: k.targetRoas || 0, biaya: 0, omzetLangsung: 0 };
       for (const [d, v] of Object.entries(k.perHari || {})) {
         if (d > sampai) continue;
         p.biaya += v.biaya || 0; p.omzetLangsung += v.omzetLangsung || 0;
+        c.biaya += v.biaya || 0; c.omzetLangsung += v.omzetLangsung || 0;
         if (v.biaya > 0) p.hari += 1;
       }
+      p.kampanye.push(c);
     }
     const ulang = [], coba = [], ganti = [];
     for (const p of produk.values()) {
@@ -62,7 +65,10 @@
       if (p.berjalan) {
         if (p.hari >= SARAN.gantiHariMin && p.untungIklan <= -SARAN.gantiRugiMin && p.roasLangsung < SARAN.gantiRoasKali * p.roasMinimum) ganti.push(p);
       } else if (p.biaya >= SARAN.ulangBiayaMin) {
-        if (p.untungIklan > 0 && p.roasLangsung >= SARAN.ulangRoasKali * p.roasMinimum && p.pcsA >= SARAN.ulangPcsMin && p.bagianRetur <= SARAN.ulangReturMax) ulang.push(p);
+        if (p.untungIklan > 0 && p.roasLangsung >= SARAN.ulangRoasKali * p.roasMinimum && p.pcsA >= SARAN.ulangPcsMin && p.bagianRetur <= SARAN.ulangReturMax) {
+          p.targetTerbaik = targetTerbaik(p);
+          ulang.push(p);
+        }
       } else if (p.biaya < SARAN.cobaBiayaMax && p.pcsA >= SARAN.cobaPcsMin && p.margin >= SARAN.cobaMarginMin && p.bagianRetur <= SARAN.cobaReturMax) {
         p.untungPerMinggu = p.pcsA * (p.harga / Math.max(1, p.pcs - p.retur)) * p.margin / 4;
         coba.push(p);
@@ -72,6 +78,18 @@
     coba.sort((a, b) => b.untungPerMinggu - a.untungPerMinggu);
     ganti.sort((a, b) => a.untungIklan - b.untungIklan);
     return { dari: dariB, sampai, ulang: ulang.slice(0, SARAN.maks), coba: coba.slice(0, SARAN.maks), ganti };
+  }
+
+  // Restart a past winner in ROAS mode at the target of its most profitable ROAS-mode campaign
+  // (user, 2026-09-28: all three replacements on 27/09 made their profit in ROAS mode; Auto ads in this
+  // shop reached a median direct ROAS of 2.1 vs 4.6 in ROAS mode). null = no profitable ROAS-mode run.
+  function targetTerbaik(p) {
+    let terbaik = null, untungTerbaik = 0;
+    for (const c of p.kampanye) {
+      const untung = c.omzetLangsung / p.roasMinimum - c.biaya;
+      if (c.targetRoas > 0 && untung > untungTerbaik) { terbaik = c.targetRoas; untungTerbaik = untung; }
+    }
+    return terbaik;
   }
 
   const api = { SARAN, saranIklan };

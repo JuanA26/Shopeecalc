@@ -122,8 +122,11 @@ phone: profit, then tasks, then shortcuts.
   **Coba iklankan** = (almost) never advertised, ≥ 8 pcs in 4 weeks, margin ≥ 20%, returns ≤ 5%.
 - **Ganti iklan** (a numbered step): a running ad with ≥ 10 days of spend, a direct loss ≥ 100 rb and
   direct ROAS < 0.6 × break-even is replaced rather than tuned. It shows which ad to turn off and which
-  product to advertise instead (Iklankan lagi first, then Coba iklankan; GMV Max Auto, Tidak Terbatas,
-  50 rb/day). Why: 20% target steps up to the limit raise the target by about 30% at most, while these
+  product to advertise instead (Iklankan lagi first, then Coba iklankan; Tidak Terbatas, 50 rb/day).
+  A past winner restarts in **GMV Max ROAS at the target of its most profitable ROAS-mode campaign**
+  (capped at the Shopee limit when known); a never-advertised product starts on **Auto** for the 7-day
+  learning phase, after which the ladder moves it to ROAS mode. In this shop Auto ads reached a median
+  direct ROAS of 2.1 vs 4.6 in ROAS mode, and past winners made their profit in ROAS mode. Why: 20% target steps up to the limit raise the target by about 30% at most, while these
   ads need 1.7× or more; 90% of this shop's ROAS-mode campaigns already beat their target on Shopee's
   ROAS. Without a replacement product the budget is halved instead. A replacement is not a settings
   trial, so it never waits for, or blocks, the one-trial-at-a-time rule.

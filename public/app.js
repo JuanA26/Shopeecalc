@@ -2335,7 +2335,7 @@ function renderKeputusan() {
 // merah = matikan, kuning = kerjakan, biru = tunggu hasil, hijau = baik-baik saja.
 const GRUP_IKLAN = [
   { kunci: 'hentikan', judul: 'Hentikan', ket: 'Matikan di Seller Centre.', warna: 'merah' },
-  { kunci: 'ganti', judul: 'Ganti', ket: 'Iklan baru: GMV Max Auto, Periode Tidak Terbatas, Modal Harian 50 rb. Cek stok dulu.', warna: 'merah' },
+  { kunci: 'ganti', judul: 'Ganti', ket: 'Iklan baru: Periode Tidak Terbatas, Modal Harian 50 rb. Cek stok dulu.', warna: 'merah' },
   { kunci: 'ubah', judul: 'Ubah', ket: 'Ubah di Seller Centre.', warna: 'kuning' },
   { kunci: 'belajar', judul: 'Masa Belajar', ket: 'Jangan diubah dulu.', warna: 'biru' },
   { kunci: 'lanjut', judul: 'Lanjutkan', ket: 'Tidak perlu diubah.', warna: 'hijau' },
@@ -2373,7 +2373,8 @@ function isiKartuIklan(b, grup, hariIni) {
   const p = b.p;
   switch (grup) {
     case 'hentikan': return { aksi: 'Matikan iklan ini.', ket: String(p.tindakan || '').replace(/^Jeda — /, '') };
-    case 'ganti': return { aksi: 'Matikan. Ganti dengan:', tambahan: `<span class="iklan-pengganti">${namaPengganti(b)}</span>`,
+    case 'ganti': return { aksi: 'Matikan. Ganti dengan:', tambahan: `<span class="iklan-pengganti">${namaPengganti(b)}</span>` +
+      `<span class="iklan-mode">${escapeHtml(modePengganti(b.pengganti))}</span>`,
       ket: `Rugi ${rupiahPendek(b.rugiBesar.rugi)} selama ${b.rugiBesar.hari} hari. Penggantinya ${buktiPengganti(b.pengganti)}` };
     case 'ubah':
       if (b.keputusan === 'isi-hpp') return { aksi: 'Isi HPP (harga modal) dulu.', ket: 'Belum bisa dinilai tanpa harga modal.', tombolHpp: true };
@@ -2708,9 +2709,17 @@ function renderTugas() {
 
 // "Ganti iklan": matikan yang rugi, pasang penggantinya (langkah Dashboard dan kartu Analisis Iklan).
 const buktiPengganti = (pg) => (pg.jenis === 'ulang' ? `dulu untung ${rupiahPendek(pg.untungIklan)} dari iklan.` : `laku ${pg.pcsA} pcs dalam 4 minggu tanpa iklan.`);
+// Mode iklan pengganti (user, 2026-09-28): produk yang dulu untung → GMV Max ROAS di target kampanye
+// ROAS-nya yang paling untung (paling tinggi batas Shopee kalau diketahui); belum pernah → Auto 7 hari.
+function modePengganti(pg) {
+  if (!pg.targetTerbaik) return 'GMV Max Auto (7 hari, lalu ROAS)';
+  const batas = batasTargetShopee(setelanProduk(pg.idProduk));
+  const target = batas !== null ? Math.min(pg.targetTerbaik, batas) : pg.targetTerbaik;
+  return `GMV Max ROAS, Target ${formatRoas(target)}`;
+}
 function ketPengganti(b) {
   const bukti = buktiPengganti(b.pengganti);
-  return `${bukti[0].toUpperCase()}${bukti.slice(1)} Cek stok dulu. GMV Max Auto, Periode Tidak Terbatas, Modal Harian ${rupiahPendek(MODAL_IKLAN_BARU)}.`;
+  return `${bukti[0].toUpperCase()}${bukti.slice(1)} Cek stok dulu. ${modePengganti(b.pengganti)}, Periode Tidak Terbatas, Modal Harian ${rupiahPendek(MODAL_IKLAN_BARU)}.`;
 }
 const namaPengganti = (b) => `<strong title="${escapeHtml(b.pengganti.nama)}">${escapeHtml(namaSingkat(b.pengganti.nama, 40))}</strong>`;
 function langkahGanti(b) {
@@ -2729,11 +2738,12 @@ function renderSaranIklan() {
     ? `<h3 class="saran-judul">${judul}</h3><small class="langkah-ket">${ket}</small><ul class="langkah-daftar">` +
       daftar.map((p) => `<li><span title="${escapeHtml(namaSingkat(p.nama, 200))}">${escapeHtml(namaSingkat(p.nama, 32))}</span><strong>${nilai(p)}</strong></li>`).join('') + '</ul>'
     : '');
-  const isi = bagian('Iklankan lagi', 'Dulu untung dari iklan. Sekarang tidak diiklankan.', s.ulang, (p) => `untung ${rupiahPendek(p.untungIklan)}`) +
-    bagian('Coba iklankan', 'Laku tanpa iklan, untungnya cukup.', s.coba, (p) => `${p.pcsA} terjual / 4 minggu`);
+  const isi = bagian('Iklankan lagi', 'Dulu untung dari iklan. Pasang GMV Max ROAS di target yang dulu untung.', s.ulang,
+    (p) => `untung ${rupiahPendek(p.untungIklan)}${p.targetTerbaik ? ` · target ${formatRoas(p.targetTerbaik)}` : ''}`) +
+    bagian('Coba iklankan', 'Laku tanpa iklan, untungnya cukup. Pasang GMV Max Auto 7 hari, lalu ROAS.', s.coba, (p) => `${p.pcsA} terjual / 4 minggu`);
   el.hidden = !isi;
   document.getElementById('saranIklanIsi').innerHTML = isi &&
-    isi + '<small class="langkah-ket">Cek stok dulu. Iklan baru: GMV Max Auto, Periode Tidak Terbatas. Boleh beberapa sekaligus. Iklan yang rugi besar sudah ada di langkah "Ganti iklan".</small>';
+    isi + '<small class="langkah-ket">Cek stok dulu. Periode Tidak Terbatas. Boleh beberapa sekaligus. Iklan yang rugi besar sudah ada di langkah "Ganti iklan".</small>';
 }
 
 // ====== Pengaturan: diagnostik + unduh data ======

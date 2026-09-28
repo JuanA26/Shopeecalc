@@ -38,3 +38,18 @@ test('saran iklan: restart past winners, try organic sellers, replace losing run
   assert.equal(Math.round(s.ganti[0].untungIklan), 15 * (80000 / 5 - 40000));
   assert.equal(saranIklan(items, kampanye, '2026-09-27', 0).coba.length, 0);
 });
+
+test('a past winner restarts in ROAS mode at the target of its most profitable ROAS campaign', () => {
+  const items = jual('menang', '2026-09-10', 6);
+  const run = (target, hari, biaya, omzet, mulai) => {
+    const perHari = {};
+    for (let i = 0; i < hari; i++) perHari[`2026-08-${String(mulai + i).padStart(2, '0')}`] = { biaya, omzetLangsung: omzet, omzet: omzet * 3 };
+    return { kodeProduk: 'menang', namaIklan: 'Iklan menang', status: 'Selesai', targetRoas: target, perHari };
+  };
+  // Minimum 5: target 12 made 10 × (300 rb/5 − 40 rb) = 200 rb; target 8 made 10 × (500 rb/5 − 40 rb) = 600 rb.
+  // An Auto run (target 0) made the most but has no target to reuse.
+  let s = saranIklan(items, [run(12, 10, 40000, 300000, 1), run(8, 10, 40000, 500000, 11), run(0, 5, 40000, 900000, 21)], '2026-09-27', 0.8);
+  assert.equal(s.ulang[0].targetTerbaik, 8);
+  s = saranIklan(items, [run(0, 10, 40000, 500000, 1)], '2026-09-27', 0.8);
+  assert.equal(s.ulang[0].targetTerbaik, null); // only Auto before → Auto again
+});

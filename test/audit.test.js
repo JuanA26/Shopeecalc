@@ -154,6 +154,7 @@ test('running-ad ladder: target cap, budget steps on mature days, and attributio
     LANGKAH_TARGET: 1.2, LANGKAH_MODAL: 1.2, MODAL_HABIS: 0.9, HARI_TUNGGU_UBAH: 15,
     batasTargetShopee: (st) => (st.rekomendasi ? Math.floor(st.rekomendasi.tinggi * 1.25 * 10 + 1e-9) / 10 : null),
     metrikBerjalan: (p) => p.berjalan || p, dariApi: () => true, setelanProduk: () => setelan, berakhirSegera: () => null,
+    terapkanGanti: () => {}, saranIklanSekarang: () => null, // replacement rule: test/grupIklan.test.js
   }).baris[0];
   const rek = (tinggi) => ({ rendah: 8, tengah: 10, tinggi });
   // Losing ad (like blouse V14): 11 × 1.2 = 13.2 would pass the cap 10.2 × 1.25 = 12.7.

@@ -148,7 +148,8 @@
 
   function terapkanEvaluasiToko(baris, evaluasi, data, dasarLengkap, hariIni) {
     const ubah = new Set(['naikkan', 'turunkan', 'tambah', 'kurangi']);
-    const tahan = (b, alasan) => { b.keputusan = 'tunggu'; b.alasan = alasan; b.targetBaru = null; b.modalBaru = b.modal; };
+    // ditahan = the change that was held back (shown as "maybe later" on Analisis Iklan).
+    const tahan = (b, alasan) => { if (ubah.has(b.keputusan)) b.ditahan = b.keputusan; b.keputusan = 'tunggu'; b.alasan = alasan; b.targetBaru = null; b.modalBaru = b.modal; };
     // New trials wait for complete data, the running trial and the store safety check.
     const tahanUji = !data.dataSiapEvaluasi || !dasarLengkap ? 'data-toko'
       : !evaluasi ? null
@@ -158,7 +159,7 @@
       : evaluasi.turunJauh ? 'toko-turun-jauh' : null;
     for (const b of baris) {
       b.evaluasi = evaluasi;
-      if (['jeda', 'isi-hpp', 'toko'].includes(b.keputusan)) continue;
+      if (['jeda', 'isi-hpp', 'toko', 'ganti'].includes(b.keputusan)) continue;
       const h = hariIni ? hasilIklan(data, b.p.idProduk, hariIni, b.p.roasImpas) : null;
       b.hasilIklan = h;
       const u = h && h.u;
@@ -187,9 +188,10 @@
       }
     }
     // A reversal is this round's one change. Otherwise offer just one new trial.
+    // A replacement ('ganti') is not a settings trial and never takes the slot.
     let dipilih = baris.some(b => ['kembalikan', 'tinjau'].includes(b.keputusan));
     for (const b of baris) {
-      if (['jeda', 'isi-hpp', 'toko', 'kembalikan', 'tinjau'].includes(b.keputusan)) continue;
+      if (['jeda', 'isi-hpp', 'toko', 'ganti', 'kembalikan', 'tinjau'].includes(b.keputusan)) continue;
       if (tahanUji) {
         tahan(b, tahanUji);
         if (evaluasi) b.bisaDiubahLagi = tahanUji === 'toko-turun-jauh' ? geser(evaluasi.cekLagi, 7) : evaluasi.cekLagi;

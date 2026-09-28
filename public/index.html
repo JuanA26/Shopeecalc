@@ -371,34 +371,17 @@
       <section id="halamanIklan" class="halaman">
         <div class="judul-halaman">
           <h1>Analisis Iklan</h1>
-          <p class="keterangan">Iklan mana yang benar-benar untung setelah dikurangi harga modal &amp; potongan Shopee — dan apa yang harus dilakukan.</p>
-        </div>
-
-        <div class="kartu">
-          <h2>Data Iklan dari Shopee</h2>
-          <p id="statusIklanShopee" class="keterangan">Memuat data iklan...</p>
-          <details class="details-dalam" id="detailsUnggahIklan">
-            <summary>Cadangan: unggah file dari Seller Centre</summary>
-            <p class="keterangan">Hanya perlu kalau data otomatis dari Shopee bermasalah. File yang diunggah dipakai sampai halaman dimuat ulang.</p>
-          <div class="baris-unggah">
-            <label class="dropzone" id="dropzoneIklan" for="inputFileIklan">
-              <span class="widget-ikon">
-                <svg class="ikon" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="m9 15 3-3 3 3"/></svg>
-              </span>
-              <span class="dropzone-teks">
-                <span class="dropzone-judul" id="namaFileIklan">Pilih file "Data Keseluruhan Iklan" (.csv)</span>
-                <span class="dropzone-sub">Seller Centre &rarr; Iklan Shopee &rarr; Unduh Data &rarr; Data Keseluruhan Iklan. Klik di sini, atau seret file ke area ini.</span>
-              </span>
-              <input type="file" id="inputFileIklan" accept=".csv,text/csv">
-            </label>
-            <button id="tombolProsesIklan" class="tombol tombol-utama" disabled>Proses File</button>
-          </div>
-          <p id="pesanErrorIklan" class="pesan-error tersembunyi"></p>
-          <p id="pesanLoadingIklan" class="pesan-loading tersembunyi"><span class="spinner"></span> Sedang memproses file...</p>
-          </details>
+          <p class="keterangan">Iklan yang sedang berjalan, hasilnya, dan apa yang harus dilakukan.</p>
         </div>
 
         <div id="areaIklan" class="tersembunyi">
+          <!-- Iklan berjalan per kelompok: Hentikan · Ganti · Ubah · Masa Belajar · Lanjutkan (renderGrupIklan) -->
+          <div id="grupIklan"></div>
+
+          <!-- Rincian untuk pemilik (dilipat): angka, anggaran mingguan, tabel lengkap -->
+          <details class="kartu kartu-details" id="rincianIklan">
+            <summary>Rincian lengkap (untuk Aaron)</summary>
+            <div class="isi-details">
           <p id="catatanRasioIklan" class="keterangan catatan-info"></p>
 
           <div class="grid-ringkasan">
@@ -424,9 +407,9 @@
             </div>
           </div>
 
-          <!-- 1. Anggaran -->
-          <div class="kartu" id="kartuMingguan">
-            <h2><span class="langkah">1</span> Anggaran Iklan</h2>
+
+          <div class="rincian-bagian" id="kartuMingguan">
+            <h3>Anggaran iklan (untung toko per minggu)</h3>
             <p class="aturan-mingguan" id="aturanMingguan"></p>
             <details class="details-dalam">
               <summary>Untung toko per minggu</summary>
@@ -450,16 +433,14 @@
             </details>
           </div>
 
-          <!-- 2. Iklan yang sedang berjalan -->
-          <div class="kartu">
+          <div class="rincian-bagian">
             <div class="baris-filter">
               <div class="baris-filter-judul">
-                <h2><span class="langkah">2</span> Iklan yang Sedang Berjalan</h2>
+                <h3>Tabel keputusan</h3>
                 <span id="infoKeputusan" class="info-jumlah-data"></span>
               </div>
             </div>
             <p class="keterangan keterangan-tabel" id="ketTabelKeputusan">Isi <strong>Modal Harian</strong> dan <strong>Target ROAS</strong> yang sekarang terpasang di Seller Centre (sekali saja, disimpan). Klik baris untuk rincian.</p>
-            <div id="bannerKeputusan"></div>
             <div class="tabel-scroll">
               <table id="tabelKeputusan">
                 <colgroup>
@@ -478,10 +459,8 @@
             </div>
           </div>
 
-          <!-- 3. Semua produk & rincian (dilipat) -->
-          <details class="kartu kartu-details">
-            <summary>Semua produk &amp; rincian</summary>
-            <div class="isi-details">
+          <div class="rincian-bagian">
+            <h3>Semua produk yang pernah diiklankan</h3>
             <div class="pengaturan-iklan">
               <label for="inputTingkatCair">Dari 100 pesanan iklan, berapa yang benar-benar dibayar?</label>
               <span class="sel-setelan"><input type="number" id="inputTingkatCair" class="input-setelan" min="1" max="100" step="1" placeholder="85"><span class="prefix">%</span></span>
@@ -530,13 +509,37 @@
                 <li><strong>Anggaran</strong> ditentukan dari untung toko per minggu: kalau biaya iklan naik tapi untung setelah iklan tidak naik, iklan hanya mengambil penjualan yang memang akan terjadi &rarr; jangan tambah Modal Harian dulu. Saran per iklan adalah aturan praktis; hasil perubahan (di Dashboard) yang memutuskan.</li>
                 <li><strong>ROAS minimum</strong> = di bawah ini iklan rugi setelah potongan Shopee (&plusmn;22%), harga modal, dan pesanan yang batal. Dibandingkan dengan ROAS <em>langsung</em>. Di atasnya belum tentu untung, karena sebagian penjualan memang akan terjadi tanpa iklan &mdash; itu sebabnya untung toko per minggu tetap dicek.</li>
                 <li><strong>Untung Setelah Iklan</strong> per produk: angka atas memakai hitungan Shopee (termasuk produk lain yang ikut terbeli dalam 7 hari), angka bawah hanya produk itu sendiri. Yang benar ada di antara keduanya. Produk yang sedang beriklan dinilai dari kampanye yang berjalan saja, bukan gabungan 3 bulan.</li>
-                <li><strong>Tujuannya untung toko setelah iklan</strong>, bukan ROAS setinggi-tingginya. Iklan yang rugi tidak langsung dimatikan: target dinaikkan pelan-pelan supaya Shopee hanya membayar pembeli yang lebih mungkin beli.</li>
+                <li><strong>Tujuannya untung toko setelah iklan</strong>, bukan ROAS setinggi-tingginya. Iklan yang rugi sedikit tidak dimatikan: target dinaikkan pelan-pelan supaya Shopee hanya membayar pembeli yang lebih mungkin beli. Iklan yang <strong>rugi besar</strong> (ROAS langsung &lt; 0,6 &times; minimum, rugi &ge; Rp 100 rb, &ge; 10 hari iklan) <strong>diganti</strong>: menaikkan target tidak cukup untuk menutupnya. Penggantinya produk yang dulu untung dari iklan, atau yang laku tanpa iklan. Kalau belum ada pengganti &rarr; kurangi Modal Harian 50%.</li>
                 <li><strong>Untung</strong> = ROAS langsung (hanya produk yang diiklankan) &ge; ROAS minimum. Kalau Modal Harian hampir selalu habis &rarr; tambah modal 20%. <strong>Belum tentu</strong> = hanya untung kalau dihitung dengan produk lain (ROAS Shopee &ge; minimum). <strong>Rugi</strong> = ROAS Shopee pun di bawah minimum. Belum tentu dan rugi &rarr; naikkan Target ROAS 20% (panduan Shopee: paling banyak 20% sekali ubah).</li>
                 <li><strong>Batas target</strong> = rekomendasi tertinggi Shopee &times; 1,25. Di atas itu iklan hampir tidak tayang. Sudah di batas (atau di atasnya) tapi masih rugi &rarr; kurangi Modal Harian 50%, jangan naikkan target lagi. Belum tentu untung tapi target di atas batas &rarr; turunkan bertahap ke batas.</li>
-                <li><strong>Satu perubahan per iklan, lalu tunggu 7 hari.</strong> Perubahan di Seller Centre terbaca otomatis saat sinkron. <strong>Jeda</strong> hanya kalau harga di bawah modal atau tidak ada pesanan yang dibayar.</li>
+                <li><strong>Satu perubahan per iklan, lalu tunggu 15 hari</strong> (7 hari hasil + 7 hari pesanan yang masih tercatat). Iklan baru atau baru diubah ada di <strong>Masa Belajar</strong>. Perubahan di Seller Centre terbaca otomatis saat sinkron. <strong>Jeda</strong> hanya kalau harga di bawah modal atau tidak ada pesanan yang dibayar.</li>
               </ul>
             </details>
             </div>
+          </details>
+        </div>
+
+        <div class="kartu kartu-sumber">
+          <h2>Sumber data</h2>
+          <p id="statusIklanShopee" class="keterangan">Memuat data iklan...</p>
+          <details class="details-dalam" id="detailsUnggahIklan">
+            <summary>Cadangan: unggah file dari Seller Centre</summary>
+            <p class="keterangan">Hanya perlu kalau data otomatis dari Shopee bermasalah. File yang diunggah dipakai sampai halaman dimuat ulang.</p>
+          <div class="baris-unggah">
+            <label class="dropzone" id="dropzoneIklan" for="inputFileIklan">
+              <span class="widget-ikon">
+                <svg class="ikon" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="m9 15 3-3 3 3"/></svg>
+              </span>
+              <span class="dropzone-teks">
+                <span class="dropzone-judul" id="namaFileIklan">Pilih file "Data Keseluruhan Iklan" (.csv)</span>
+                <span class="dropzone-sub">Seller Centre &rarr; Iklan Shopee &rarr; Unduh Data &rarr; Data Keseluruhan Iklan. Klik di sini, atau seret file ke area ini.</span>
+              </span>
+              <input type="file" id="inputFileIklan" accept=".csv,text/csv">
+            </label>
+            <button id="tombolProsesIklan" class="tombol tombol-utama" disabled>Proses File</button>
+          </div>
+          <p id="pesanErrorIklan" class="pesan-error tersembunyi"></p>
+          <p id="pesanLoadingIklan" class="pesan-loading tersembunyi"><span class="spinner"></span> Sedang memproses file...</p>
           </details>
         </div>
       </section>

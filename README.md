@@ -119,8 +119,14 @@ phone: profit, then tasks, then shortcuts.
 - **Saran iklan** (collapsed dropdown under the tasks; suggestions, not tasks). Measured up to today−7
   with the product's own margin and break-even ROAS: **Iklankan lagi** = not advertised now, ≥ 150 rb past
   spend, past direct ROAS ≥ 1.2 × break-even with a profit, still ≥ 4 pcs in the last 4 weeks;
-  **Coba iklankan** = (almost) never advertised, ≥ 8 pcs in 4 weeks, margin ≥ 20%, returns ≤ 5%;
-  **Boleh diganti** = running ≥ 10 days with a direct loss ≥ 100 rb and ROAS < 0.6 × break-even.
+  **Coba iklankan** = (almost) never advertised, ≥ 8 pcs in 4 weeks, margin ≥ 20%, returns ≤ 5%.
+- **Ganti iklan** (a numbered step): a running ad with ≥ 10 days of spend, a direct loss ≥ 100 rb and
+  direct ROAS < 0.6 × break-even is replaced rather than tuned. It shows which ad to turn off and which
+  product to advertise instead (Iklankan lagi first, then Coba iklankan; GMV Max Auto, Tidak Terbatas,
+  50 rb/day). Why: 20% target steps up to the limit raise the target by about 30% at most, while these
+  ads need 1.7× or more; 90% of this shop's ROAS-mode campaigns already beat their target on Shopee's
+  ROAS. Without a replacement product the budget is halved instead. A replacement is not a settings
+  trial, so it never waits for, or blocks, the one-trial-at-a-time rule.
 - Two cards below: Kalkulator Margin (profit for the period chosen there) and Analisis Iklan.
 
 ### Kalkulator Margin
@@ -145,40 +151,38 @@ phone: profit, then tasks, then shortcuts.
 
 ### Analisis Iklan
 Ads data (last 90 days, every product campaign, plus the budget and target set in Seller Centre) comes
-from Shopee automatically. The page answers four questions:
+from Shopee automatically. The page lists the **running ads in five groups**, one card per ad with its
+current target and budget and its result: profit or loss on the advertised product itself over the
+latest seven mature days (today−14 to today−8), with ad spend and sales. The groups, most urgent first:
 
-1. **Anggaran Iklan:** the store-level check.
-   - Weekly profit after ads, last 4 complete weeks vs the 4 before. If ads went up but profit didn't:
-     "jangan tambah Modal Harian dulu" (no budget increases are suggested until that changes).
-   - The attribution ratio compares ad-attributed units with shop units. It does not prove whether
-     ads caused those sales or the sales would have happened anyway.
-   - Weeks with ad spend but no order rows remain visible with unknown profit. Gaps prevent comparing
-     nonconsecutive weeks for a budget recommendation.
-2. **Iklan yang Sedang Berjalan:** one row per running ad, showing the budget and target from Seller Centre
-   and **one change**. The goal is store profit after ads, so losing ads are tuned step by step
-   rather than paused. Each ad first gets a zone, from **direct ROAS** (sales of the advertised
-   product only) and Shopee's ROAS against the **ROAS minimum**. API verdicts use the latest seven
-   full days ending eight calendar days before today, entirely under the current settings, rather
-   than the running campaign's cumulative totals. History totals remain available in the details.
-   The trial checks above take priority over this candidate ladder:
-   - **Untung** (direct ≥ minimum) → **Tambah modal** +20% if it spent ≥ 90% of its daily budget on
-     average over the same seven mature days and weekly store profit isn't falling while ads rise; otherwise **Biarkan**.
-   - **Belum tentu** (only Shopee's ROAS ≥ minimum) or **Rugi** (both below) → **Naikkan target**
-     by 20% (Shopee's guidance: at most 20% per change). Auto ads: switch to ROAS mode at Shopee ROAS + 20%.
-   - **Target limit** = Shopee's highest recommendation × 1.25 (an advisory delivery ceiling). A raise
-     stops at the limit, with a note. At or above the limit: a losing ad → **Kurangi modal** (halve
-     the budget; a lower target would spend more on a losing ad); a "belum tentu" ad above the
-     limit → **Target terlalu tinggi**, lowered by at most 20% per step towards the limit.
-   - **Tunggu:** there is not yet a complete mature window under current settings, no spend, or the
-     store trial/data check is pending. The UI shows a check date where known. The pill is coloured by
-     reason: blue "Tunggu hasil"/"Antre" (a trial is running), yellow "Data belum lengkap"/"Periksa dulu".
-   - **Jeda:** only when price is below cost or no ad orders are ever paid.
-   - **Isi HPP dulu:** the product has no HPP.
-   - Each row also shows Shopee's recommended target range, and a note when the ad ends within 7 days
-     (extend it as "Tidak Terbatas" instead of creating a new one, which restarts learning). The Dashboard
-     lists all expiring ads in one "Ubah Periode jadi Tidak Terbatas" step, soonest first.
-3. **Semua produk & rincian** (collapsed): every product incl. ended ads, its zone and ROAS minimum,
-   plus the reading guide.
+1. **Hentikan** (red): turn the ad off. Only when price ≤ cost or no ad orders are ever paid.
+2. **Ganti** (red): a big loser (see "Ganti iklan" above). The card names the product to advertise instead.
+3. **Ubah** (yellow): one exact change, e.g. "Ubah Target ROAS 13,5 → 16,2", with the reason. Also
+   reversals of a change that made things worse, and "Isi HPP" for ads without a cost price.
+4. **Masa Belajar** (blue): ads in their first days, or changed less than 15 days ago (the card shows the
+   change and when the result comes out). Don't touch.
+5. **Lanjutkan** (green): nothing to change. A short note says why when that isn't obvious: the ad is
+   waiting its turn (one trial at a time), data is incomplete, the last change worked, or the target is
+   already at the limit.
+
+Notices appear once at the top: missing data (yellow, with an "Isi HPP" button), a large store-profit drop,
+and ads ending soon ("Ubah Periode jadi Tidak Terbatas", soonest first).
+
+How each ad's change is chosen (the trial checks above take priority over this ladder):
+- Each ad first gets a zone from **direct ROAS** (sales of the advertised product only) and Shopee's ROAS
+  against the **ROAS minimum**, over the same seven mature days under the current settings.
+- **Untung** (direct ≥ minimum) → **Tambah modal** +20% if it spent ≥ 90% of its daily budget on average
+  and weekly store profit isn't falling while ads rise; otherwise leave it.
+- **Belum tentu** (only Shopee's ROAS ≥ minimum) or **Rugi** (both below) → **Naikkan target** by 20%
+  (Shopee's guidance: at most 20% per change). Auto ads: switch to ROAS mode at Shopee ROAS + 20%.
+- **Target limit** = Shopee's highest recommendation × 1.25 (an advisory delivery ceiling). A raise stops
+  at the limit. At or above it: a losing ad → **Kurangi modal** (halve the budget); a "belum tentu" ad
+  above the limit → lowered by at most 20% per step towards the limit.
+
+**Rincian lengkap (untuk Aaron)** (collapsed, at the bottom): summary tiles, the weekly store-profit
+budget check (last 4 complete weeks vs the 4 before; the attribution ratio), the full decision table with
+Shopee's recommended target range, every product ever advertised with its zone and ROAS minimum, the
+paid-rate override and the reading guide.
 
 The ads CSV from Seller Centre can still be uploaded under "Cadangan" if the automatic data fails.
 

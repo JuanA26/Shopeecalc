@@ -151,12 +151,13 @@ phone: profit, then tasks, then shortcuts.
 
 ### Analisis Iklan
 Ads data (last 90 days, every product campaign, plus the budget and target set in Seller Centre) comes
-from Shopee automatically. The page lists the **running ads in five groups**, one card per ad with its
-current target and budget and its result: profit or loss on the advertised product itself over the
-latest seven mature days (today−14 to today−8), with ad spend and sales. The groups, most urgent first:
+from Shopee automatically. The page shows the **running ads in one table, grouped in five sections**. Each
+row: product · current target and budget (orange tag when the ad ends soon) · what to do · result = profit
+or loss on the advertised product itself over the latest seven mature days (today−14 to today−8), with
+ad spend and sales. On phones each row stacks. The groups, most urgent first:
 
 1. **Hentikan** (red): turn the ad off. Only when price ≤ cost or no ad orders are ever paid.
-2. **Ganti** (red): a big loser (see "Ganti iklan" above). The card names the product to advertise instead.
+2. **Ganti** (red): a big loser (see "Ganti iklan" above). The row names the product to advertise instead.
 3. **Ubah** (yellow): one exact change, e.g. "Ubah Target ROAS 13,5 → 16,2", with the reason. Also
    reversals of a change that made things worse, and "Isi HPP" for ads without a cost price.
 4. **Masa Belajar** (blue): ads in their first days, or changed less than 15 days ago (the card shows the
@@ -166,7 +167,7 @@ latest seven mature days (today−14 to today−8), with ad spend and sales. The
    already at the limit.
 
 Notices appear once at the top: missing data (yellow, with an "Isi HPP" button), a large store-profit drop,
-and ads ending soon ("Ubah Periode jadi Tidak Terbatas", soonest first).
+and how many ads end soon ("ubah Periode jadi Tidak Terbatas"; the rows carry the date).
 
 How each ad's change is chosen (the trial checks above take priority over this ladder):
 - Each ad first gets a zone from **direct ROAS** (sales of the advertised product only) and Shopee's ROAS

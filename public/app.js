@@ -2334,10 +2334,10 @@ function renderKeputusan() {
 // Satu kelompok per iklan; urutan = yang paling perlu dikerjakan dulu. Warna menurut arti:
 // merah = matikan, kuning = kerjakan, biru = tunggu hasil, hijau = baik-baik saja.
 const GRUP_IKLAN = [
-  { kunci: 'hentikan', judul: 'Hentikan', ket: 'Matikan iklan ini di Seller Centre.', warna: 'merah' },
-  { kunci: 'ganti', judul: 'Ganti', ket: 'Matikan iklan yang rugi besar, lalu pasang iklan untuk produk lain.', warna: 'merah' },
-  { kunci: 'ubah', judul: 'Ubah', ket: 'Ubah setelan ini di Seller Centre.', warna: 'kuning' },
-  { kunci: 'belajar', judul: 'Masa Belajar', ket: 'Iklan baru atau baru diubah. Jangan diubah dulu.', warna: 'biru' },
+  { kunci: 'hentikan', judul: 'Hentikan', ket: 'Matikan di Seller Centre.', warna: 'merah' },
+  { kunci: 'ganti', judul: 'Ganti', ket: 'Iklan baru: GMV Max Auto, Periode Tidak Terbatas, Modal Harian 50 rb. Cek stok dulu.', warna: 'merah' },
+  { kunci: 'ubah', judul: 'Ubah', ket: 'Ubah di Seller Centre.', warna: 'kuning' },
+  { kunci: 'belajar', judul: 'Masa Belajar', ket: 'Jangan diubah dulu.', warna: 'biru' },
   { kunci: 'lanjut', judul: 'Lanjutkan', ket: 'Tidak perlu diubah.', warna: 'hijau' },
 ];
 function grupIklan(b, hariIni) {
@@ -2364,9 +2364,8 @@ function kinerjaIklan(p) {
   const m = metrikBerjalan(p);
   if (!(m.biaya > 0)) return '';
   const untung = m.omzetLangsung / p.roasImpas - m.biaya;
-  const periode = p.penilaian ? `Hasil ${tanggalSingkat(p.penilaian.dari)}–${tanggalSingkat(p.penilaian.sampai)}` : 'Hasil selama berjalan';
-  return `<div class="iklan-kinerja"><span>${periode}:</span> <strong class="${untung >= 0 ? 'untung-positif' : 'untung-negatif'}">${untung >= 0 ? 'untung' : 'rugi'} ${formatRupiahRingkas(Math.abs(untung))}</strong>` +
-    `<small>Biaya iklan ${formatRupiahRingkas(m.biaya)} · penjualan ${formatRupiahRingkas(m.omzetLangsung)}</small></div>`;
+  return `<strong class="${untung >= 0 ? 'untung-positif' : 'untung-negatif'}">${untung >= 0 ? 'Untung' : 'Rugi'} ${formatRupiahRingkas(Math.abs(untung))}</strong>` +
+    `<small class="iklan-ket">Biaya ${rupiahPendek(m.biaya)} · jual ${rupiahPendek(m.omzetLangsung)}${p.penilaian ? '' : ' (selama berjalan)'}</small>`;
 }
 
 // Kalimat utama dan catatan kecil per kartu, menurut kelompoknya.
@@ -2374,8 +2373,8 @@ function isiKartuIklan(b, grup, hariIni) {
   const p = b.p;
   switch (grup) {
     case 'hentikan': return { aksi: 'Matikan iklan ini.', ket: String(p.tindakan || '').replace(/^Jeda — /, '') };
-    case 'ganti': return { aksi: 'Matikan iklan ini.', ket: alasanTugas(b),
-      tambahan: `<div class="iklan-pengganti">Ganti dengan: ${namaPengganti(b)}<small class="iklan-ket">${escapeHtml(ketPengganti(b))}</small></div>` };
+    case 'ganti': return { aksi: 'Matikan. Ganti dengan:', tambahan: `<span class="iklan-pengganti">${namaPengganti(b)}</span>`,
+      ket: `Rugi ${rupiahPendek(b.rugiBesar.rugi)} selama ${b.rugiBesar.hari} hari. Penggantinya ${buktiPengganti(b.pengganti)}` };
     case 'ubah':
       if (b.keputusan === 'isi-hpp') return { aksi: 'Isi HPP (harga modal) dulu.', ket: 'Belum bisa dinilai tanpa harga modal.', tombolHpp: true };
       return { aksi: kalimatKeputusan(b), ket: alasanTugas(b) };
@@ -2414,21 +2413,24 @@ function isiKartuIklan(b, grup, hariIni) {
   }
 }
 
-function kartuIklan(b, grup, hariIni) {
+// Satu baris tabel per iklan: produk · setelan sekarang · yang harus dilakukan · hasil 7 hari.
+function barisIklan(b, grup, hariIni) {
   const p = b.p;
   const isi = isiKartuIklan(b, grup, hariIni);
-  const setelan = p.aksi === 'toko' ? '' : [
+  const setelan = p.aksi === 'toko' ? 'Iklan toko' : [
     b.target !== null ? `Target ${formatRoas(b.target)}` : b.modeAuto ? 'GMV Max Auto' : '',
     b.modal !== null ? `Modal ${rupiahPendek(b.modal)}/hari` : b.tanpaBatas ? 'Modal tanpa batas' : '',
-  ].filter(Boolean).join(' · ');
-  return '<li class="iklan-kartu">' +
-    `<div class="iklan-kepala"><span class="iklan-nama" title="${escapeHtml(p.namaProduk)}">${escapeHtml(namaSingkat(p.namaProduk, 60))}</span>` +
-    (setelan ? `<span class="iklan-setelan">${escapeHtml(setelan)}</span>` : '') + '</div>' +
-    `<div class="iklan-aksi">${escapeHtml(isi.aksi)}</div>` + (isi.ket ? `<small class="iklan-ket">${escapeHtml(isi.ket)}</small>` : '') +
-    (isi.tambahan || '') +
-    (isi.tombolHpp ? '<button type="button" class="tombol tombol-kecil" data-ke-hpp>Isi HPP</button>' : '') +
-    kinerjaIklan(p) +
-    '</li>';
+  ].filter(Boolean).map((t) => `<span class="nowrap">${t}</span>`).join('<span class="pisah"> · </span>');
+  const hasil = kinerjaIklan(p);
+  const tandaBerakhir = b.berakhir && !['jeda', 'ganti'].includes(b.keputusan) ? `<span class="tanda-berakhir">Berakhir ${tanggalSingkat(b.berakhir)}</span>` : '';
+  return '<tr>' +
+    `<td class="kolom-produk" title="${escapeHtml(p.namaProduk)}">${escapeHtml(namaSingkat(p.namaProduk, 48))}</td>` +
+    `<td class="kolom-setelan" data-label="Sekarang">${setelan || '-'}${tandaBerakhir}</td>` +
+    `<td class="kolom-aksi"><span class="iklan-aksi">${escapeHtml(isi.aksi)}</span>` + (isi.tambahan || '') +
+      (isi.ket ? `<small class="iklan-ket">${escapeHtml(isi.ket)}</small>` : '') +
+      (isi.tombolHpp ? '<button type="button" class="tombol tombol-kecil" data-ke-hpp>Isi HPP</button>' : '') + '</td>' +
+    `<td class="kolom-hasil" data-label="Hasil">${hasil || '<span class="teks-redup">-</span>'}</td>` +
+    '</tr>';
 }
 
 function renderGrupIklan(kep) {
@@ -2442,9 +2444,8 @@ function renderGrupIklan(kep) {
   }
   const berakhir = kep.baris.filter((b) => b.berakhir && !['jeda', 'ganti'].includes(b.keputusan)).sort((a, b) => a.berakhir.localeCompare(b.berakhir));
   if (berakhir.length) {
-    atas += '<div class="banner-berakhir"><strong>Ubah Periode jadi Tidak Terbatas</strong><ul class="langkah-daftar">' +
-      berakhir.map((b) => `<li><span>${escapeHtml(namaSingkat(b.p.namaProduk, 40))}</span><strong>sebelum ${tanggalSingkat(b.berakhir)}</strong></li>`).join('') +
-      '</ul><small>Ubah iklan yang sama. Jangan buat iklan baru.</small></div>';
+    atas += `<div class="banner-berakhir"><strong>${berakhir.length} iklan segera berakhir</strong> (tanda oranye di tabel): ` +
+      'ubah Periode jadi <strong>Tidak Terbatas</strong>. Ubah iklan yang sama, jangan buat iklan baru.</div>';
   }
   if (!kep.baris.length) {
     el.innerHTML = atas + '<div class="kartu"><p class="keterangan">Tidak ada iklan yang sedang berjalan.</p></div>';
@@ -2452,15 +2453,19 @@ function renderGrupIklan(kep) {
   }
   const perGrup = new Map(GRUP_IKLAN.map((g) => [g.kunci, []]));
   for (const b of kep.baris) perGrup.get(grupIklan(b, hariIni)).push(b);
-  const ringkas = `<p class="grup-ringkas">${kep.baris.length} iklan berjalan` +
-    (kep.modalSekarang > 0 ? ` · Modal Harian total ${formatRupiahRingkas(kep.modalSekarang)}/hari` : '') + '</p>';
-  el.innerHTML = atas + ringkas + GRUP_IKLAN.filter((g) => perGrup.get(g.kunci).length).map((g) => {
-    const daftar = perGrup.get(g.kunci);
-    return `<section class="kartu grup-iklan grup-${g.warna}" aria-label="${g.judul}">` +
-      `<h2 class="grup-judul">${g.judul} <span class="grup-jumlah">${daftar.length}</span></h2>` +
-      `<p class="grup-ket">${g.ket}</p>` +
-      `<ul class="daftar-iklan">${daftar.map((b) => kartuIklan(b, g.kunci, hariIni)).join('')}</ul></section>`;
-  }).join('');
+  // Semua iklan dinilai pada 7 hari matang yang sama; tanggalnya cukup sekali di judul kolom.
+  const dinilai = kep.baris.find((b) => b.p.penilaian && b.p.penilaian.siap);
+  const periode = dinilai ? `<small>${tanggalSingkat(dinilai.p.penilaian.dari)}–${tanggalSingkat(dinilai.p.penilaian.sampai)}</small>` : '';
+  const ringkas = `${kep.baris.length} iklan berjalan` + (kep.modalSekarang > 0 ? ` · Modal Harian total ${formatRupiahRingkas(kep.modalSekarang)}/hari` : '');
+  el.innerHTML = atas + `<div class="kartu kartu-grup-iklan"><p class="grup-ringkas">${ringkas}</p>` +
+    '<div class="tabel-scroll"><table id="tabelGrupIklan"><colgroup><col style="width:30%"><col style="width:14%"><col style="width:36%"><col style="width:20%"></colgroup>' +
+    `<thead><tr><th>Produk</th><th>Sekarang</th><th>Yang harus dilakukan</th><th>Hasil 7 hari${periode}</th></tr></thead>` +
+    GRUP_IKLAN.filter((g) => perGrup.get(g.kunci).length).map((g) => {
+      const daftar = perGrup.get(g.kunci);
+      return `<tbody class="grup-${g.warna}"><tr class="baris-grup"><th colspan="4" scope="rowgroup">` +
+        `<span class="grup-judul">${g.judul}</span> <span class="grup-jumlah">${daftar.length}</span> <span class="grup-ket">${g.ket}</span></th></tr>` +
+        daftar.map((b) => barisIklan(b, g.kunci, hariIni)).join('') + '</tbody>';
+    }).join('') + '</table></div></div>';
 }
 
 function renderTabelIklan() {
@@ -2702,10 +2707,10 @@ function renderTugas() {
 }
 
 // "Ganti iklan": matikan yang rugi, pasang penggantinya (langkah Dashboard dan kartu Analisis Iklan).
+const buktiPengganti = (pg) => (pg.jenis === 'ulang' ? `dulu untung ${rupiahPendek(pg.untungIklan)} dari iklan.` : `laku ${pg.pcsA} pcs dalam 4 minggu tanpa iklan.`);
 function ketPengganti(b) {
-  const pg = b.pengganti;
-  return (pg.jenis === 'ulang' ? `Dulu untung ${rupiahPendek(pg.untungIklan)} dari iklan.` : `Laku ${pg.pcsA} pcs dalam 4 minggu tanpa iklan.`) +
-    ` Cek stok dulu. GMV Max Auto, Periode Tidak Terbatas, Modal Harian ${rupiahPendek(MODAL_IKLAN_BARU)}.`;
+  const bukti = buktiPengganti(b.pengganti);
+  return `${bukti[0].toUpperCase()}${bukti.slice(1)} Cek stok dulu. GMV Max Auto, Periode Tidak Terbatas, Modal Harian ${rupiahPendek(MODAL_IKLAN_BARU)}.`;
 }
 const namaPengganti = (b) => `<strong title="${escapeHtml(b.pengganti.nama)}">${escapeHtml(namaSingkat(b.pengganti.nama, 40))}</strong>`;
 function langkahGanti(b) {

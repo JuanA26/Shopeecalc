@@ -99,13 +99,11 @@ phone: profit, then tasks, then shortcuts.
   ads ending soon; (3) one step per ad that needs a target/budget change, with the exact old → new
   value. All other ads get one line ("jangan diubah"). New trials are limited to one ad at a time.
   Profit is labelled as an estimate.
-- **Hasil percobaan:** each settings change is judged by **the changed ad's own profit**, seven days
+- **Hasil percobaan:** each settings change is judged by **the changed ad's direct product contribution**, seven days
   before vs seven days after (the change day is skipped), on change date +15 after seven full days for
-  delayed attribution. Two numbers per day at the product's ROAS minimum: direct (advertised product only)
-  and Shopee version (all products Shopee credits to the ad). A move under 20 rb/day (direct) or
-  60 rb/day (Shopee version) counts as noise: these are the 80th percentile of no-change windows on
-  this shop's ads (Jul–Sep 2026). **Lebih baik** (one clearly up, neither clearly down) keeps the
-  setting and the steps continue; **lebih buruk** returns towards the old target or budget (at most 20%
+  delayed attribution. The direct change must reach 20 rb/day to count as a clear improvement or decline;
+  the broad Shopee figure remains in the owner's details as context, because it can include products with
+  different margins. **Lebih baik** keeps the setting and the steps continue; **lebih buruk** returns towards the old target or budget (at most 20%
   per step); **belum jelas** keeps the setting, and after a target raise that ad's target is not raised
   again. Missing data is never zero profit.
 - **Store safety check:** total store profit per day before/after the latest change. Store profit swings
@@ -120,16 +118,18 @@ phone: profit, then tasks, then shortcuts.
   with the product's own margin and break-even ROAS: **Iklankan lagi** = not advertised now, ≥ 150 rb past
   spend, past direct ROAS ≥ 1.2 × break-even with a profit, still ≥ 4 pcs in the last 4 weeks;
   **Coba iklankan** = (almost) never advertised, ≥ 8 pcs in 4 weeks, margin ≥ 20%, returns ≤ 5%.
-- **Ganti iklan** (a numbered step): a running ad with ≥ 10 days of spend, a direct loss ≥ 100 rb and
+- **Ganti iklan** (a numbered step): the currently running campaign with ≥ 10 mature days of spend, a direct loss ≥ 100 rb and
   direct ROAS < 0.6 × break-even is replaced rather than tuned. It shows which ad to turn off and which
   product to advertise instead (Iklankan lagi first, then Coba iklankan; Tidak Terbatas, 50 rb/day).
   A past winner restarts in **GMV Max ROAS at the target of its most profitable ROAS-mode campaign**
-  (capped at the Shopee limit when known); a never-advertised product starts on **Auto** for the 7-day
-  learning phase, after which the ladder moves it to ROAS mode. In this shop Auto ads reached a median
+  (capped at the Shopee limit when known; otherwise the page asks the seller to check that limit); a never-advertised product starts on **Auto** and is reviewed after 7–14 days. A clearly worse result from
+  the latest setting change is reviewed for reversal before replacement. In this shop Auto ads reached a median
   direct ROAS of 2.1 vs 4.6 in ROAS mode, and past winners made their profit in ROAS mode. Why: 20% target steps up to the limit raise the target by about 30% at most, while these
   ads need 1.7× or more; 90% of this shop's ROAS-mode campaigns already beat their target on Shopee's
-  ROAS. Without a replacement product the budget is halved instead. A replacement is not a settings
-  trial, so it never waits for, or blocks, the one-trial-at-a-time rule.
+  ROAS. Without a replacement product the budget is halved instead. A replacement does not take the
+  one-trial-at-a-time slot; a recently changed ad still waits for its result.
+- Estimated ad contribution excludes any conditional **Proteksi ROAS Saldo 1:1** credit; the app does not
+  read eligibility or received credits. This is disclosed in the owner's ad details.
 - Two cards below: Kalkulator Margin (profit for the period chosen there) and Analisis Iklan.
 
 ### Kalkulator Margin

@@ -50,6 +50,16 @@ test('replacement leaves HPP, pause, reversal and shop rows alone, and never tak
   assert.equal(held[0].keputusan, 'ganti'); assert.equal(held[1].alasan, 'data-toko');
 });
 
+test('a worse result from the latest settings change takes priority over Ganti and does not consume its replacement', () => {
+  const rows = [row('loser', 'naikkan'), row('other', 'naikkan')];
+  const candidate = { idProduk: 'winner', nama: 'Winner', untungIklan: 400000 };
+  ctx.terapkanGanti(rows, { ganti: [rugi('loser', -300000), rugi('other', -200000)], ulang: [candidate], coba: [] },
+    (b) => b.p.idProduk === 'loser' ? { status: 'buruk' } : null);
+  assert.equal(rows[0].keputusan, 'naikkan'); // the trial judge may now return it to the old setting
+  assert.equal(rows[1].keputusan, 'ganti');
+  assert.equal(rows[1].pengganti.idProduk, 'winner');
+});
+
 test('each running ad lands in exactly one group', () => {
   const hariIni = '2026-09-30';
   const g = (b) => ctx.grupIklan(b, hariIni);

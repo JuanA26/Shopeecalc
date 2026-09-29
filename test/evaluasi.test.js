@@ -90,7 +90,7 @@ test('store comparison includes other products and return costs; requires mature
   assert.equal(E.evaluasiPerubahan(data, sumber, '2026-09-30').status, 'data');
 });
 
-test('each change is judged by its own ad: 20 rb direct / 60 rb Shopee thresholds, noise is "belum jelas"', () => {
+test('each change is judged by its own direct contribution; Shopee broad movement is context', () => {
   const { data } = fixture();
   iklan(data, SEBELUM, BURUK);
   assert.equal(E.hasilIklan(data, 'p', '2026-09-29', 6).status, 'tunggu');
@@ -98,8 +98,16 @@ test('each change is judged by its own ad: 20 rb direct / 60 rb Shopee threshold
   assert.equal(h.status, 'buruk'); assert.equal(h.bedaLangsung, -30000); assert.equal(h.bedaShopee, -60000);
   assert.equal(E.hasilIklan(iklan(data, SEBELUM, BAIK), 'p', '2026-09-30', 6).status, 'baik');
   assert.equal(E.hasilIklan(iklan(data, SEBELUM, KECIL), 'p', '2026-09-30', 6).status, 'belum-jelas');
-  // Direct up 25 rb but Shopee down 100 rb: the two disagree.
-  assert.equal(E.hasilIklan(iklan(data, [300000, 1200000], [450000, 600000]), 'p', '2026-09-30', 6).status, 'belum-jelas');
+  // Direct up 25 rb despite a broad decline: keep the directly observed improvement.
+  assert.equal(E.hasilIklan(iklan(data, [300000, 1200000], [450000, 600000]), 'p', '2026-09-30', 6).status, 'baik');
+  // A broad decline alone must not reverse a setting change.
+  let broadOnly = E.hasilIklan(iklan(data, [300000, 1200000], [300000, 600000]), 'p', '2026-09-30', 6);
+  assert.equal(broadOnly.status, 'belum-jelas'); assert.equal(broadOnly.bedaLangsung, 0); assert.equal(broadOnly.bedaShopee, -100000);
+  const held = rowP(); E.terapkanEvaluasiToko([held], null, data, true, '2026-09-30');
+  assert.equal(held.keputusan, 'lanjut'); assert.equal(held.alasan, 'belum-jelas');
+  // A direct decline still triggers rollback even when broad attribution improves.
+  broadOnly = E.hasilIklan(iklan(data, [300000, 600000], [120000, 1200000]), 'p', '2026-09-30', 6);
+  assert.equal(broadOnly.status, 'buruk');
   iklan(data, SEBELUM, BURUK); delete data.kampanye[0].perHari['2026-09-19'];
   assert.equal(E.hasilIklan(data, 'p', '2026-09-30', 6).status, 'data');
   iklan(data, SEBELUM, BURUK); data.riwayatSetelan.unshift({ ...change, tanggal: '2026-09-10' });

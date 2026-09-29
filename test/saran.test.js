@@ -53,3 +53,22 @@ test('a past winner restarts in ROAS mode at the target of its most profitable R
   s = saranIklan(items, [run(0, 10, 40000, 500000, 1)], '2026-09-27', 0.8);
   assert.equal(s.ulang[0].targetTerbaik, null); // only Auto before → Auto again
 });
+
+test('Ganti judges only mature spend from the running campaign, in both directions', () => {
+  const items = jual('produk', '2026-09-10', 1); // minimum ROAS = 5
+  const run = (status, month, days, spend, direct) => ({
+    kodeProduk: 'produk', status, perHari: Object.fromEntries(Array.from({ length: days }, (_, i) =>
+      [`2026-${month}-${String(i + 1).padStart(2, '0')}`, { biaya: spend, omzetLangsung: direct }])),
+  });
+  // Old losses must not make a profitable current campaign look replaceable.
+  let s = saranIklan(items, [run('Berakhir', '08', 10, 50000, 0), run('Berjalan', '09', 15, 10000, 100000)], '2026-09-27', 0.8);
+  assert.deepEqual(s.ganti, []);
+  // Old gains must not hide a large current loss; the displayed loss/days come from that campaign.
+  s = saranIklan(items, [run('Berakhir', '08', 10, 10000, 500000), run('Berjalan', '09', 15, 50000, 0)], '2026-09-27', 0.8);
+  assert.equal(s.ganti.length, 1);
+  assert.equal(s.ganti[0].untungIklan, -750000);
+  assert.equal(s.ganti[0].hari, 15);
+  // Even a large past loss cannot supply the current campaign's ten spending days.
+  s = saranIklan(items, [run('Berakhir', '08', 10, 50000, 0), run('Berjalan', '09', 9, 50000, 0)], '2026-09-27', 0.8);
+  assert.deepEqual(s.ganti, []);
+});

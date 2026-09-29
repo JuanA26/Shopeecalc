@@ -1822,7 +1822,7 @@ function barisRincianIklan(p, kampanyePerProduk, colspan) {
     ${kotak('Margin per Rp omzet', p.marginPerRp === null ? '-' : formatPersen(p.marginPerRp * 100), 'setelah potongan Shopee & HPP')}
     ${kotak('Omzet versi Shopee', formatRupiahRingkas(p.omzet), `${p.terjual} pcs`)}
     ${kotak('Omzet langsung', formatRupiahRingkas(p.omzetLangsung), `${p.terjualLangsung} pcs`)}
-    ${kotak('Untung versi Shopee', p.untungLuas === null ? '-' : formatRupiah(p.untungLuas), 'termasuk produk lain')}
+    ${kotak('Perkiraan versi Shopee', p.untungLuas === null ? '-' : formatRupiah(p.untungLuas), 'produk lain dihitung dengan margin produk ini; hanya pembanding')}
     ${kotak('Untung hitungan ketat', p.untungLangsung === null ? '-' : formatRupiah(p.untungLangsung), 'produk ini saja')}
     ${kotak('Harga jual per pcs', formatRupiahRingkas(p.hargaRata), `HPP ${escapeHtml(hppTampil)} · ${p.sumberHarga === 'income' ? 'dari data penjualan' : p.sumberHarga === 'langsung' ? 'dari penjualan langsung iklan' : 'perkiraan dari omzet Shopee'}`)}
     ${kotak('Potongan Shopee', p.rasioPencairan ? formatPersen((1 - p.rasioPencairan) * 100) : '-', p.sumberHarga === 'income' ? 'produk ini, dari data penjualan' : 'rata-rata toko')}
@@ -1958,13 +1958,17 @@ function saranIklanSekarang() {
 // Shopee (× 1,25) paling banyak menaikkan target ±30%, dan Shopee ROAS 90% iklan toko ini sudah di
 // atas targetnya. Pengganti: "iklankan lagi" dulu, lalu "coba iklankan", satu per iklan.
 // Tanpa pengganti → kurangi Modal Harian 50%. Iklan yang masih belajar (< 7 hari) tidak diganti.
-function terapkanGanti(baris, saran) {
+function terapkanGanti(baris, saran, hasilTerakhir) {
   if (!saran || !saran.ganti.length) return;
   const pengganti = [...saran.ulang.map((p) => ({ ...p, jenis: 'ulang' })), ...saran.coba.map((p) => ({ ...p, jenis: 'coba' }))];
   const bisaDiganti = new Set(['naikkan', 'turunkan', 'kurangi', 'lanjut', 'tunggu']);
   for (const rugi of saran.ganti) { // paling rugi dulu
     const b = baris.find((x) => x.p.idProduk === rugi.idProduk);
     if (!b || !bisaDiganti.has(b.keputusan) || b.p.aksi === 'tunggu') continue;
+    // A clearly worse result from this ad's latest settings change takes priority: the trial gate
+    // below can then offer Kembalikan/Tinjau instead of skipping the result for a replacement.
+    const hasil = hasilTerakhir && hasilTerakhir(b);
+    if (hasil && hasil.status === 'buruk') continue;
     b.rugiBesar = { rugi: -rugi.untungIklan, hari: rugi.hari };
     b.targetBaru = null; b.alasan = 'rugi-besar';
     const pg = pengganti.shift();
@@ -2028,7 +2032,7 @@ function keputusanBerjalan() {
       rekomendasi: st.rekomendasi || null, batasShopee, perubahan, bisaDiubahLagi, berakhir: p.aksi === 'toko' ? null : berakhirSegera(p.idProduk) });
   }
   const urutan = { jeda: 0, ganti: 0, kembalikan: 1, tinjau: 1, kurangi: 2, turunkan: 3, naikkan: 4, tambah: 5, 'isi-hpp': 6, tunggu: 7, lanjut: 8, toko: 9 };
-  terapkanGanti(baris, saranIklanSekarang());
+  terapkanGanti(baris, saranIklanSekarang(), (b) => EvaluasiIklan.hasilIklan(dataIklan, b.p.idProduk, hariIni, b.p.roasImpas));
   baris.sort((a, b) => urutan[a.keputusan] - urutan[b.keputusan] || b.p.biaya - a.p.biaya);
   if (dariApi() && Array.isArray(dataIklan.riwayatSetelan)) {
     const evaluasi = EvaluasiIklan.evaluasiPerubahan(dataIklan, sumberIklan(), hariIni);
@@ -2152,6 +2156,11 @@ function catatanKeputusanTeks(b) {
   if (b.keputusan === 'lanjut' && b.target !== null && b.batasShopee !== null && b.target > b.batasShopee + 0.05) {
     catatan.push(`Target ${f(b.target)} di atas batas Shopee (${f(b.batasShopee)}) — iklan bisa jarang tayang.`);
   }
+  const h = b.hasilIklan;
+  if (h && Number.isFinite(h.bedaLangsung) && Number.isFinite(h.bedaShopee)) {
+    const beda = (n) => `${n > 0 ? '+' : ''}${formatRupiahRingkas(n)}`;
+    catatan.push(`Hasil perubahan per hari: langsung ${beda(h.bedaLangsung)}; versi Shopee ${beda(h.bedaShopee)} (perkiraan, bukan dasar keputusan).`);
+  }
   return catatan;
 }
 function catatanKeputusan(b) {
@@ -2200,11 +2209,10 @@ function kalimatKeputusan(b) {
   }
 }
 
-// Penurunan untung yang melewati batas (langsung dulu, kalau tidak versi Shopee), mis. "25 rb".
+// Penurunan untung langsung yang melewati batas, mis. "25 rb".
 function turunHasil(h) {
   if (!h) return '';
-  const beda = h.bedaLangsung <= -EvaluasiIklan.BEDA_LANGSUNG ? h.bedaLangsung : h.bedaShopee;
-  return rupiahPendek(Math.abs(beda));
+  return rupiahPendek(Math.abs(h.bedaLangsung));
 }
 
 // Alasan satu kalimat untuk kartu Tugas Minggu Ini (orang tua): kenapa perubahan ini.
@@ -2710,12 +2718,12 @@ function renderTugas() {
 // "Ganti iklan": matikan yang rugi, pasang penggantinya (langkah Dashboard dan kartu Analisis Iklan).
 const buktiPengganti = (pg) => (pg.jenis === 'ulang' ? `dulu untung ${rupiahPendek(pg.untungIklan)} dari iklan.` : `laku ${pg.pcsA} pcs dalam 4 minggu tanpa iklan.`);
 // Mode iklan pengganti (user, 2026-09-28): produk yang dulu untung → GMV Max ROAS di target kampanye
-// ROAS-nya yang paling untung (paling tinggi batas Shopee kalau diketahui); belum pernah → Auto 7 hari.
+// ROAS-nya yang paling untung (paling tinggi batas Shopee kalau diketahui); belum pernah → Auto.
 function modePengganti(pg) {
-  if (!pg.targetTerbaik) return 'GMV Max Auto (7 hari, lalu ROAS)';
+  if (!pg.targetTerbaik) return 'GMV Max Auto (cek setelah 7–14 hari)';
   const batas = batasTargetShopee(setelanProduk(pg.idProduk));
   const target = batas !== null ? Math.min(pg.targetTerbaik, batas) : pg.targetTerbaik;
-  return `GMV Max ROAS, Target ${formatRoas(target)}`;
+  return `GMV Max ROAS, Target ${formatRoas(target)}${batas === null ? ' (cek batas Shopee)' : ''}`;
 }
 function ketPengganti(b) {
   const bukti = buktiPengganti(b.pengganti);
@@ -2740,7 +2748,7 @@ function renderSaranIklan() {
     : '');
   const isi = bagian('Iklankan lagi', 'Dulu untung dari iklan. Pasang GMV Max ROAS di target yang dulu untung.', s.ulang,
     (p) => `untung ${rupiahPendek(p.untungIklan)}${p.targetTerbaik ? ` · target ${formatRoas(p.targetTerbaik)}` : ''}`) +
-    bagian('Coba iklankan', 'Laku tanpa iklan, untungnya cukup. Pasang GMV Max Auto 7 hari, lalu ROAS.', s.coba, (p) => `${p.pcsA} terjual / 4 minggu`);
+    bagian('Coba iklankan', 'Laku tanpa iklan, untungnya cukup. Pasang GMV Max Auto. Cek setelah 7–14 hari.', s.coba, (p) => `${p.pcsA} terjual / 4 minggu`);
   el.hidden = !isi;
   document.getElementById('saranIklanIsi').innerHTML = isi &&
     isi + '<small class="langkah-ket">Cek stok dulu. Periode Tidak Terbatas. Boleh beberapa sekaligus. Iklan yang rugi besar sudah ada di langkah "Ganti iklan".</small>';

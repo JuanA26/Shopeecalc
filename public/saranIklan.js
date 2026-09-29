@@ -27,7 +27,7 @@
     const ambil = (id, nama) => {
       let p = produk.get(id);
       if (!p) produk.set(id, p = { idProduk: id, nama: nama || id, pcsA: 0, pcs: 0, retur: 0, harga: 0, hargaHpp: 0, untung: 0,
-        biaya: 0, omzetLangsung: 0, hari: 0, berjalan: false, kampanye: [] });
+        biaya: 0, omzetLangsung: 0, hari: 0, berjalan: false, biayaBerjalan: 0, omzetBerjalan: 0, hariBerjalan: 0, kampanye: [] });
       if (nama && p.nama === id) p.nama = nama;
       return p;
     };
@@ -51,6 +51,10 @@
         p.biaya += v.biaya || 0; p.omzetLangsung += v.omzetLangsung || 0;
         c.biaya += v.biaya || 0; c.omzetLangsung += v.omzetLangsung || 0;
         if (v.biaya > 0) p.hari += 1;
+        if (k.status === 'Berjalan') {
+          p.biayaBerjalan += v.biaya || 0; p.omzetBerjalan += v.omzetLangsung || 0;
+          if (v.biaya > 0) p.hariBerjalan += 1;
+        }
       }
       p.kampanye.push(c);
     }
@@ -63,7 +67,12 @@
       p.untungIklan = p.omzetLangsung / p.roasMinimum - p.biaya; // direct profit after ad spend
       p.bagianRetur = p.pcs ? p.retur / p.pcs : 0;
       if (p.berjalan) {
-        if (p.hari >= SARAN.gantiHariMin && p.untungIklan <= -SARAN.gantiRugiMin && p.roasLangsung < SARAN.gantiRoasKali * p.roasMinimum) ganti.push(p);
+        const untungBerjalan = p.omzetBerjalan / p.roasMinimum - p.biayaBerjalan;
+        const roasBerjalan = p.biayaBerjalan > 0 ? p.omzetBerjalan / p.biayaBerjalan : null;
+        if (p.hariBerjalan >= SARAN.gantiHariMin && untungBerjalan <= -SARAN.gantiRugiMin && roasBerjalan < SARAN.gantiRoasKali * p.roasMinimum) {
+          ganti.push({ ...p, biaya: p.biayaBerjalan, omzetLangsung: p.omzetBerjalan, hari: p.hariBerjalan,
+            roasLangsung: roasBerjalan, untungIklan: untungBerjalan });
+        }
       } else if (p.biaya >= SARAN.ulangBiayaMin) {
         if (p.untungIklan > 0 && p.roasLangsung >= SARAN.ulangRoasKali * p.roasMinimum && p.pcsA >= SARAN.ulangPcsMin && p.bagianRetur <= SARAN.ulangReturMax) {
           p.targetTerbaik = targetTerbaik(p);

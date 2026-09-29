@@ -82,7 +82,8 @@
   const BATAS_TURUN_TOKO = 700000;
 
   // Per day over seven full days of one campaign: profit on the advertised product (langsung) and
-  // on all products Shopee credits to the ad (shopee), both at the product's ROAS minimum.
+  // a broad scenario (shopee). The broad scenario applies this SKU's margin to other products too;
+  // keep it for context, never as the automatic setting-change verdict.
   function untungIklanHarian(k, dari, sampai, roasMin) {
     let biaya = 0, omzet = 0, omzetLangsung = 0;
     for (const d of tanggal(dari, sampai)) {
@@ -93,8 +94,8 @@
     return { biaya: biaya / 7, langsung: (omzetLangsung / roasMin - biaya) / 7, shopee: (omzet / roasMin - biaya) / 7 };
   }
 
-  // The product's latest recorded change (last 90 days), judged at T+15:
-  // 'baik' = one number clearly up and neither clearly down; 'buruk' = the reverse; otherwise 'belum-jelas'.
+  // The product's latest recorded change (last 90 days), judged at T+15.
+  // Only direct contribution decides the automatic result; broad attribution is context.
   function hasilIklan(data, idProduk, hariIni, roasMin) {
     const riwayat = (data.riwayatSetelan || []).filter(u => u.idProduk === idProduk && u.tanggal <= hariIni);
     const u = riwayat[riwayat.length - 1];
@@ -110,9 +111,8 @@
     const sesudah = untungIklanHarian(k, geser(t, 1), geser(t, 7), roasMin);
     if (!sebelum || !sesudah) return { ...hasil, status: 'data' };
     const bedaLangsung = sesudah.langsung - sebelum.langsung, bedaShopee = sesudah.shopee - sebelum.shopee;
-    const naik = bedaLangsung >= BEDA_LANGSUNG || bedaShopee >= BEDA_SHOPEE;
-    const turun = bedaLangsung <= -BEDA_LANGSUNG || bedaShopee <= -BEDA_SHOPEE;
-    return { ...hasil, sebelum, sesudah, bedaLangsung, bedaShopee, status: naik && !turun ? 'baik' : turun && !naik ? 'buruk' : 'belum-jelas' };
+    const status = bedaLangsung >= BEDA_LANGSUNG ? 'baik' : bedaLangsung <= -BEDA_LANGSUNG ? 'buruk' : 'belum-jelas';
+    return { ...hasil, sebelum, sesudah, bedaLangsung, bedaShopee, status };
   }
 
   // Store safety check for the latest batch of changes. It never reverses anything; a large drop

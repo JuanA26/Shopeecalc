@@ -123,7 +123,7 @@ phone: profit, then tasks, then shortcuts.
   product to advertise instead (Iklankan lagi first, then Coba iklankan; Tidak Terbatas, 50 rb/day).
   A past winner restarts in **GMV Max ROAS at the target of its most profitable ROAS-mode campaign**
   (capped at the Shopee limit when known; otherwise the page asks the seller to check that limit); a never-advertised product starts on **Auto** and is reviewed after 7–14 days. A clearly worse result from
-  the latest setting change is reviewed for reversal before replacement. In this shop Auto ads reached a median
+  the latest setting change (≤ 28 days old) is reviewed for reversal before replacement. In this shop Auto ads reached a median
   direct ROAS of 2.1 vs 4.6 in ROAS mode, and past winners made their profit in ROAS mode. Why: 20% target steps up to the limit raise the target by about 30% at most, while these
   ads need 1.7× or more; 90% of this shop's ROAS-mode campaigns already beat their target on Shopee's
   ROAS. Without a replacement product the budget is halved instead. A replacement does not take the

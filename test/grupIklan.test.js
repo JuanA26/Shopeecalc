@@ -54,10 +54,23 @@ test('a worse result from the latest settings change takes priority over Ganti a
   const rows = [row('loser', 'naikkan'), row('other', 'naikkan')];
   const candidate = { idProduk: 'winner', nama: 'Winner', untungIklan: 400000 };
   ctx.terapkanGanti(rows, { ganti: [rugi('loser', -300000), rugi('other', -200000)], ulang: [candidate], coba: [] },
-    (b) => b.p.idProduk === 'loser' ? { status: 'buruk' } : null);
+    (b) => b.p.idProduk === 'loser' ? { status: 'buruk', baru: true } : null);
   assert.equal(rows[0].keputusan, 'naikkan'); // the trial judge may now return it to the old setting
   assert.equal(rows[1].keputusan, 'ganti');
   assert.equal(rows[1].pengganti.idProduk, 'winner');
+});
+
+test('an old worse result (> 28 days) does not block Ganti: the trial judge would not offer Tinjau for it', () => {
+  // Target and budget changed together on 01/08, direct profit fell; today 30/09.
+  const perHari = {};
+  for (let d = -7; d <= 7; d++) if (d) perHari[E.geser('2026-08-01', d)] = { biaya: 60000, omzet: 300000, omzetLangsung: d < 0 ? 300000 : 100000 };
+  const data = { dataSiapEvaluasi: true, kampanye: [{ campaignId: 'c', kodeProduk: 'loser', status: 'Berjalan', perHari }],
+    riwayatSetelan: [{ idProduk: 'loser', campaignId: 'c', tanggal: '2026-08-01', targetLama: 8, targetBaru: 10, modalLama: 50000, modalBaru: 60000 }] };
+  const rows = [row('loser', 'naikkan', { p: { idProduk: 'loser', aksi: 'rugi', roasImpas: 5 } })];
+  ctx.terapkanGanti(rows, { ganti: [rugi('loser', -400000)], ulang: [{ idProduk: 'w', nama: 'W', untungIklan: 1 }], coba: [] },
+    (b) => E.hasilIklan(data, b.p.idProduk, '2026-09-30', 5));
+  E.terapkanEvaluasiToko(rows, null, data, true, '2026-09-30');
+  assert.equal(rows[0].keputusan, 'ganti'); // before the fix: 'naikkan', i.e. tuned instead of replaced
 });
 
 test('each running ad lands in exactly one group', () => {

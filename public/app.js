@@ -1967,8 +1967,10 @@ function terapkanGanti(baris, saran, hasilTerakhir) {
     if (!b || !bisaDiganti.has(b.keputusan) || b.p.aksi === 'tunggu') continue;
     // A clearly worse result from this ad's latest settings change takes priority: the trial gate
     // below can then offer Kembalikan/Tinjau instead of skipping the result for a replacement.
+    // Only a recent result (≤ 28 days): the gate always offers Tinjau for those, while an older one
+    // could fall through to "naikkan" with no replacement.
     const hasil = hasilTerakhir && hasilTerakhir(b);
-    if (hasil && hasil.status === 'buruk') continue;
+    if (hasil && hasil.status === 'buruk' && hasil.baru) continue;
     b.rugiBesar = { rugi: -rugi.untungIklan, hari: rugi.hari };
     b.targetBaru = null; b.alasan = 'rugi-besar';
     const pg = pengganti.shift();

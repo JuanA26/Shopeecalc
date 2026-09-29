@@ -94,7 +94,7 @@
     return { biaya: biaya / 7, langsung: (omzetLangsung / roasMin - biaya) / 7, shopee: (omzet / roasMin - biaya) / 7 };
   }
 
-  // The product's latest recorded change (last 90 days), judged at T+15.
+  // The product's latest recorded change, judged at T+15.
   // Only direct contribution decides the automatic result; broad attribution is context.
   function hasilIklan(data, idProduk, hariIni, roasMin) {
     const riwayat = (data.riwayatSetelan || []).filter(u => u.idProduk === idProduk && u.tanggal <= hariIni);

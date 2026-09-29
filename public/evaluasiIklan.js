@@ -125,7 +125,8 @@
     const cekLagi = geser(t, 15);
     const hasil = { tanggal: t, kelompok, cekLagi, dariSebelum: geser(t, -7), sampaiSebelum: geser(t, -1), dariSesudah: geser(t, 1), sampaiSesudah: geser(t, 7) };
     if (hariIni < cekLagi) return { ...hasil, status: 'tunggu' };
-    // Multiple edits to one campaign that day, or edits in the baseline, are not a clean comparison.
+    // Edits of two campaigns of one product that day, or edits in the baseline, are not a clean comparison
+    // (same-day edits of one campaign are merged into one change by the server).
     if (new Set(kelompok.map(u => u.campaignId)).size !== kelompok.length || riwayat.some(u => u.tanggal >= hasil.dariSebelum && u.tanggal < t)) {
       return { ...hasil, status: 'campur' };
     }

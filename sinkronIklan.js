@@ -204,6 +204,18 @@ async function sinkronIklan({ db, panggil, shopId, iklanSampai, hariIni = tangga
 }
 
 // ---------- Baca untuk halaman Analisis Iklan ----------
+// Several edits of one campaign on one day count as one change (user, 2026-09-29): old values from the
+// first edit, new values from the last. An edit undone the same day is no change. Input sorted by date.
+function gabungUbahSehari(riwayat) {
+  const hasil = [], kunci = new Map();
+  for (const u of riwayat) {
+    const k = `${u.campaignId}|${u.tanggal}`, ada = kunci.get(k);
+    if (ada) { ada.targetBaru = u.targetBaru; ada.modalBaru = u.modalBaru; }
+    else { const baru = { ...u }; kunci.set(k, baru); hasil.push(baru); }
+  }
+  return hasil.filter(u => u.targetLama !== u.targetBaru || u.modalLama !== u.modalBaru);
+}
+
 // Status API → istilah Seller Centre (analisisIklan.js memakai 'Berjalan' untuk kampanye aktif).
 const STATUS_TAMPIL = { ongoing: 'Berjalan', paused: 'Dijeda', scheduled: 'Terjadwal', ended: 'Berakhir', closed: 'Berakhir', deleted: 'Dihapus' };
 const isoKeTampil = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
@@ -326,16 +338,17 @@ function kampanyeDariDb(db, shopId, dari, sampai) {
     `SELECT campaign_id, id_produk, tanggal, target_lama, target_baru, modal_lama, modal_baru FROM iklan_riwayat_setelan
      WHERE shop_id = ? AND tanggal >= ? ORDER BY tanggal, id`
   ).all(shopId, tambahHari(sampai, -90));
-  const riwayatSetelan = riwayat.map(r => ({ campaignId: r.campaign_id, idProduk: r.id_produk, tanggal: r.tanggal,
+  const riwayatSetelan = gabungUbahSehari(riwayat.map(r => ({ campaignId: r.campaign_id, idProduk: r.id_produk, tanggal: r.tanggal,
     targetLama: r.target_lama || null, targetBaru: r.target_baru || null,
-    modalLama: r.modal_lama || null, modalBaru: r.modal_baru || null }));
-  for (const r of riwayat) {
-    const s = r.id_produk && setelan[r.id_produk];
-    if (!s || !kampanyeBerjalan.has(r.campaign_id)) continue;
-    s.perubahan = { tanggal: r.tanggal, targetLama: r.target_lama || null, targetBaru: r.target_baru || null, modalLama: r.modal_lama || null, modalBaru: r.modal_baru || null };
+    modalLama: r.modal_lama || null, modalBaru: r.modal_baru || null })));
+  for (const u of riwayatSetelan) {
+    const s = u.idProduk && setelan[u.idProduk];
+    if (!s || !kampanyeBerjalan.has(u.campaignId)) continue;
+    const { campaignId, idProduk, ...perubahan } = u;
+    s.perubahan = perubahan;
   }
 
   return { kampanye, setelan, riwayatSetelan, biayaTokoHarian: Object.fromEntries(toko.map(d => [d.tanggal, d.biaya])), adaData: harian.length > 0 || toko.length > 0 };
 }
 
-module.exports = { sinkronIklan, kampanyeDariDb, jendela };
+module.exports = { sinkronIklan, kampanyeDariDb, jendela, gabungUbahSehari };

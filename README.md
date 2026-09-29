@@ -111,7 +111,7 @@ phone: profit, then tasks, then shortcuts.
   a drop of 700 rb/day or more holds new trials for one week. This is an observed comparison, not proof.
 - Missing HPP for more than 5% of the week's payout (smaller gaps are estimated at the margin of the
   other products), missing daily records, stale/failed syncs, retries, or overlapping changes block new
-  trials. The reason is shown once as a yellow banner (with an "Isi HPP" button), not on every ad. Mixed target/budget changes with worse results require review. A target increase followed by
+  trials. The reason is shown once as a yellow banner (with an "Isi HPP" button), not on every ad. Several edits of one ad on the same day count as one change (first old value → last new value). Mixed target/budget changes with worse results require review. A target increase followed by
   a reversal is not automatically repeated while that pair remains in the 90-day change history.
 - Changes made in Seller Centre are detected automatically by the next sync; nothing to tick.
 - **Saran iklan** (collapsed dropdown under the tasks; suggestions, not tasks). Measured up to today−7

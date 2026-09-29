@@ -224,3 +224,18 @@ test('the missing-data banner names the reason once, with the HPP share and prod
     sinkron: { jenis: 'antrean', menunggu: 3, macet: 1 } });
   assert.match(html, /12%/); assert.match(html, /Blus X/); assert.match(html, /data-ke-hpp/); assert.match(html, /4 pesanan/);
 });
+
+test('same-day edits of one campaign count as one change (user, 2026-09-29)', () => {
+  const { gabungUbahSehari } = require('../sinkronIklan');
+  const u = (tanggal, modalLama, modalBaru, campaignId = 'c') => ({ campaignId, idProduk: 'p', tanggal, targetLama: 12, targetBaru: 12, modalLama, modalBaru });
+  // Kulot balon on 28/09: 50,000 → 76,129 → 77,097 becomes one budget change 50,000 → 77,097.
+  const r = gabungUbahSehari([u('2026-09-20', 40000, 50000), u('2026-09-28', 50000, 76129), u('2026-09-28', 76129, 77097), u('2026-09-28', 60000, 70000, 'd')]);
+  assert.deepEqual(r.map((x) => [x.campaignId, x.tanggal, x.modalLama, x.modalBaru]),
+    [['c', '2026-09-20', 40000, 50000], ['c', '2026-09-28', 50000, 77097], ['d', '2026-09-28', 60000, 70000]]);
+  // An edit undone the same day is no change.
+  assert.deepEqual(gabungUbahSehari([u('2026-09-28', 50000, 60000), u('2026-09-28', 60000, 50000)]), []);
+  // The merged change is judged normally (not 'campur') and the store check is no longer mixed.
+  const data = { dataSiapEvaluasi: true, kampanye: [], riwayatSetelan: gabungUbahSehari([u('2026-09-28', 50000, 76129), u('2026-09-28', 76129, 77097)]) };
+  assert.equal(E.hasilIklan(data, 'p', '2026-10-13', 6).status, 'data'); // no campaign data in this fixture, but not 'campur'
+  assert.notEqual(E.evaluasiPerubahan(data, null, '2026-10-13').status, 'campur');
+});

@@ -89,6 +89,8 @@ same way. Read-only accounts only reload stored data. Hover (desktop) for the ex
   decisions, setting-change history with 7 days before/after (campaign ROAS and store profit per day),
   profit per month/week/day, products, HPP, campaigns, daily ad figures and every order item. It contains
   no passwords, Shopee tokens or buyer data. Built without extra dependencies (`xlsx.js`, `eksporData.js`).
+- **Hitungan iklan:** the data period and payout ratio used for the ads maths, the paid-order rate
+  override, and a short guide to how the ad advice is chosen.
 
 ### Dashboard
 On a wide screen: store profit and shortcut cards on the left, the weekly tasks on the right. On a
@@ -154,10 +156,12 @@ phone: profit, then tasks, then shortcuts.
 
 ### Analisis Iklan
 Ads data (last 90 days, every product campaign, plus the budget and target set in Seller Centre) comes
-from Shopee automatically. The page shows the **running ads in one table, grouped in five sections**. Each
-row: product · current target and budget (orange tag when the ad ends soon) · what to do · result = profit
-or loss on the advertised product itself over the latest seven mature days (today−14 to today−8), with
-ad spend and sales. On phones each row stacks. The groups, most urgent first:
+from Shopee automatically. A summary line (running ads, total daily budget, how many need work) sits above
+the **running ads in one table, grouped in five sections**. Each row: product with its current target and
+budget (orange tag when the ad ends soon) · what to do · result = profit or loss on the advertised product
+itself over the latest seven mature days (today−14 to today−8), with ad spend and sales. **Rincian** on a
+row opens its numbers: direct ROAS vs the minimum, Shopee's ROAS and recommended range, price/HPP, margin,
+paid rate and that product's campaigns. On phones each row stacks. The groups, most urgent first:
 
 1. **Hentikan** (red): turn the ad off. Only when price ≤ cost or no ad orders are ever paid.
 2. **Ganti** (red): a big loser (see "Ganti iklan" above). The row names the product to advertise instead.
@@ -183,10 +187,12 @@ How each ad's change is chosen (the trial checks above take priority over this l
   at the limit. At or above it: a losing ad → **Kurangi modal** (halve the budget); a "belum tentu" ad
   above the limit → lowered by at most 20% per step towards the limit.
 
-**Rincian lengkap (untuk Aaron)** (collapsed, at the bottom): summary tiles, the weekly store-profit
-budget check (last 4 complete weeks vs the 4 before; the attribution ratio), the full decision table with
-Shopee's recommended target range, every product ever advertised with its zone and ROAS minimum, the
-paid-rate override and the reading guide.
+Below the table:
+- **Untung toko per minggu:** store profit after ads vs ad spend for the last 8 weeks, with the budget
+  check (last 4 complete weeks vs the 4 before) and the daily budget if every change is applied.
+- **Iklan yang sudah selesai** (collapsed): products advertised in the last 90 days that are not running
+  now, with direct ROAS, profit and zone, so losing ads aren't repeated.
+- The paid-rate override and the reading guide are in Pengaturan → Hitungan iklan.
 
 The ads CSV from Seller Centre can still be uploaded under "Cadangan" if the automatic data fails.
 
@@ -208,7 +214,7 @@ The ads CSV from Seller Centre can still be uploaded under "Cadangan" if the aut
 - **Paid-order rate:** Shopee counts ad sales when an order is *placed*, including orders later
   cancelled, unpaid or returned. The app measures the share that actually became sales from the shop's
   own order statuses (orders from 90 to 14 days ago, per product where there's enough data).
-  - A value typed under "Semua produk & rincian" overrides it.
+  - A value typed in Pengaturan → Hitungan iklan overrides it.
   - It is 85% when there isn't enough data.
 - **ROAS minimum** = 1 ÷ (margin × paid-order rate). It estimates direct-product break-even under the
   price, payout and paid-rate assumptions; cross-product contribution is not measured by this formula.

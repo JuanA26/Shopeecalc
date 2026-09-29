@@ -378,68 +378,18 @@
           <!-- Iklan berjalan per kelompok: Hentikan · Ganti · Ubah · Masa Belajar · Lanjutkan (renderGrupIklan) -->
           <div id="grupIklan"></div>
 
-          <!-- Rincian untuk pemilik (dilipat): angka, anggaran mingguan, tabel lengkap -->
-          <details class="kartu kartu-details" id="rincianIklan">
-            <summary>Rincian lengkap (untuk Aaron)</summary>
-            <div class="isi-details">
-          <p id="catatanRasioIklan" class="keterangan catatan-info"></p>
-          <p class="keterangan catatan-info">Perkiraan untung iklan belum menghitung pengembalian Saldo 1:1 dari Proteksi ROAS. Kredit ini hanya ada jika Shopee menyatakan iklan memenuhi syarat.</p>
-
-          <div class="grid-ringkasan">
-            <div class="kartu-ringkasan kartu-utama">
-              <div class="label-ringkasan">Untung Toko Minggu Lalu</div>
-              <div class="angka-ringkasan" id="iklanUntung">-</div>
-              <div class="keterangan-ringkasan" id="iklanKetUntung">Setelah biaya iklan · buka Kalkulator Margin untuk memuat data</div>
-            </div>
-            <div class="kartu-ringkasan">
-              <div class="label-ringkasan">Biaya Iklan Sekarang</div>
-              <div class="angka-ringkasan" id="iklanModalSekarang">-</div>
-              <div class="keterangan-ringkasan" id="iklanKetModal">Isi Modal Harian tiap iklan di tabel bawah</div>
-            </div>
-            <div class="kartu-ringkasan kartu-merah" id="kartuIklanRugi">
-              <div class="label-ringkasan">Perlu Diubah di Seller Centre</div>
-              <div class="angka-ringkasan" id="iklanRugi">0 iklan</div>
-              <div class="keterangan-ringkasan" id="iklanKetRugi">-</div>
-            </div>
-            <div class="kartu-ringkasan kartu-peringatan tersembunyi" id="kartuIklanBelumHpp">
-              <div class="label-ringkasan">Belum Ada Harga Modal</div>
-              <div class="angka-ringkasan" id="iklanBelumHpp">0 produk</div>
-              <div class="keterangan-ringkasan" id="iklanKetBelumHpp"><span class="titik titik-kuning"></span>-</div>
-            </div>
-          </div>
-
-
-          <div class="rincian-bagian" id="kartuMingguan">
-            <h3>Anggaran iklan (untung toko per minggu)</h3>
+          <!-- Iklan secara keseluruhan: untung toko setelah iklan per minggu (renderMingguan) -->
+          <div class="kartu kartu-mingguan" id="kartuMingguan">
+            <h2>Untung toko per minggu</h2>
             <p class="aturan-mingguan" id="aturanMingguan"></p>
-            <details class="details-dalam">
-              <summary>Untung toko per minggu</summary>
-              <div class="grafik-mingguan" id="grafikMingguan"></div>
-              <div class="tabel-scroll tabel-mingguan-bungkus">
-                <table id="tabelMingguan">
-                  <thead>
-                    <tr>
-                      <th>Minggu</th>
-                      <th class="kolom-angka">Terjual</th>
-                      <th class="kolom-angka" title="Penghasilan bersih dari Shopee dikurangi harga modal">Untung Kotor</th>
-                      <th class="kolom-angka">Biaya Iklan</th>
-                      <th class="kolom-angka">Untung Setelah Iklan</th>
-                      <th class="kolom-angka" title="Pcs yang Shopee catat sebagai hasil iklan (termasuk produk lain dan pesanan batal) dibanding pcs yang benar-benar dibayar minggu itu">Diklaim Iklan</th>
-                    </tr>
-                  </thead>
-                  <tbody id="isiTabelMingguan"></tbody>
-                </table>
-              </div>
-              <p class="keterangan keterangan-tabel" id="catatanMingguan"></p>
-            </details>
+            <div class="grafik-mingguan" id="grafikMingguan"></div>
           </div>
 
-          <div class="rincian-bagian">
-            <div class="baris-filter">
-              <div class="baris-filter-judul">
-                <h3>Tabel keputusan</h3>
-                <span id="infoKeputusan" class="info-jumlah-data"></span>
-              </div>
+          <!-- Hanya untuk data dari file CSV (cadangan): isi Modal Harian dan Target ROAS sendiri. -->
+          <div class="kartu tersembunyi" id="bagianKeputusan">
+            <div class="judul-bagian">
+              <h2>Setelan iklan (file)</h2>
+              <span id="infoKeputusan" class="info-jumlah-data"></span>
             </div>
             <p class="keterangan keterangan-tabel" id="ketTabelKeputusan">Isi <strong>Modal Harian</strong> dan <strong>Target ROAS</strong> yang sekarang terpasang di Seller Centre (sekali saja, disimpan). Klik baris untuk rincian.</p>
             <div class="tabel-scroll">
@@ -460,68 +410,34 @@
             </div>
           </div>
 
-          <div class="rincian-bagian">
-            <h3>Semua produk yang pernah diiklankan</h3>
-            <div class="pengaturan-iklan">
-              <label for="inputTingkatCair">Dari 100 pesanan iklan, berapa yang benar-benar dibayar?</label>
-              <span class="sel-setelan"><input type="number" id="inputTingkatCair" class="input-setelan" min="1" max="100" step="1" placeholder="85"><span class="prefix">%</span></span>
-              <small>Shopee menghitung omzet iklan saat pesanan dibuat, termasuk yang lalu batal / tidak dibayar. Kosong = diukur otomatis dari status pesanan Shopee toko ini (angka abu-abu di kotak; 85% kalau datanya belum cukup). Isi hanya kalau ingin menimpanya.</small>
-            </div>
-            <div class="baris-filter">
-              <div class="baris-filter-judul">
-                <span id="infoJumlahIklan" class="info-jumlah-data"></span>
+          <!-- Iklan yang sudah selesai (90 hari): catatan supaya iklan yang rugi tidak diulang -->
+          <details class="kartu kartu-details kartu-iklan-selesai" id="kartuIklanSelesai">
+            <summary>Iklan yang sudah selesai <span class="summary-sub" id="infoJumlahIklan"></span></summary>
+            <div class="isi-details">
+              <p class="keterangan">90 hari terakhir. Yang rugi jangan diiklankan lagi dengan setelan yang sama.</p>
+              <div class="tabel-scroll">
+                <table id="tabelIklan">
+                  <colgroup>
+                    <col style="width:38%"><col style="width:14%"><col style="width:16%">
+                    <col style="width:16%"><col style="width:16%">
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th class="th-urut" data-urut="namaProduk">Produk</th>
+                      <th class="th-urut kolom-angka" data-urut="biaya" title="Total biaya iklan produk ini dalam 90 hari">Biaya</th>
+                      <th class="th-urut kolom-angka" data-urut="roasLangsung" title="ROAS langsung (hanya produk ini) dibanding ROAS minimum. Kecil: ROAS versi Shopee.">ROAS langsung</th>
+                      <th class="th-urut kolom-angka" data-urut="untungLangsung" title="Untung setelah biaya iklan, hanya dari produk ini sendiri. Kecil: versi Shopee (termasuk produk lain yang ikut terbeli).">Untung</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="isiTabelIklan"></tbody>
+                </table>
               </div>
-              <div class="input-ikon">
-                <svg class="ikon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                <input type="text" id="inputCariIklan" placeholder="Cari nama produk / ID Produk...">
-              </div>
-            </div>
-            <div class="pill-filter-row">
-              <button class="pill-filter aktif" data-filter-iklan="semua">Semua</button>
-              <button class="pill-filter" data-filter-iklan="untung">Untung</button>
-              <button class="pill-filter" data-filter-iklan="abu">Belum tentu</button>
-              <button class="pill-filter" data-filter-iklan="rugi">Rugi</button>
-              <button class="pill-filter" data-filter-iklan="jeda">Jeda</button>
-              <button class="pill-filter" data-filter-iklan="tunggu">Tunggu</button>
-              <button class="pill-filter" data-filter-iklan="isi-hpp">Belum Ada HPP</button>
-            </div>
-            <div class="tabel-scroll">
-              <table id="tabelIklan">
-                <colgroup>
-                  <col style="width:30%"><col style="width:11%"><col style="width:11%">
-                  <col style="width:11%"><col style="width:12%"><col style="width:25%">
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th class="th-urut" data-urut="namaProduk">Produk</th>
-                    <th class="th-urut kolom-angka" data-urut="biaya" title="Total biaya iklan produk ini dalam periode file">Biaya Iklan</th>
-                    <th class="th-urut kolom-angka" data-urut="roasShopee" title="ROAS yang sedang ditampilkan Shopee (Efektifitas Iklan).">ROAS di Shopee</th>
-                    <th class="th-urut kolom-angka" data-urut="roasImpas" title="ROAS langsung minimum: di bawah ini iklan rugi dari produk itu sendiri">ROAS Minimum</th>
-                    <th class="th-urut kolom-angka" data-urut="untungLuas" title="Untung setelah biaya iklan. Atas: hitungan Shopee (termasuk produk lain yang ikut terbeli). Bawah: hitungan ketat, hanya produk ini.">Untung Setelah Iklan</th>
-                    <th>Di Seller Centre</th>
-                  </tr>
-                </thead>
-                <tbody id="isiTabelIklan"></tbody>
-              </table>
-            </div>
-            <details class="details-dalam">
-              <summary>Cara membaca halaman ini</summary>
-              <ul class="daftar-catatan">
-                <li><strong>Anggaran</strong> ditentukan dari untung toko per minggu: kalau biaya iklan naik tapi untung setelah iklan tidak naik, iklan hanya mengambil penjualan yang memang akan terjadi &rarr; jangan tambah Modal Harian dulu. Saran per iklan adalah aturan praktis; hasil perubahan (di Dashboard) yang memutuskan.</li>
-                <li><strong>ROAS minimum</strong> = di bawah ini iklan rugi setelah potongan Shopee (&plusmn;22%), harga modal, dan pesanan yang batal. Dibandingkan dengan ROAS <em>langsung</em>. Di atasnya belum tentu untung, karena sebagian penjualan memang akan terjadi tanpa iklan &mdash; itu sebabnya untung toko per minggu tetap dicek.</li>
-                <li><strong>Untung Setelah Iklan</strong> per produk: angka atas memakai hitungan Shopee (termasuk produk lain yang ikut terbeli dalam 7 hari), angka bawah hanya produk itu sendiri. Yang benar ada di antara keduanya. Produk yang sedang beriklan dinilai dari kampanye yang berjalan saja, bukan gabungan 3 bulan.</li>
-                <li><strong>Tujuannya untung toko setelah iklan</strong>, bukan ROAS setinggi-tingginya. Iklan yang rugi sedikit tidak dimatikan: target dinaikkan pelan-pelan supaya Shopee hanya membayar pembeli yang lebih mungkin beli. Iklan yang <strong>rugi besar</strong> (ROAS langsung &lt; 0,6 &times; minimum, rugi &ge; Rp 100 rb, &ge; 10 hari iklan) <strong>diganti</strong>: menaikkan target tidak cukup untuk menutupnya. Penggantinya produk yang dulu untung dari iklan, atau yang laku tanpa iklan. Kalau belum ada pengganti &rarr; kurangi Modal Harian 50%.</li>
-                <li><strong>Untung</strong> = ROAS langsung (hanya produk yang diiklankan) &ge; ROAS minimum. Kalau Modal Harian hampir selalu habis &rarr; tambah modal 20%. <strong>Belum tentu</strong> = hanya untung kalau dihitung dengan produk lain (ROAS Shopee &ge; minimum). <strong>Rugi</strong> = ROAS Shopee pun di bawah minimum. Belum tentu dan rugi &rarr; naikkan Target ROAS 20% (panduan Shopee: paling banyak 20% sekali ubah).</li>
-                <li><strong>Batas target</strong> = rekomendasi tertinggi Shopee &times; 1,25. Di atas itu iklan hampir tidak tayang. Sudah di batas (atau di atasnya) tapi masih rugi &rarr; kurangi Modal Harian 50%, jangan naikkan target lagi. Belum tentu untung tapi target di atas batas &rarr; turunkan bertahap ke batas.</li>
-                <li><strong>Satu perubahan per iklan, lalu tunggu 15 hari</strong> (7 hari hasil + 7 hari pesanan yang masih tercatat). Iklan baru atau baru diubah ada di <strong>Masa Belajar</strong>. Perubahan di Seller Centre terbaca otomatis saat sinkron. <strong>Jeda</strong> hanya kalau harga di bawah modal atau tidak ada pesanan yang dibayar.</li>
-              </ul>
-            </details>
             </div>
           </details>
         </div>
 
-        <div class="kartu kartu-sumber">
-          <h2>Sumber data</h2>
+        <div class="sumber-iklan">
           <p id="statusIklanShopee" class="keterangan">Memuat data iklan...</p>
           <details class="details-dalam" id="detailsUnggahIklan">
             <summary>Cadangan: unggah file dari Seller Centre</summary>
@@ -578,6 +494,26 @@
               <summary>Log server (60 terbaru)</summary>
               <div id="isiLogServer"><p class="keterangan">Memuat...</p></div>
             </details>
+          </div>
+          <div class="kartu kartu-hitungan-iklan">
+            <h2>Hitungan iklan</h2>
+            <p id="catatanRasioIklan" class="keterangan catatan-info"></p>
+            <div class="pengaturan-iklan">
+              <label for="inputTingkatCair">Dari 100 pesanan iklan, berapa yang benar-benar dibayar?</label>
+              <span class="sel-setelan"><input type="number" id="inputTingkatCair" class="input-setelan" min="1" max="100" step="1" placeholder="85"><span class="prefix">%</span></span>
+              <small>Kosong = diukur otomatis dari status pesanan Shopee toko ini (angka abu-abu di kotak; 85% kalau datanya belum cukup). Isi hanya kalau ingin menimpanya.</small>
+            </div>
+            <ul class="daftar-catatan">
+              <li><strong>ROAS minimum</strong> = di bawah ini iklan rugi setelah potongan Shopee (&plusmn;22%), harga modal, dan pesanan yang batal. Dibandingkan dengan ROAS <em>langsung</em> (hanya produk yang diiklankan).</li>
+              <li><strong>Untung</strong> per produk: angka besar hanya dari produk itu sendiri; angka kecil versi Shopee (termasuk produk lain yang ikut terbeli dalam 7 hari). Yang benar ada di antara keduanya.</li>
+              <li><strong>Status</strong>: <strong>Untung</strong> = ROAS langsung &ge; minimum. <strong>Belum tentu</strong> = hanya untung kalau produk lain yang ikut terbeli dihitung. <strong>Rugi</strong> = versi Shopee pun di bawah minimum.</li>
+              <li><strong>Hasil 7 hari</strong> = 7 hari terakhir yang sudah matang (pesanan tidak bisa batal lagi), hanya dari produk itu sendiri.</li>
+              <li><strong>Rugi sedikit</strong> &rarr; naikkan Target ROAS 20% (panduan Shopee: paling banyak 20% sekali ubah), sampai batas = rekomendasi tertinggi Shopee &times; 1,25. Di batas dan masih rugi &rarr; kurangi Modal Harian 50%.</li>
+              <li><strong>Rugi besar</strong> (ROAS langsung &lt; 0,6 &times; minimum, rugi &ge; Rp 100 rb, &ge; 10 hari) &rarr; <strong>ganti</strong> dengan produk yang dulu untung dari iklan, atau yang laku tanpa iklan. Tidak ada pengganti &rarr; kurangi Modal Harian 50%.</li>
+              <li><strong>Untung</strong> dan Modal Harian hampir selalu habis &rarr; tambah modal 20%. Jangan tambah kalau untung toko per minggu tidak ikut naik.</li>
+              <li><strong>Satu perubahan, lalu tunggu 15 hari</strong> (7 hari hasil + 7 hari pesanan yang masih tercatat). Perubahan di Seller Centre terbaca otomatis saat sinkron. <strong>Jeda</strong> hanya kalau harga di bawah modal atau tidak ada pesanan yang dibayar.</li>
+              <li>Belum menghitung pengembalian Saldo 1:1 dari Proteksi ROAS (hanya ada kalau Shopee menyatakan iklan memenuhi syarat).</li>
+            </ul>
           </div>
         </div>
       </section>

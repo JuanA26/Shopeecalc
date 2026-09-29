@@ -1222,10 +1222,10 @@ tombolImporCsv.addEventListener('click', async () => {
 let dataIklan = null;       // { produk, kampanye, ringkasan, sumberRasio, periode, namaToko }
 let sortKolomIklan = 'biaya';
 let sortArahIklan = -1;     // biaya terbesar di atas: di situ uang paling banyak dipertaruhkan
-let filterIklan = 'semua';  // 'semua' | zona vonis: 'untung' | 'abu' | 'rugi' | 'jeda' | 'tunggu' | 'isi-hpp'
 const produkTerbuka = new Set(); // idProduk yang rincian kampanyenya sedang dibuka
-let grupBerakhirTerbuka = false;   // grup "Sudah berakhir" di tabel terlipat sampai diklik
 const keputusanTerbuka = new Set(); // baris tabel keputusan yang rinciannya sedang dibuka
+const iklanTerbuka = new Set();     // iklan berjalan yang "Rincian"-nya sedang dibuka
+let kepGrupTerakhir = null;         // keputusan terakhir yang ditampilkan di daftar iklan berjalan
 let daftarSetelan = new Map();      // idProduk → { target_roas, modal_harian } (dari GET /api/iklan/setelan)
 let aturanTerakhir = null;          // hasil aturanMingguan() terakhir, dipakai tabel keputusan
 let pengaturanToko = {};            // { tingkat_cair: '0.85', ... } dari GET /api/pengaturan
@@ -1290,7 +1290,6 @@ const namaFileIklan = document.getElementById('namaFileIklan');
 const pesanErrorIklan = document.getElementById('pesanErrorIklan');
 const pesanLoadingIklan = document.getElementById('pesanLoadingIklan');
 const areaIklan = document.getElementById('areaIklan');
-const inputCariIklan = document.getElementById('inputCariIklan');
 const isiTabelIklan = document.getElementById('isiTabelIklan');
 const infoJumlahIklan = document.getElementById('infoJumlahIklan');
 
@@ -1379,7 +1378,6 @@ tombolProsesIklan.addEventListener('click', async () => {
     dataIklan = body;
     statusIklanShopee.innerHTML = `Memakai file yang diunggah (<strong>${escapeHtml(body.periode || '')}</strong>). Muat ulang halaman untuk kembali ke data otomatis dari Shopee.`;
     produkTerbuka.clear();
-    grupBerakhirTerbuka = false;
     renderIklan();
     areaIklan.classList.remove('tersembunyi');
   } catch (err) {
@@ -1585,8 +1583,10 @@ function aturanMingguan(data) {
 }
 
 function grafikMingguanSvg(minggu) {
-  const W = 720, H = 170, padKiri = 8, padBawah = 26, padAtas = 14;
   const n = minggu.length;
+  // Minggu rugi: label angkanya di bawah batang, jadi beri ruang supaya tidak menimpa tanggal.
+  const adaRugi = minggu.some((t) => t.untungSetelahIklan < 0);
+  const W = 720, H = adaRugi ? 184 : 170, padKiri = 8, padBawah = adaRugi ? 40 : 26, padAtas = 14;
   const lebarSlot = (W - padKiri * 2) / n;
   const maks = Math.max(1, ...minggu.map((t) => Math.max(Math.abs(t.untungSetelahIklan), t.biayaIklan, t.untungKotor)));
   const tinggiArea = H - padAtas - padBawah;
@@ -1610,51 +1610,24 @@ function grafikMingguanSvg(minggu) {
 }
 
 function renderMingguan() {
-  const kartu = document.getElementById('kartuMingguan');
   const aturanEl = document.getElementById('aturanMingguan');
   const grafik = document.getElementById('grafikMingguan');
-  const isi = document.getElementById('isiTabelMingguan');
-  const catatan = document.getElementById('catatanMingguan');
   const data = untungTokoPerMinggu();
   if (!data || !data.minggu.length) {
     aturanTerakhir = null;
     aturanEl.className = 'aturan-mingguan';
-    aturanEl.innerHTML = 'Buka Kalkulator Margin (data penjualan) untuk melihat apakah anggaran iklan perlu diubah.';
-    grafik.innerHTML = ''; isi.innerHTML = ''; catatan.textContent = '';
+    aturanEl.innerHTML = 'Buka Kalkulator Margin (data penjualan) untuk melihat untung toko per minggu.';
+    grafik.innerHTML = '';
     return null;
   }
-  // Tampilkan sampai 8 minggu terakhir yang punya data Income.
-  const tampil = data.minggu.slice(-8);
+  // Grafik: sampai 8 minggu terakhir. Aturan satu kalimat di atasnya (dipakai juga untuk keputusan modal).
   const aturan = aturanMingguan(data);
   aturanTerakhir = aturan;
   aturanEl.className = `aturan-mingguan ${aturan.kelas}`;
-  const lengkapIklan = data.minggu.filter((t) => t.lengkap && t.iklanLengkap && t.klaimIklan !== null);
-  let klaim = '';
-  if (lengkapIklan.length >= 2) {
-    const akhir = lengkapIklan[lengkapIklan.length - 1], awal = lengkapIklan[0];
-    const pct = (t) => `${Math.round(t.klaimIklan * 100)}%`;
-    klaim = `<small class="klaim-iklan">Rasio pcs atribusi iklan terhadap pcs toko <strong>${pct(akhir)}</strong> minggu ${labelMinggu(akhir.mulai)}–${labelMinggu(akhir.selesai)} (awal periode ${pct(awal)}). Ini bukan ukuran tambahan penjualan. Uji pengurangan iklan untuk menilai dampaknya.</small>`;
-  }
-  aturanEl.innerHTML = `<span>${escapeHtml(aturan.teks)}</span>` +
-    (aturan.detail ? `<small>${escapeHtml(aturan.detail)}</small>` : '') + klaim;
-  grafik.innerHTML = grafikMingguanSvg(tampil);
-  const lengkapTerakhir = [...data.minggu].reverse().find((t) => t.lengkap);
-  isi.innerHTML = tampil.map((t) => {
-    const belum = !t.lengkap || !t.iklanLengkap;
-    const kelas = (belum ? 'minggu-belum' : '') + (lengkapTerakhir && t.mulai === lengkapTerakhir.mulai ? ' minggu-terakhir' : '');
-    const iklan = !dataIklan ? '<span class="teks-redup">-</span>' : t.iklanLengkap ? formatRupiah(t.biayaIklan) : `<span title="Di luar periode data iklan">${formatRupiah(t.biayaIklan)}*</span>`;
-    return `<tr class="${kelas.trim()}">
-      <td data-label="Minggu">${labelMinggu(t.mulai)} – ${labelMinggu(t.selesai)}${belum ? ' <span class="pill pill-abu">belum lengkap</span>' : ''}</td>
-      <td class="kolom-angka" data-label="Terjual">${t.adaIncome ? `${t.pcs} pcs` : 'Data belum lengkap'}</td>
-      <td class="kolom-angka" data-label="Untung Kotor">${t.untungKotor === null ? '—' : formatRupiah(t.untungKotor)}</td>
-      <td class="kolom-angka" data-label="Biaya Iklan">${iklan}</td>
-      <td class="kolom-angka ${t.untungSetelahIklan === null ? 'teks-redup' : t.untungSetelahIklan >= 0 ? 'untung-positif' : 'untung-negatif'}" data-label="Untung Setelah Iklan">${t.untungSetelahIklan === null ? '—' : formatRupiah(t.untungSetelahIklan)}</td>
-      <td class="kolom-angka" data-label="Diklaim Iklan">${t.klaimIklan === null ? '<span class="teks-redup">-</span>' : `${Math.round(t.klaimIklan * 100)}%`}</td>
-    </tr>`;
-  }).join('');
-  catatan.textContent = `Minggu Senin–Minggu menurut tanggal pesanan. "Belum lengkap" = minggu yang belum lewat ${JEDA_LENGKAP_HARI} hari (pesanan masih bisa batal) atau terpotong awal data. Pesanan yang dananya belum cair dihitung dengan perkiraan. Untung kotor untuk produk tanpa HPP diperkirakan dari margin produk lain minggu itu. "Diklaim iklan" = pcs yang Shopee catat sebagai hasil iklan (termasuk produk lain & pesanan batal) dibanding pcs yang benar-benar dibayar.`;
-  catatan.textContent += ' Minggu tanpa baris pesanan tetap menampilkan biaya iklan; untung belum diketahui (?).';
-  return { data, lengkapTerakhir };
+  aturanEl.innerHTML = `<span>${escapeHtml(aturan.teks)}</span>` + (aturan.detail ? `<small>${escapeHtml(aturan.detail)}</small>` : '');
+  grafik.innerHTML = grafikMingguanSvg(data.minggu.slice(-8)) +
+    '<p class="catatan-grafik">Senin–Minggu, menurut tanggal pesanan. Batang pucat = minggu yang belum lengkap (pesanan masih bisa batal).</p>';
+  return { data, lengkapTerakhir: [...data.minggu].reverse().find((t) => t.lengkap) };
 }
 
 function renderRingkasanIklan(r) {
@@ -1663,9 +1636,9 @@ function renderRingkasanIklan(r) {
   const periode = dataIklan.periode ? `${dariApi() ? 'Data iklan' : 'Periode file'}: <strong>${escapeHtml(dataIklan.periode)}</strong> · ${r.jumlahKampanye} kampanye, ${r.jumlahProduk} produk. ` : '';
   const cairPersen = Math.round((r.tingkatCair ?? 0.85) * 100);
   const sumberCair = {
-    pengaturan: ' — angka yang diisi sendiri di bagian "Semua produk &amp; rincian".',
+    pengaturan: ' — angka yang diisi sendiri di bawah.',
     terukur: ' — diukur dari status pesanan Shopee toko ini (90–14 hari lalu); tiap produk memakai angkanya sendiri kalau pesanannya cukup.',
-  }[dataIklan.sumberTingkatCair] || ' — angka standar, bisa diubah di bagian "Semua produk &amp; rincian".';
+  }[dataIklan.sumberTingkatCair] || ' — angka standar, bisa diubah di bawah.';
   const catatanCair = ` Pesanan iklan dihitung <strong>${cairPersen}%</strong> dibayar (sisanya batal / tidak dibayar / diretur)` + sumberCair;
   // Kotak isian: kosong = pakai angka terukur (ditunjukkan sebagai placeholder).
   const terukur = dataIklan.tingkatCairTerukurToko;
@@ -1678,57 +1651,15 @@ function renderRingkasanIklan(r) {
     catatan.classList.add('catatan-default');
   }
 
-  // Biaya iklan sekarang = Σ Modal Harian yang diisi untuk iklan yang sedang berjalan.
+  // Widget "Analisis Iklan" di Dashboard: biaya iklan sekarang, untung toko minggu lalu, perlu diubah.
   const kep = keputusanBerjalan();
-  const modalEl = document.getElementById('iklanModalSekarang');
-  const ketModal = document.getElementById('iklanKetModal');
-  if (kep.modalSekarang > 0) {
-    modalEl.textContent = `${formatRupiahRingkas(kep.modalSekarang)}/hari`;
-    ketModal.textContent = `≈ ${formatRupiahRingkas(kep.modalSekarang * 7)}/minggu` +
-      (kep.modalSaran !== null && kep.modalSaran !== kep.modalSekarang ? ` → saran ${formatRupiahRingkas(kep.modalSaran)}/hari` : '') +
-      (kep.belumDiisi ? ` · ${kep.belumDiisi} iklan belum diisi modalnya` : '');
-  } else {
-    modalEl.textContent = '-';
-    ketModal.textContent = dariApi()
-      ? (kep.baris.length ? 'Anggaran iklan tanpa batas di Seller Centre' : 'Tidak ada iklan yang sedang berjalan') + ` · biaya ${formatRupiahRingkas(r.totalBiaya)} dalam 90 hari`
-      : `Isi Modal Harian tiap iklan di tabel bawah · biaya ${formatRupiahRingkas(r.totalBiaya)} dalam periode file`;
-  }
-
-  // Untung toko minggu lengkap terakhir (dari file Income), vs minggu sebelumnya.
-  const untung = document.getElementById('iklanUntung');
-  const ketUntung = document.getElementById('iklanKetUntung');
   const wUntung = document.getElementById('widgetIklanUntung');
   const mingguan = untungTokoPerMinggu();
   const lengkap = mingguan ? mingguan.minggu.filter((t) => t.lengkap) : [];
-  if (lengkap.length) {
-    const akhir = lengkap[lengkap.length - 1], sebelum = lengkap[lengkap.length - 2];
-    untung.textContent = formatRupiah(akhir.untungSetelahIklan);
-    untung.classList.toggle('angka-negatif', akhir.untungSetelahIklan < 0);
-    wUntung.textContent = formatRupiah(akhir.untungSetelahIklan);
-    wUntung.classList.toggle('angka-negatif', akhir.untungSetelahIklan < 0);
-    const banding = sebelum ? ` · minggu sebelumnya ${formatRupiahRingkas(sebelum.untungSetelahIklan)}` : '';
-    ketUntung.textContent = `Minggu ${labelMinggu(akhir.mulai)}–${labelMinggu(akhir.selesai)}, setelah biaya iklan${banding}`;
-  } else {
-    untung.textContent = '-'; untung.classList.remove('angka-negatif');
-    wUntung.textContent = '-'; wUntung.classList.remove('angka-negatif');
-    ketUntung.textContent = 'Setelah biaya iklan · buka Kalkulator Margin untuk memuat data';
-  }
-
-  const hitung = (k) => kep.baris.filter((b) => b.keputusan === k).length;
+  const akhir = lengkap[lengkap.length - 1];
+  wUntung.textContent = akhir ? formatRupiah(akhir.untungSetelahIklan) : '-';
+  wUntung.classList.toggle('angka-negatif', !!akhir && akhir.untungSetelahIklan < 0);
   const perluTindakan = kep.baris.filter((b) => PERLU_TINDAKAN.has(b.keputusan)).length;
-  document.getElementById('iklanRugi').textContent = `${perluTindakan} iklan`;
-  document.getElementById('iklanKetRugi').innerHTML =
-    [['kembalikan', 'titik-kuning', 'kembalikan target'], ['tinjau', 'titik-kuning', 'periksa hasil'], ['tambah', 'titik-hijau', 'tambah modal'], ['naikkan', 'titik-biru', 'naikkan target'], ['turunkan', 'titik-kuning', 'target terlalu tinggi'],
-      ['kurangi', 'titik-oranye-tua', 'kurangi modal'], ['ganti', 'titik-merah', 'ganti iklan'], ['jeda', 'titik-merah', 'jeda'], ['lanjut', 'titik-hijau', 'biarkan'], ['tunggu', 'titik-abu', 'tunggu']]
-      .filter(([k]) => hitung(k)).map(([k, titik, teks]) => `<span class="titik ${titik}"></span>${hitung(k)} ${teks}`).join(' · ') || '-';
-  document.getElementById('kartuIklanRugi').classList.toggle('kartu-merah', perluTindakan > 0);
-
-  document.getElementById('iklanBelumHpp').textContent = `${r.jumlahBelumHpp} produk`;
-  document.getElementById('iklanKetBelumHpp').innerHTML =
-    `<span class="titik titik-kuning"></span>Biaya ${formatRupiahRingkas(r.biayaBelumHpp)} belum bisa dinilai`;
-  document.getElementById('kartuIklanBelumHpp').classList.toggle('tersembunyi', r.jumlahBelumHpp === 0);
-
-  // Widget di Dashboard
   document.getElementById('widgetIklanBiaya').textContent = kep.modalSekarang > 0 ? `${formatRupiahRingkas(kep.modalSekarang)}/hari` : formatRupiah(r.totalBiaya);
   document.getElementById('widgetIklanRugi').textContent = `${perluTindakan} dari ${kep.baris.length} iklan`;
   document.getElementById('widgetIklanKosong').classList.add('tersembunyi');
@@ -1749,124 +1680,115 @@ function urutkanProdukIklan(produk) {
 
 function kelasBarisIklan(p) {
   if (p.aksi === 'isi-hpp') return 'baris-peringatan';
-  if (p.aksi === 'untung') return 'baris-untung';
-  if (p.aksi === 'abu') return 'baris-ragu';
-  if (p.aksi === 'rugi') return 'baris-kurangi';
-  if (p.aksi === 'tunggu' || p.aksi === 'toko') return '';
-  return 'baris-rugi'; // jeda
+  if (p.aksi === 'jeda') return 'baris-rugi';
+  return '';
 }
 const LABEL_AKSI = { 'isi-hpp': ['Isi HPP dulu', 'pill-kuning'], jeda: ['Jeda', 'pill-merah'], rugi: ['Rugi', 'pill-oranye'], abu: ['Belum tentu', 'pill-biru'], untung: ['Untung', 'pill-hijau'], tunggu: ['Tunggu', 'pill-abu'], toko: ['Iklan toko', 'pill-abu'] };
 
-// Satu baris produk di tabel sederhana + (kalau dibuka) baris rincian di bawahnya.
+// Nama produk Shopee ditulis huruf besar semua. Di Analisis Iklan: "Atasan Kaos Wanita 31#…"
+// (lebih mudah dibaca), dipotong di akhir kata.
+const namaRapi = (nama, maks = 46) => {
+  let teks = String(nama || '').replace(/^HAPPY SHOP\s*-\s*/i, '').toLowerCase().replace(/(^|[^a-z0-9'])([a-z])/g, (_, a, b) => a + b.toUpperCase());
+  teks = teks.replace(/\b(Gmv|Roas)\b/g, (k) => k.toUpperCase());
+  if (teks.length <= maks) return teks;
+  teks = teks.slice(0, maks + 1);
+  const spasi = teks.lastIndexOf(' ');
+  return (spasi > maks * 0.6 ? teks.slice(0, spasi) : teks.slice(0, maks)).replace(/[\s,\-–\[(]+$/, '') + '…';
+};
+// "15–21 Sep" (bulan sama) atau "28 Sep – 4 Okt".
+const rentangTanggal = (dari, sampai) => {
+  const [a, b] = [tanggalSingkat(dari), tanggalSingkat(sampai)];
+  const [ha, ...ba] = a.split(' '), [, ...bb] = b.split(' ');
+  return ba.join(' ') === bb.join(' ') ? `${ha}–${b}` : `${a} – ${b}`;
+};
+
+function kampanyePerProdukMap() {
+  const peta = new Map();
+  for (const k of dataIklan.kampanye) {
+    if (!peta.has(k.kodeProduk)) peta.set(k.kodeProduk, []);
+    peta.get(k.kodeProduk).push(k);
+  }
+  return peta;
+}
+
+const warnaUntung = (v) => (v >= 0 ? 'untung-positif' : 'untung-negatif');
+
+// Satu baris produk di tabel "Semua produk" + (kalau dibuka) rinciannya di bawah.
 function barisProdukIklan(p, kampanyePerProduk) {
   const terbuka = produkTerbuka.has(p.idProduk);
   const [labelAksi, pillAksi] = LABEL_AKSI[p.aksi] || ['-', 'pill-abu'];
-  const kelasTindakan = p.aksi === 'untung' ? 'tindakan-untung' : p.aksi === 'isi-hpp' ? 'tindakan-hpp' : p.aksi === 'jeda' ? 'tindakan-rugi' : '';
-  const hppTampil = p.hpp === null ? 'belum diisi' : formatRupiah(p.hpp);
-
-  const warnaUntung = (v) => (v >= 0 ? 'untung-positif' : 'untung-negatif');
-  const untungTampil = p.untungLangsung === null
+  const roasRendah = p.roasImpas !== null && p.roasLangsung !== null && p.roasLangsung < p.roasImpas;
+  const roas = p.aksi === 'toko' || p.roasLangsung === null
+    ? '<span class="teks-redup">-</span>'
+    : `<span class="${roasRendah ? 'untung-negatif' : ''}">${formatRoas(p.roasLangsung)}</span>` +
+      `<small>${p.roasImpas !== null ? `min ${formatRoas(p.roasImpas)} · ` : ''}Shopee ${formatRoas(p.roasShopee)}</small>`;
+  const untung = p.untungLangsung === null
     ? '<span class="teks-redup" title="Belum bisa dihitung — HPP produk ini belum diisi">-</span>'
-    : `<div class="untung-dua" title="Atas: hitungan Shopee (termasuk produk lain yang ikut terbeli). Bawah: hanya produk ini.">
-         <span class="${warnaUntung(p.untungLuas)}"><small>Shopee</small>${formatRupiahRingkas(p.untungLuas)}</span>
-         <span class="${warnaUntung(p.untungLangsung)}"><small>ketat</small>${formatRupiahRingkas(p.untungLangsung)}</span>
-       </div>`;
-
-  // ROAS langsung minimum (impas). Untuk "jeda"/iklan toko tidak relevan (—).
-  let saranTarget = '-';
-  if (p.aksi === 'jeda' || p.aksi === 'toko') saranTarget = '<span class="teks-redup">—</span>';
-  else if (p.roasImpas !== null) saranTarget = `<strong>${formatRoas(p.roasImpas)}</strong>`;
-
-  const roasSekarang = p.roasShopee === null ? '-' : formatRoas(p.roasShopee);
-  const roasKelas = p.roasImpas !== null && p.roasShopee !== null && p.roasShopee < p.roasImpas ? 'untung-negatif' : '';
-
-  const barisProduk = `
+    : `<span class="${warnaUntung(p.untungLangsung)}">${formatRupiahRingkas(p.untungLangsung)}</span>` +
+      `<small>Shopee ${formatRupiahRingkas(p.untungLuas)}</small>`;
+  const baris = `
     <tr class="baris-produk ${kelasBarisIklan(p)}${terbuka ? ' terbuka' : ''}" data-id="${escapeHtml(p.idProduk)}">
       <td class="kolom-nama" data-label="Produk" title="${escapeHtml(p.namaProduk)}">
-        <div class="produk-iklan">
-          <span class="nama"><svg class="ikon panah-baris" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>${escapeHtml(namaSingkat(p.namaProduk, 64))}</span>
-          <span class="sub"><span class="kolom-id">${escapeHtml(p.idProduk)}</span>${p.sedangBerjalan ? `<span class="pill pill-hijau">${p.sedangBerjalan} berjalan</span>` : ''}${p.jumlahKampanye > 1 ? `<span>${p.jumlahKampanye} kampanye</span>` : ''}</span>
-        </div>
+        <span class="nama-produk-iklan"><svg class="ikon panah-baris" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>${escapeHtml(namaRapi(p.namaProduk, 60))}</span>
+        ${p.jumlahKampanye > 1 ? `<small class="teks-redup">${p.jumlahKampanye} kampanye</small>` : ''}
       </td>
-      <td class="kolom-angka" data-label="Biaya Iklan">${formatRupiah(p.biaya)}</td>
-      <td class="kolom-angka ${roasKelas}" data-label="ROAS di Shopee Sekarang">${roasSekarang}</td>
-      <td class="kolom-angka" data-label="ROAS Minimum">${saranTarget}</td>
-      <td class="kolom-angka" data-label="Untung Setelah Iklan">${untungTampil}</td>
-      <td class="kolom-tindakan ${kelasTindakan}" data-label="Di Seller Centre"><span class="pill pill-aksi ${pillAksi}">${labelAksi}</span> ${escapeHtml(p.tindakan)}</td>
+      <td class="kolom-angka" data-label="Biaya">${formatRupiahRingkas(p.biaya)}</td>
+      <td class="kolom-angka sel-dua" data-label="ROAS langsung">${roas}</td>
+      <td class="kolom-angka sel-dua" data-label="Untung">${untung}</td>
+      <td data-label="Status"><span class="pill ${pillAksi}" title="${escapeHtml(p.tindakan || '')}">${labelAksi}</span></td>
     </tr>`;
-
-  if (!terbuka) return barisProduk;
-  return barisProduk + barisRincianIklan(p, kampanyePerProduk, 6);
+  return terbuka ? baris + barisRincianIklan(p, kampanyePerProduk, 5) : baris;
 }
 
-// Baris rincian (dropdown) di bawah satu produk: kotak-kotak angka + tabel tiap kampanye.
-function barisRincianIklan(p, kampanyePerProduk, colspan) {
-  const hppTampil = p.hpp === null ? 'belum diisi' : formatRupiah(p.hpp);
-  const kotak = (label, nilai, ket) => `<div><div class="label-ringkasan">${label}</div><div class="nilai">${nilai}${ket ? ` <small>${ket}</small>` : ''}</div></div>`;
-  const cairPersen = Math.round(((dataIklan && dataIklan.ringkasan.tingkatCair) ?? 0.85) * 100);
-  const dibayar = !p.kampanyeTerukur
-    ? [`≈ ${cairPersen}%`, 'perkiraan (belum ada kampanye yang bisa diukur dari data penjualan)']
-    : p.dibayarMaksTerukur < p.terjualLangsungTerukur
-      ? [`≤ ${p.dibayarMaksTerukur} dari ${p.terjualLangsungTerukur}`, `terukur di ${p.kampanyeTerukur} kampanye yang sudah cair; sisanya pasti batal / tidak dibayar`]
-      : [`≈ ${cairPersen}%`, `${p.kampanyeTerukur} kampanye yang sudah cair tidak menunjukkan pesanan batal; dipakai angka toko`];
-  const b = p.berjalan;
-  const kotakBerjalan = b
-    ? kotak('Kampanye berjalan', `hari ke-${b.hari} · ROAS Shopee <strong>${formatRoas(b.roasShopee)}</strong> · langsung <strong>${formatRoas(b.roasLangsung)}</strong>`,
-        b.untungLangsung === null ? 'biaya ' + formatRupiahRingkas(b.biaya) : `ketat ${formatRupiahRingkas(b.untungLangsung)} · biaya ${formatRupiahRingkas(b.biaya)} — riwayat kampanye`)
+// Rincian satu produk (untuk Aaron): angka penting dalam satu kotak, lalu riwayat kampanyenya.
+// Dipakai di daftar iklan berjalan (b = baris keputusan) dan di tabel "Semua produk" (b = null).
+function panelRincianIklan(p, kampanyePerProduk, b = null) {
+  const m = metrikBerjalan(p);
+  const cairPersen = Math.round((p.tingkatCair ?? (dataIklan && dataIklan.ringkasan.tingkatCair) ?? 0.85) * 100);
+  const dibayar = p.kampanyeTerukur && p.dibayarMaksTerukur < p.terjualLangsungTerukur
+    ? `≤ ${p.dibayarMaksTerukur} dari ${p.terjualLangsungTerukur}`
+    : `≈ ${cairPersen}%`;
+  const rendah = p.roasImpas !== null && m.roasLangsung !== null && m.roasLangsung < p.roasImpas;
+  const item = (label, nilai) => `<div><dt>${label}</dt><dd>${nilai}</dd></div>`;
+  const rek = b && b.rekomendasi && b.rekomendasi.rendah && b.rekomendasi.tinggi
+    ? item('Saran Shopee', `${formatRoas(b.rekomendasi.rendah)}–${formatRoas(b.rekomendasi.tinggi)}${b.batasShopee ? ` <small>batas ${formatRoas(b.batasShopee)}</small>` : ''}`)
     : '';
-  const rincianAngka = `<div class="detail-grid">
-    ${kotakBerjalan}
-    ${kotak('ROAS langsung', `<strong>${formatRoas(p.roasLangsung)}</strong>`, b ? 'gabungan semua kampanye, hanya produk ini' : 'hanya produk ini')}
-    ${kotak('ROAS minimum', formatRoas(p.roasImpas), p.roasImpas === null && p.marginPerRp !== null ? 'tidak mungkin' : 'di bawah ini pasti rugi (sudah termasuk pesanan batal)')}
-    ${kotak('Pesanan iklan dibayar', dibayar[0], dibayar[1])}
-    ${kotak('Margin per Rp omzet', p.marginPerRp === null ? '-' : formatPersen(p.marginPerRp * 100), 'setelah potongan Shopee & HPP')}
-    ${kotak('Omzet versi Shopee', formatRupiahRingkas(p.omzet), `${p.terjual} pcs`)}
-    ${kotak('Omzet langsung', formatRupiahRingkas(p.omzetLangsung), `${p.terjualLangsung} pcs`)}
-    ${kotak('Perkiraan versi Shopee', p.untungLuas === null ? '-' : formatRupiah(p.untungLuas), 'produk lain dihitung dengan margin produk ini; hanya pembanding')}
-    ${kotak('Untung hitungan ketat', p.untungLangsung === null ? '-' : formatRupiah(p.untungLangsung), 'produk ini saja')}
-    ${kotak('Harga jual per pcs', formatRupiahRingkas(p.hargaRata), `HPP ${escapeHtml(hppTampil)} · ${p.sumberHarga === 'income' ? 'dari data penjualan' : p.sumberHarga === 'langsung' ? 'dari penjualan langsung iklan' : 'perkiraan dari omzet Shopee'}`)}
-    ${kotak('Potongan Shopee', p.rasioPencairan ? formatPersen((1 - p.rasioPencairan) * 100) : '-', p.sumberHarga === 'income' ? 'produk ini, dari data penjualan' : 'rata-rata toko')}
-    ${kotak('Mode', escapeHtml(p.modeBidding || '-'), '')}
-  </div>`;
+  const angka = p.aksi === 'toko' ? '' : '<dl class="rincian-angka">' +
+    item('ROAS langsung', `<span class="${rendah ? 'untung-negatif' : ''}">${formatRoas(m.roasLangsung)}</span>`) +
+    item('ROAS minimum', p.roasImpas !== null ? formatRoas(p.roasImpas) : p.marginPerRp !== null ? 'tidak mungkin' : '-') +
+    item('ROAS Shopee', formatRoas(m.roasShopee)) + rek +
+    item('Harga / HPP', `${rupiahPendek(p.hargaRata)} / ${p.hpp === null ? 'belum diisi' : rupiahPendek(p.hpp)}`) +
+    item('Margin', p.marginPerRp === null ? '-' : formatPersen(p.marginPerRp * 100)) +
+    item('Pesanan dibayar', dibayar) +
+    '</dl>';
 
+  const catatan = b ? catatanKeputusanTeks(b).filter((t) => !t.startsWith('Berakhir')) : [p.tindakan].filter(Boolean);
   const kampanye = (kampanyePerProduk.get(p.idProduk) || [])
     .slice()
-    .sort((a, b) => (b.tanggalMulaiIso || '').localeCompare(a.tanggalMulaiIso || ''));
-  const barisKampanye = kampanye
-    .map((k) => `
-      <tr>
-        <td class="nama-kampanye" title="${escapeHtml(k.namaIklan)}">${escapeHtml(namaSingkat(k.namaIklan, 60))}</td>
-        <td>${k.status === 'Berjalan' ? '<span class="pill pill-hijau">Berjalan</span>' : `<span class="pill pill-abu">${escapeHtml(k.status || '-')}</span>`}</td>
-        <td>${escapeHtml(k.modeBidding.replace(/GMV Max /g, '') || '-')}</td>
-        <td>${escapeHtml(k.tanggalMulai)} – ${escapeHtml(k.tanggalSelesai)}</td>
-        <td class="kolom-angka">${formatRupiah(k.biaya)}</td>
-        <td class="kolom-angka" title="Omzet versi Shopee: ${escapeHtml(formatRupiah(k.omzet))}">${formatRupiah(k.omzetLangsung)}</td>
-        <td class="kolom-angka">${formatRoas(k.roasShopee)}</td>
-        <td class="kolom-angka"><strong>${formatRoas(k.roasLangsung)}</strong></td>
-        <td class="kolom-angka" title="${k.capTerukur ? 'Terukur: semua pesanan produk ini di data penjualan pada periode kampanye + 7 hari' : 'Perkiraan dari tingkat pesanan dibayar toko'}">${k.capTerukur ? `≤ ${k.pesananDibayarMaks} / ${k.terjualLangsung}` : `<span class="teks-redup">~${cairPersen}%</span>`}</td>
-        <td class="kolom-angka">${k.untungLangsung === null ? '-' : `<span class="${k.untungLangsung >= 0 ? 'untung-positif' : 'untung-negatif'}">${formatRupiah(k.untungLangsung)}</span>`}</td>
-      </tr>`)
-    .join('');
-
-  return `
-    <tr class="baris-detail">
-      <td colspan="${colspan}" data-label="">
-        ${rincianAngka}
-        <p class="detail-judul">Tiap kampanye</p>
-        <table class="tabel-detail">
-          <thead>
-            <tr>
-              <th>Nama Iklan</th><th>Status</th><th>Mode</th><th>Periode</th>
-              <th class="kolom-angka">Biaya</th><th class="kolom-angka">Omzet Langsung</th>
-              <th class="kolom-angka">ROAS Shopee</th><th class="kolom-angka">ROAS Langsung</th>
-              <th class="kolom-angka" title="Pesanan langsung yang benar-benar dibayar (batas atas terukur) / pesanan langsung menurut Shopee">Dibayar</th>
-              <th class="kolom-angka">Untung / Rugi</th>
-            </tr>
-          </thead>
-          <tbody>${barisKampanye}</tbody>
-        </table>
-      </td>
+    .sort((x, y) => (y.tanggalMulaiIso || '').localeCompare(x.tanggalMulaiIso || ''));
+  const barisKampanye = kampanye.map((k) => {
+    const periode = k.tanggalSelesaiIso ? rentangTanggal(k.tanggalMulaiIso, k.tanggalSelesaiIso) : `${tanggalSingkat(k.tanggalMulaiIso)} – sekarang`;
+    return `<tr>
+      <td title="${escapeHtml(k.namaIklan)}">${k.status === 'Berjalan' ? '<span class="titik titik-hijau" title="Berjalan"></span>' : ''}${periode}</td>
+      <td>${escapeHtml(String(k.modeBidding || '-').replace(/GMV Max /g, ''))}${k.targetRoas ? ` ${formatRoas(k.targetRoas)}` : ''}</td>
+      <td class="kolom-angka">${rupiahPendek(k.biaya)}</td>
+      <td class="kolom-angka">${formatRoas(k.roasLangsung)}</td>
+      <td class="kolom-angka">${k.untungLangsung === null || k.untungLangsung === undefined ? '-' : `<span class="${warnaUntung(k.untungLangsung)}">${rupiahPendek(k.untungLangsung)}</span>`}</td>
     </tr>`;
+  }).join('');
+  return `<div class="rincian-produk">
+    ${angka}
+    ${catatan.map((t) => `<p class="rincian-catatan">${escapeHtml(t)}</p>`).join('')}
+    ${barisKampanye ? `<div class="tabel-scroll tabel-kampanye-bungkus"><table class="tabel-kampanye">
+      <thead><tr><th>Kampanye</th><th>Mode</th><th class="kolom-angka">Biaya</th><th class="kolom-angka" title="ROAS langsung (hanya produk ini)">ROAS</th><th class="kolom-angka" title="Untung setelah iklan, hanya produk ini">Untung</th></tr></thead>
+      <tbody>${barisKampanye}</tbody>
+    </table></div>` : ''}
+    <p class="rincian-id">ID produk ${escapeHtml(p.idProduk)}</p>
+  </div>`;
+}
+
+function barisRincianIklan(p, kampanyePerProduk, colspan) {
+  return `<tr class="baris-detail"><td colspan="${colspan}" data-label="">${panelRincianIklan(p, kampanyePerProduk)}</td></tr>`;
 }
 
 // ====== Keputusan untuk iklan yang sedang berjalan ======
@@ -2259,6 +2181,8 @@ function renderKeputusan() {
     ? '<strong>Modal Harian</strong> dan <strong>Target ROAS</strong> diambil otomatis dari Seller Centre. Klik baris untuk rincian.'
     : 'Isi <strong>Modal Harian</strong> dan <strong>Target ROAS</strong> yang sekarang terpasang di Seller Centre (sekali saja, disimpan). Klik baris untuk rincian.';
   renderGrupIklan(kep);
+  // Data API: setelan & rincian sudah ada di daftar iklan berjalan; tabel ini hanya untuk file CSV.
+  document.getElementById('bagianKeputusan').classList.toggle('tersembunyi', dariApi());
 
   // Baris anggaran (di kartu 1) — angka sekarang → saran, kalau modal sudah diisi.
   if (kep.modalSekarang > 0) {
@@ -2280,11 +2204,7 @@ function renderKeputusan() {
   const perlu = kep.baris.filter((b) => PERLU_TINDAKAN.has(b.keputusan)).length;
   info.textContent = `${kep.baris.length} iklan · ${perlu ? `${perlu} perlu diubah` : 'tidak ada yang perlu diubah'}`;
 
-  const kampanyePerProduk = new Map();
-  for (const k of dataIklan.kampanye) {
-    if (!kampanyePerProduk.has(k.kodeProduk)) kampanyePerProduk.set(k.kodeProduk, []);
-    kampanyePerProduk.get(k.kodeProduk).push(k);
-  }
+  const kampanyePerProduk = kampanyePerProdukMap();
 
   isi.innerHTML = kep.baris.map((b) => {
     const p = b.p;
@@ -2374,17 +2294,18 @@ function kinerjaIklan(p) {
   const m = metrikBerjalan(p);
   if (!(m.biaya > 0)) return '';
   const untung = m.omzetLangsung / p.roasImpas - m.biaya;
-  return `<strong class="${untung >= 0 ? 'untung-positif' : 'untung-negatif'}">${untung >= 0 ? 'Untung' : 'Rugi'} ${formatRupiahRingkas(Math.abs(untung))}</strong>` +
-    `<small class="iklan-ket">Biaya ${rupiahPendek(m.biaya)} · jual ${rupiahPendek(m.omzetLangsung)}${p.penilaian ? '' : ' (selama berjalan)'}</small>`;
+  return `<strong class="hasil-angka ${warnaUntung(untung)}">${untung >= 0 ? 'Untung' : 'Rugi'} ${formatRupiahRingkas(Math.abs(untung))}</strong>` +
+    `<small class="hasil-ket">Biaya ${rupiahPendek(m.biaya)} · jual ${rupiahPendek(m.omzetLangsung)}${p.penilaian ? '' : ' (selama berjalan)'}</small>`;
 }
 
-// Kalimat utama dan catatan kecil per kartu, menurut kelompoknya.
+// Kalimat utama dan catatan kecil per iklan, menurut kelompoknya.
 function isiKartuIklan(b, grup, hariIni) {
   const p = b.p;
   switch (grup) {
     case 'hentikan': return { aksi: 'Matikan iklan ini.', ket: String(p.tindakan || '').replace(/^Jeda — /, '') };
-    case 'ganti': return { aksi: 'Matikan. Ganti dengan:', tambahan: `<span class="iklan-pengganti">${namaPengganti(b)}</span>` +
-      `<span class="iklan-mode">${escapeHtml(modePengganti(b.pengganti))}</span>`,
+    case 'ganti': return { aksi: 'Matikan. Ganti dengan:',
+      tambahan: `<span class="iklan-pengganti" title="${escapeHtml(b.pengganti.nama)}">${escapeHtml(namaRapi(b.pengganti.nama, 44))}</span>` +
+        `<span class="iklan-mode">${escapeHtml(modePengganti(b.pengganti))}</span>`,
       ket: `Rugi ${rupiahPendek(b.rugiBesar.rugi)} selama ${b.rugiBesar.hari} hari. Penggantinya ${buktiPengganti(b.pengganti)}` };
     case 'ubah':
       if (b.keputusan === 'isi-hpp') return { aksi: 'Isi HPP (harga modal) dulu.', ket: 'Belum bisa dinilai tanpa harga modal.', tombolHpp: true };
@@ -2424,40 +2345,59 @@ function isiKartuIklan(b, grup, hariIni) {
   }
 }
 
-// Satu baris tabel per iklan: produk · setelan sekarang · yang harus dilakukan · hasil 7 hari.
-function barisIklan(b, grup, hariIni) {
+// Satu baris per iklan: produk + setelan sekarang · yang harus dilakukan · hasil 7 hari.
+// "Rincian" membuka angka-angkanya (untuk Aaron) di bawah baris itu.
+function barisIklan(b, grup, hariIni, labelHasil, kampanyePerProduk) {
   const p = b.p;
   const isi = isiKartuIklan(b, grup, hariIni);
-  const setelan = p.aksi === 'toko' ? 'Iklan toko' : [
+  const setelan = p.aksi === 'toko' ? ['Iklan toko'] : [
     b.target !== null ? `Target ${formatRoas(b.target)}` : b.modeAuto ? 'GMV Max Auto' : '',
-    b.modal !== null ? `Modal ${rupiahPendek(b.modal)}/hari` : b.tanpaBatas ? 'Modal tanpa batas' : '',
-  ].filter(Boolean).map((t) => `<span class="nowrap">${t}</span>`).join('<span class="pisah"> · </span>');
+    b.modal !== null ? `${rupiahPendek(b.modal)}/hari` : b.tanpaBatas ? 'Modal tanpa batas' : '',
+  ].filter(Boolean);
+  const berakhir = b.berakhir && !['jeda', 'ganti'].includes(b.keputusan) ? `<span class="tanda-berakhir">Berakhir ${tanggalSingkat(b.berakhir)}</span>` : '';
+  const terbuka = iklanTerbuka.has(p.idProduk);
+  const idPanel = `rincian-iklan-${escapeHtml(p.idProduk)}`;
   const hasil = kinerjaIklan(p);
-  const tandaBerakhir = b.berakhir && !['jeda', 'ganti'].includes(b.keputusan) ? `<span class="tanda-berakhir">Berakhir ${tanggalSingkat(b.berakhir)}</span>` : '';
-  return '<tr>' +
-    `<td class="kolom-produk" title="${escapeHtml(p.namaProduk)}">${escapeHtml(namaSingkat(p.namaProduk, 48))}</td>` +
-    `<td class="kolom-setelan" data-label="Sekarang">${setelan || '-'}${tandaBerakhir}</td>` +
-    `<td class="kolom-aksi"><span class="iklan-aksi">${escapeHtml(isi.aksi)}</span>` + (isi.tambahan || '') +
-      (isi.ket ? `<small class="iklan-ket">${escapeHtml(isi.ket)}</small>` : '') +
-      (isi.tombolHpp ? '<button type="button" class="tombol tombol-kecil" data-ke-hpp>Isi HPP</button>' : '') + '</td>' +
-    `<td class="kolom-hasil" data-label="Hasil">${hasil || '<span class="teks-redup">-</span>'}</td>` +
-    '</tr>';
+  return `<div class="iklan-baris${terbuka ? ' terbuka' : ''}">` +
+    '<div class="iklan-produk">' +
+      `<div class="iklan-nama" title="${escapeHtml(p.namaProduk)}">${escapeHtml(namaRapi(p.namaProduk, 52))}</div>` +
+      `<div class="iklan-setelan">${setelan.map((t) => `<span>${t}</span>`).join('')}${berakhir}</div>` +
+    '</div>' +
+    '<div class="iklan-tindakan">' +
+      `<div class="iklan-aksi">${escapeHtml(isi.aksi)}</div>` + (isi.tambahan || '') +
+      (isi.ket ? `<div class="iklan-ket">${escapeHtml(isi.ket)}</div>` : '') +
+      (isi.tombolHpp ? '<button type="button" class="tombol tombol-kecil" data-ke-hpp>Isi HPP</button>' : '') +
+    '</div>' +
+    '<div class="iklan-hasil">' +
+      `<span class="hasil-label">${labelHasil}</span>` +
+      (hasil || '<span class="teks-redup">Belum ada</span>') +
+      `<button type="button" class="tombol-rincian" data-rincian-iklan="${escapeHtml(p.idProduk)}" aria-expanded="${terbuka}" aria-controls="${idPanel}">` +
+        'Rincian <svg class="ikon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>' +
+    '</div>' +
+    (terbuka ? `<div class="iklan-rincian" id="${idPanel}">${panelRincianIklan(p, kampanyePerProduk, b)}</div>` : '') +
+  '</div>';
+}
+
+// Pemberitahuan di atas daftar: data belum lengkap, untung toko turun jauh, iklan yang segera berakhir.
+function pemberitahuanIklan(kep) {
+  let atas = bannerDataBelumLengkap(kep.dataBelumLengkap);
+  if (kep.baris.some((b) => b.alasan === 'toko-turun-jauh')) {
+    atas += '<div class="banner-data"><strong>Untung toko turun jauh. Jangan ubah iklan dulu.</strong></div>';
+  }
+  const berakhir = kep.baris.filter((b) => b.berakhir && !['jeda', 'ganti'].includes(b.keputusan)).map((b) => b.berakhir).sort();
+  if (berakhir.length) {
+    const kapan = berakhir[0] === berakhir[berakhir.length - 1] ? tanggalSingkat(berakhir[0]) : `mulai ${tanggalSingkat(berakhir[0])}`;
+    atas += `<div class="banner-berakhir"><strong>${berakhir.length} iklan berakhir ${kapan}.</strong> ` +
+      '<span>Ubah Periode jadi <strong>Tidak Terbatas</strong> di iklan yang sama. Jangan buat iklan baru.</span></div>';
+  }
+  return atas ? `<div class="iklan-pemberitahuan">${atas}</div>` : '';
 }
 
 function renderGrupIklan(kep) {
   const el = document.getElementById('grupIklan');
   if (!el) return;
   const hariIni = hariIniWib();
-  // Pemberitahuan sekali di atas: data belum lengkap, untung toko turun jauh, iklan yang segera berakhir.
-  let atas = bannerDataBelumLengkap(kep.dataBelumLengkap);
-  if (kep.baris.some((b) => b.alasan === 'toko-turun-jauh')) {
-    atas += '<div class="banner-data"><strong>Untung toko turun jauh. Jangan ubah iklan dulu.</strong></div>';
-  }
-  const berakhir = kep.baris.filter((b) => b.berakhir && !['jeda', 'ganti'].includes(b.keputusan)).sort((a, b) => a.berakhir.localeCompare(b.berakhir));
-  if (berakhir.length) {
-    atas += `<div class="banner-berakhir"><strong>${berakhir.length} iklan segera berakhir</strong> (tanda oranye di tabel): ` +
-      'ubah Periode jadi <strong>Tidak Terbatas</strong>. Ubah iklan yang sama, jangan buat iklan baru.</div>';
-  }
+  const atas = pemberitahuanIklan(kep);
   if (!kep.baris.length) {
     el.innerHTML = atas + '<div class="kartu"><p class="keterangan">Tidak ada iklan yang sedang berjalan.</p></div>';
     return;
@@ -2466,66 +2406,47 @@ function renderGrupIklan(kep) {
   for (const b of kep.baris) perGrup.get(grupIklan(b, hariIni)).push(b);
   // Semua iklan dinilai pada 7 hari matang yang sama; tanggalnya cukup sekali di judul kolom.
   const dinilai = kep.baris.find((b) => b.p.penilaian && b.p.penilaian.siap);
-  const periode = dinilai ? `<small>${tanggalSingkat(dinilai.p.penilaian.dari)}–${tanggalSingkat(dinilai.p.penilaian.sampai)}</small>` : '';
-  const ringkas = `${kep.baris.length} iklan berjalan` + (kep.modalSekarang > 0 ? ` · Modal Harian total ${formatRupiahRingkas(kep.modalSekarang)}/hari` : '');
-  el.innerHTML = atas + `<div class="kartu kartu-grup-iklan"><p class="grup-ringkas">${ringkas}</p>` +
-    '<div class="tabel-scroll"><table id="tabelGrupIklan"><colgroup><col style="width:30%"><col style="width:14%"><col style="width:36%"><col style="width:20%"></colgroup>' +
-    `<thead><tr><th>Produk</th><th>Sekarang</th><th>Yang harus dilakukan</th><th>Hasil 7 hari${periode}</th></tr></thead>` +
+  const periode = dinilai ? rentangTanggal(dinilai.p.penilaian.dari, dinilai.p.penilaian.sampai) : '';
+  const labelHasil = periode ? `Hasil ${periode}` : 'Hasil 7 hari';
+  const perlu = ['hentikan', 'ganti', 'ubah'].reduce((n, k) => n + perGrup.get(k).length, 0);
+  const ringkas = (angka, label, kelas = '') => `<div class="ringkas-item ${kelas}"><span class="ringkas-angka">${angka}</span><span class="ringkas-label">${label}</span></div>`;
+  const kampanyePerProduk = kampanyePerProdukMap();
+  kepGrupTerakhir = kep;
+  el.innerHTML = atas + '<div class="kartu kartu-iklan-berjalan">' +
+    '<div class="iklan-ringkas">' +
+      ringkas(kep.baris.length, 'iklan berjalan') +
+      (kep.modalSekarang > 0 ? ringkas(formatRupiahRingkas(kep.modalSekarang), 'modal per hari') : '') +
+      ringkas(perlu, 'perlu dikerjakan', perlu ? 'ringkas-perlu' : 'ringkas-beres') +
+    '</div>' +
+    `<div class="iklan-kepala" aria-hidden="true"><span>Iklan</span><span>Yang harus dilakukan</span><span>Hasil 7 hari${periode ? `<small>${periode}</small>` : ''}</span></div>` +
     GRUP_IKLAN.filter((g) => perGrup.get(g.kunci).length).map((g) => {
       const daftar = perGrup.get(g.kunci);
-      return `<tbody class="grup-${g.warna}"><tr class="baris-grup"><th colspan="4" scope="rowgroup">` +
-        `<span class="grup-judul">${g.judul}</span> <span class="grup-jumlah">${daftar.length}</span> <span class="grup-ket">${g.ket}</span></th></tr>` +
-        daftar.map((b) => barisIklan(b, g.kunci, hariIni)).join('') + '</tbody>';
-    }).join('') + '</table></div></div>';
+      return `<section class="iklan-grup grup-${g.warna}" aria-label="${g.judul}">` +
+        `<h3 class="iklan-grup-judul"><span class="grup-judul">${g.judul}</span><span class="grup-jumlah">${daftar.length}</span><span class="grup-ket">${g.ket}</span></h3>` +
+        daftar.map((b) => barisIklan(b, g.kunci, hariIni, labelHasil, kampanyePerProduk)).join('') + '</section>';
+    }).join('') + '</div>';
 }
 
+// Tombol "Rincian" di daftar iklan berjalan: buka/tutup angka iklan itu.
+document.getElementById('grupIklan').addEventListener('click', (e) => {
+  const tombol = e.target.closest('[data-rincian-iklan]');
+  if (!tombol) return;
+  const id = tombol.dataset.rincianIklan;
+  if (iklanTerbuka.has(id)) iklanTerbuka.delete(id); else iklanTerbuka.add(id);
+  renderGrupIklan(kepGrupTerakhir || keputusanBerjalan());
+  const baru = document.querySelector(`[data-rincian-iklan="${CSS.escape(id)}"]`);
+  if (baru) baru.focus();
+});
+
+// "Iklan yang sudah selesai": produk yang tidak sedang beriklan (90 hari), untuk tidak mengulang yang rugi.
 function renderTabelIklan() {
-  const kataKunci = inputCariIklan.value.trim().toLowerCase();
-  let daftar = dataIklan.produk;
-  if (kataKunci) {
-    daftar = daftar.filter((p) => [p.namaProduk, p.idProduk, p.namaIklan].some((v) => String(v || '').toLowerCase().includes(kataKunci)));
-  }
-  if (filterIklan !== 'semua') daftar = daftar.filter((p) => p.aksi === filterIklan);
-  daftar = urutkanProdukIklan(daftar);
-
-  const totalBiaya = daftar.reduce((t, p) => t + p.biaya, 0);
-  infoJumlahIklan.textContent = `${daftar.length} produk · biaya ${formatRupiahRingkas(totalBiaya)}`;
-
-  if (!daftar.length) {
-    isiTabelIklan.innerHTML = `<tr><td colspan="6" class="teks-redup">Tidak ada produk yang cocok.</td></tr>`;
-    return;
-  }
-
-  const kampanyePerProduk = new Map();
-  for (const k of dataIklan.kampanye) {
-    if (!kampanyePerProduk.has(k.kodeProduk)) kampanyePerProduk.set(k.kodeProduk, []);
-    kampanyePerProduk.get(k.kodeProduk).push(k);
-  }
-
-  // Yang sedang berjalan di atas — itu yang bisa diubah sekarang; yang sudah berakhir
-  // di bawah sebagai catatan.
-  const berjalan = daftar.filter((p) => p.sedangBerjalan > 0);
-  const berakhir = daftar.filter((p) => !p.sedangBerjalan);
-  const perluUbah = (items) => items.filter((p) => ['jeda', 'rugi', 'abu'].includes(p.aksi)).length;
-  // Grup "Sudah berakhir" bisa dilipat (default: terlipat) — halaman ini untuk
-  // "apa yang harus diubah sekarang"; yang sudah berakhir hanya catatan.
-  const grup = (judul, kelas, items, ket, bisaDilipat, terbuka) => {
-    if (!items.length) return '';
-    const panah = bisaDilipat ? `<svg class="ikon panah-baris${terbuka ? ' buka' : ''}" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>` : '';
-    const header = `<tr class="baris-grup ${kelas}${bisaDilipat ? ' bisa-dilipat' : ''}" data-grup="${kelas}"><td colspan="6" data-label="">${panah}${judul} (${items.length})${ket ? `<span class="pill pill-abu">${ket}</span>` : ''}${bisaDilipat && !terbuka ? '<span class="petunjuk-lipat">klik untuk melihat</span>' : ''}</td></tr>`;
-    return header + (bisaDilipat && !terbuka ? '' : items.map((p) => barisProdukIklan(p, kampanyePerProduk)).join(''));
-  };
-
-  isiTabelIklan.innerHTML =
-    (berjalan.length
-      ? grup('Sedang berjalan', 'grup-berjalan', berjalan, perluUbah(berjalan) ? `${perluUbah(berjalan)} belum tentu untung` : berjalan.every(p => p.aksi === 'untung') ? 'semua diperkirakan untung' : 'sebagian belum bisa dinilai', false, true)
-      : `<tr class="baris-grup grup-berjalan"><td colspan="6" data-label="">Sedang berjalan (0)<span class="pill pill-abu">tidak ada iklan yang sedang berjalan di file ini</span></td></tr>`) +
-    grup('Sudah berakhir', 'grup-berakhir', berakhir, perluUbah(berakhir) ? `${perluUbah(berakhir)} rugi — jangan diulang` : 'catatan untuk iklan berikutnya', true, grupBerakhirTerbuka);
-
-  isiTabelIklan.querySelectorAll('tr.baris-grup.bisa-dilipat').forEach((tr) => {
-    tr.addEventListener('click', () => { grupBerakhirTerbuka = !grupBerakhirTerbuka; renderTabelIklan(); });
-  });
-
+  const daftar = urutkanProdukIklan(dataIklan.produk.filter((p) => !p.sedangBerjalan));
+  const rugi = daftar.filter((p) => ['jeda', 'rugi', 'abu'].includes(p.aksi)).length;
+  infoJumlahIklan.textContent = daftar.length ? `${daftar.length} produk${rugi ? ` · ${rugi} tidak untung` : ''}` : '';
+  document.getElementById('kartuIklanSelesai').classList.toggle('tersembunyi', !daftar.length);
+  if (!daftar.length) { isiTabelIklan.innerHTML = ''; return; }
+  const kampanyePerProduk = kampanyePerProdukMap();
+  isiTabelIklan.innerHTML = daftar.map((p) => barisProdukIklan(p, kampanyePerProduk)).join('');
   isiTabelIklan.querySelectorAll('tr.baris-produk').forEach((tr) => {
     tr.addEventListener('click', () => {
       const id = tr.dataset.id;
@@ -2535,16 +2456,6 @@ function renderTabelIklan() {
   });
 }
 
-inputCariIklan.addEventListener('input', () => { if (dataIklan) renderTabelIklan(); });
-
-document.querySelectorAll('.pill-filter[data-filter-iklan]').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.pill-filter[data-filter-iklan]').forEach((b) => b.classList.remove('aktif'));
-    btn.classList.add('aktif');
-    filterIklan = btn.dataset.filterIklan;
-    if (dataIklan) renderTabelIklan();
-  });
-});
 
 document.querySelectorAll('#tabelIklan .th-urut').forEach((th) => {
   th.addEventListener('click', () => {

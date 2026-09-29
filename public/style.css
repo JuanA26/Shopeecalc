@@ -1332,6 +1332,9 @@ input[type="text"], input[type="password"], input[type="number"] { min-height: 4
 /* ---------- Pengaturan (diagnostik + unduh data) ---------- */
 .grid-pengaturan { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
 .grid-pengaturan > .kartu { margin-bottom: 0; }
+/* Dua kolom yang masing-masing menumpuk kartunya: tidak ada celah di bawah kartu yang pendek. */
+.kolom-pengaturan { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.kolom-pengaturan > .kartu { margin-bottom: 0; }
 @media (min-width: 1000px) { .grid-pengaturan { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
 .kartu-ekspor { border-top: 3px solid var(--oranye); }
 .kartu-ekspor p { margin: 0 0 10px; }

@@ -1560,7 +1560,9 @@ function untungTokoPerMinggu() {
 
 // Aturan satu kalimat: bandingkan N minggu lengkap terakhir dengan N minggu sebelumnya
 // (N = 4 kalau datanya ≥ 8 minggu, supaya naik-turun mingguan tidak mengecoh; minimal 2).
-function aturanMingguan(data) {
+// banding(mulaiA, mulaiB, n) = bandingMingguBiasa untuk n minggu (user, 30/09: hari ramai tidak dihitung);
+// tanpa banding atau tanpa biaya iklan harian → jumlah minggu apa adanya.
+function aturanMingguan(data, banding) {
   const lengkap = data.minggu.filter((t) => t.lengkap && t.iklanLengkap);
   if (lengkap.length < 4) return { kelas: '', teks: 'Perlu data lengkap 4 minggu dulu.', detail: '' };
   const n = Math.min(4, Math.floor(lengkap.length / 2));
@@ -1570,11 +1572,14 @@ function aturanMingguan(data) {
     return { kelas: '', teks: 'Ada minggu yang datanya belum lengkap. Jangan ubah modal dulu.', detail: '' };
   }
   const jml = (arr, f) => arr.reduce((a, t) => a + t[f], 0);
-  const iklanA = jml(awal, 'biayaIklan'), iklanB = jml(akhir, 'biayaIklan');
-  const untungA = jml(awal, 'untungSetelahIklan'), untungB = jml(akhir, 'untungSetelahIklan');
+  const biasa = banding ? banding(awal[0].mulai, akhir[0].mulai, n) : null;
+  const iklanA = biasa ? biasa.iklanA : jml(awal, 'biayaIklan'), iklanB = biasa ? biasa.iklanB : jml(akhir, 'biayaIklan');
+  const untungA = biasa ? biasa.a : jml(awal, 'untungSetelahIklan'), untungB = biasa ? biasa.b : jml(akhir, 'untungSetelahIklan');
   const pctIklan = iklanA ? (iklanB - iklanA) / iklanA : 0;
   const pctUntung = untungA ? (untungB - untungA) / Math.abs(untungA) : 0;
-  const detail = `${n} minggu terakhir dibanding ${n} minggu sebelumnya: biaya iklan ${pctIklan >= 0 ? '+' : ''}${Math.round(pctIklan * 100)}%, untung ${pctUntung >= 0 ? '+' : ''}${Math.round(pctUntung * 100)}%.`;
+  const persen = (x) => `${x >= 0 ? '+' : ''}${Math.round(x * 100)}%`;
+  const detail = `${n} minggu terakhir dibanding ${n} minggu sebelumnya${biasa ? ', per hari biasa' : ''}: biaya iklan ${persen(pctIklan)}, untung ${persen(pctUntung)}.` +
+    (biasa && biasa.ramai.length ? ` ${biasa.ramai.length} hari ramai tidak dihitung.` : '');
   if (pctIklan >= 0.1 && untungB <= untungA) return { kelas: 'aturan-kurangi', teks: 'Biaya iklan naik, untung tidak ikut naik. Jangan tambah modal dulu.', detail };
   if (pctIklan <= -0.1 && untungB >= untungA * 0.95) return { kelas: 'aturan-aman', teks: 'Biaya iklan turun, untung tetap. Pertahankan.', detail };
   if (untungB > untungA && pctIklan >= 0.1) return { kelas: 'aturan-aman', teks: 'Biaya iklan naik, untung ikut naik. Pertahankan.', detail };
@@ -1621,7 +1626,7 @@ function renderMingguan() {
     return null;
   }
   // Grafik: sampai 8 minggu terakhir. Aturan satu kalimat di atasnya (dipakai juga untuk keputusan modal).
-  const aturan = aturanMingguan(data);
+  const aturan = aturanMingguan(data, (a, b, n) => bandingMingguBiasa(sumberIklan().items, dataIklan && dataIklan.kampanye, a, b, n));
   aturanTerakhir = aturan;
   aturanEl.className = `aturan-mingguan ${aturan.kelas}`;
   aturanEl.innerHTML = `<span>${escapeHtml(aturan.teks)}</span>` + (aturan.detail ? `<small>${escapeHtml(aturan.detail)}</small>` : '');
@@ -2502,11 +2507,13 @@ function untungTokoPerBulan() {
 // Hari ramai (user, 30/09): penghasilan hari itu > 1,8 × median harian 28 hari terakhir (9.9, tanggal
 // 25, 15, 17 Agustus, ...). Satu hari promo bisa membuat minggu kelihatan naik/turun jutaan, jadi
 // perbandingan minggu di Dashboard memakai rata-rata per hari dari hari biasa saja.
-// Hasil: { selisih (Rp/hari, minggu B − minggu A), ramai: [iso] } atau null kalau biaya iklan harian tidak ada.
+// Juga dipakai aturan 4 minggu (n = 4): pembandingnya median seluruh 8 minggu itu.
+// Hasil (per hari biasa): { a, b, iklanA, iklanB, selisih (b − a), ramai: [iso] } atau null kalau biaya
+// iklan harian tidak ada.
 const BATAS_HARI_RAMAI = 1.8;
-function bandingMingguBiasa(items, kampanye, mulaiA, mulaiB) {
+function bandingMingguBiasa(items, kampanye, mulaiA, mulaiB, n = 1) {
   if (!kampanye || !kampanye.some((k) => k.perHari)) return null;
-  const akhirB = geserHari(mulaiB, 6), dari = geserHari(akhirB, -27);
+  const akhirB = geserHari(mulaiB, 7 * n - 1), dari = geserHari(akhirB, -Math.max(28, 14 * n) + 1);
   const hari = new Map();
   const ambil = (d) => { let h = hari.get(d); if (!h) { h = { penghasilan: 0, diketahui: 0, untungDiketahui: 0, retur: 0, biaya: 0 }; hari.set(d, h); } return h; };
   for (const it of items) {
@@ -2527,23 +2534,23 @@ function bandingMingguBiasa(items, kampanye, mulaiA, mulaiB) {
   // Sama dengan kartu mingguan: produk tanpa HPP memakai margin produk lain di hari-hari itu.
   const rata = (mulai) => {
     const t = { penghasilan: 0, diketahui: 0, untungDiketahui: 0, retur: 0, biaya: 0 };
-    let n = 0;
-    for (let i = 0; i < 7; i++) {
+    let jumlah = 0;
+    for (let i = 0; i < 7 * n; i++) {
       const d = geserHari(mulai, i);
       if (ramai(d)) continue;
-      n += 1;
+      jumlah += 1;
       const h = hari.get(d);
       if (h) for (const f of Object.keys(t)) t[f] += h[f];
     }
-    if (!n) return null;
+    if (!jumlah) return null;
     const margin = t.diketahui ? t.untungDiketahui / t.diketahui : 0;
-    return (t.untungDiketahui + (t.penghasilan - t.diketahui) * margin + t.retur - t.biaya) / n;
+    return { untung: (t.untungDiketahui + (t.penghasilan - t.diketahui) * margin + t.retur - t.biaya) / jumlah, iklan: t.biaya / jumlah };
   };
   const a = rata(mulaiA), b = rata(mulaiB);
   if (a === null || b === null) return null;
   const semua = [];
-  for (let i = 0; i < 14; i++) if (ramai(geserHari(mulaiA, i))) semua.push(geserHari(mulaiA, i));
-  return { selisih: b - a, ramai: semua };
+  for (let i = 0; i < 14 * n; i++) if (ramai(geserHari(mulaiA, i))) semua.push(geserHari(mulaiA, i));
+  return { a: a.untung, b: b.untung, iklanA: a.iklan, iklanB: b.iklan, selisih: b.untung - a.untung, ramai: semua };
 }
 
 // Baris "naik/turun dari minggu sebelumnya" di bawah angka untung Dashboard.

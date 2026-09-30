@@ -204,7 +204,8 @@ test('Dashboard week comparison leaves out busy days (> 1.8 × median payout) an
     items.push({ waktuPesanan: d, totalPenghasilan: 200000, hpp: 1, untung: 80000 }); perHari[d] = { biaya: 20000 };
   }
   const kampanye = [{ perHari }];
-  assert.equal(JSON.stringify(ctx.f(items, kampanye, '2026-09-08', '2026-09-15')), '{"selisih":0,"ramai":[]}');
+  const biasa = ctx.f(items, kampanye, '2026-09-08', '2026-09-15');
+  assert.equal(biasa.selisih, 0); assert.equal(biasa.a, 60000); assert.equal(biasa.iklanA, 20000); assert.equal(biasa.ramai.length, 0);
   // 9.9 sells 5× a normal day: the week before no longer looks 3,2 jt better.
   Object.assign(items[8], { totalPenghasilan: 1000000, untung: 400000 });
   const r = ctx.f(items, kampanye, '2026-09-08', '2026-09-15');
@@ -213,6 +214,21 @@ test('Dashboard week comparison leaves out busy days (> 1.8 × median payout) an
   for (const it of items) if (it.waktuPesanan >= '2026-09-15') it.untung = 50000;
   assert.equal(ctx.f(items, kampanye, '2026-09-08', '2026-09-15').selisih, -30000);
   assert.equal(ctx.f(items, [{ kodeProduk: 'x' }], '2026-09-08', '2026-09-15'), null); // no daily ad spend: old weekly line
+  // Two weeks against two (the 4-week card uses n = 4): the busy day is left out of the longer span too.
+  const dua = ctx.f(items, kampanye, '2026-09-01', '2026-09-15', 2);
+  assert.equal(dua.ramai.join(), '2026-09-09'); assert.equal(dua.a, 60000); assert.equal(dua.b, 30000);
+});
+
+test('4-week card judges ads and profit per ordinary day when daily data exists', () => {
+  const weeks = ['2026-07-06', '2026-07-13', '2026-07-20', '2026-07-27'].map(mulai => ({ mulai, lengkap: true, iklanLengkap: true, biayaIklan: 100, untungSetelahIklan: 100 }));
+  const ctx = { weeks, tambahHari: E.geser };
+  vm.runInNewContext(extract('aturanMingguan') + ';this.f = aturanMingguan', ctx);
+  assert.equal(ctx.f({ minggu: weeks }).teks, 'Pertahankan. Cek lagi minggu depan.'); // weekly sums: flat
+  // Per ordinary day: ads +20%, profit down → no budget increase; busy days are counted in the detail.
+  const r = ctx.f({ minggu: weeks }, (a, b, n) => (n === 2 && a === '2026-07-06' && b === '2026-07-20'
+    ? { a: 100, b: 90, iklanA: 50, iklanB: 60, ramai: ['2026-07-07'] } : null));
+  assert.equal(r.kelas, 'aturan-kurangi');
+  assert.match(r.detail, /per hari biasa: biaya iklan \+20%, untung -10%\. 1 hari ramai tidak dihitung\./);
 });
 
 test('a small share of sales without HPP is estimated; a large share still holds all ads', () => {

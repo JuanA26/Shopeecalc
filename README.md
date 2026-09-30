@@ -111,7 +111,8 @@ phone: profit, then tasks, then shortcuts.
   again. Missing data is never zero profit.
 - **Store profit does not hold changes.** It swings about ±400 rb/day between ordinary weeks with demand and
   sale days, far more than one ad setting can move it. The weekly card still stops budget increases when ad
-  spend rose over 4 weeks and store profit did not.
+  spend rose over 4 weeks and store profit did not (per ordinary day: busy days, payout > 1.8 × the
+  8-week median, are left out of both halves).
 - Missing HPP for more than 5% of the week's payout (smaller gaps are estimated at the margin of the
   other products), missing daily records, stale/failed syncs, retries, or overlapping changes block new
   trials. The reason is shown once as a yellow banner (with an "Isi HPP" button), not on every ad. Several edits of one ad on the same day count as one change (first old value → last new value). Mixed target/budget changes with worse results require review. A target increase followed by

@@ -2684,6 +2684,9 @@ async function muatDiagnostik() {
         ? `${d.tanpaHpp30.produk} produk terjual 30 hari terakhir · ${formatRupiahRingkas(d.tanpaHpp30.penghasilan)}${d.tanpaHpp30.bagian !== null ? ` (${Math.round(d.tanpaHpp30.bagian * 100)}% penjualan)` : ''}`
         : `Semua produk yang terjual 30 hari terakhir sudah ada HPP`)],
       ['Iklan', `${d.iklan.kampanyeBerjalan || 0} berjalan · data ${tanggalSingkat(d.iklan.dari)} – ${tanggalSingkat(d.iklan.sampai)} · ${d.iklan.perubahanTercatat || 0} perubahan tercatat`],
+      ['Biaya iklan per pesanan', d.payPerSale.pesanan
+        ? ok(false, `${d.payPerSale.pesanan.toLocaleString('id-ID')} pesanan kena biaya ini sejak ${tanggalSingkat(d.payPerSale.sejak)} · ${formatRupiahRingkas(d.payPerSale.total)}. Untung toko sudah benar. Hitungan di Analisis Iklan belum memperhitungkannya.`)
+        : ok(true, d.payPerSale.dicek ? `Tidak ada (${d.payPerSale.dicek.toLocaleString('id-ID')} pesanan dicek)` : 'Belum ada data dari Shopee')],
       ['Pesanan iklan dibayar', d.tingkatCairTerukur !== null ? `${Math.round(d.tingkatCairTerukur * 100)}% (terukur)` : '-'],
       ['Versi aplikasi', escapeHtml(d.versi)],
     ];

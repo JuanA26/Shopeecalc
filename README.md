@@ -58,7 +58,8 @@ Sales data needs a one-time shop authorization at `/auth/shopee/authorize`.
 
 **Debugging and read-only access** (for the owner or a helper/agent, without sharing a password):
 - `GET /api/kesehatan` — public, no login. Version, last order/ads sync (status, time, error text),
-  retry queue, and how many warnings/errors were logged in 24 h. No sales figures, product names,
+  retry queue, how many warnings/errors were logged in 24 h, and whether any order carries a pay-per-sale
+  ad fee (yes/no). No sales figures, product names,
   order numbers or log text.
 - `GET /api/log?n=100` — login required. The server's last log lines (sync results, Shopee refusals,
   errors; kept in the `log_server` table, max 500). Also on Pengaturan → Diagnostik → "Log server".
@@ -83,8 +84,8 @@ same way. Read-only accounts only reload stored data. Hover (desktop) for the ex
 
 ### Pengaturan (gear button next to Keluar)
 - **Diagnostik:** sync and ads-sync status, orders waiting to be re-fetched, stored order range (not yet
-  paid out / cancelled), products sold in 30 days without HPP, running ads, recorded setting changes, app
-  version, and **Log server** (last 60 server log lines).
+  paid out / cancelled), products sold in 30 days without HPP, running ads, recorded setting changes,
+  pay-per-sale ad fees (Shopee's `pay_per_sale`; should be none, warns if any), app version, and **Log server** (last 60 server log lines).
 - **Unduh data (Excel):** one .xlsx workbook for analysis (e.g. by Claude): README, Status, current ad
   decisions, setting-change history with 7 days before/after (campaign ROAS and store profit per day),
   profit per month/week/day, products, HPP, campaigns, daily ad figures and every order item. It contains

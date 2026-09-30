@@ -263,5 +263,8 @@ try { db.exec('ALTER TABLE sinkron_shopee ADD COLUMN order_berubah INTEGER'); } 
 for (const kolom of ['iklan_sampai TEXT', 'iklan_status TEXT', 'iklan_pesan TEXT', 'iklan_selesai TEXT']) {
   try { db.exec(`ALTER TABLE sinkron_shopee ADD COLUMN ${kolom}`); } catch (_) { /* sudah ada */ }
 }
+// Biaya iklan per pesanan (order_income.pay_per_sale, Shopee mulai 29/09/2026), sudah termasuk di
+// escrow_amount. NULL = pesanan disimpan sebelum field ini ada. Hanya untuk peringatan di Diagnostik.
+try { db.exec('ALTER TABLE api_pesanan ADD COLUMN pay_per_sale REAL'); } catch (_) { /* sudah ada */ }
 
 module.exports = db;

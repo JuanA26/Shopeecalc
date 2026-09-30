@@ -550,6 +550,8 @@ app.get('/api/kesehatan', (req, res) => {
     pesanan: { status: s.status || null, terakhirSelesai: s.terakhir_selesai || null, pesan: s.pesan || null },
     iklan: { status: s.iklan_status || null, terakhirSelesai: s.iklan_selesai || null, pesan: s.iklan_pesan || null },
     antreanUlang: token ? isiAntreanUlang(db, token.shop_id) : null,
+    // Hanya ya/tidak (tanpa angka): ada pesanan yang kena biaya iklan per pesanan (pay-per-sale)?
+    adaBiayaPerPesanan: token ? !!db.prepare('SELECT 1 FROM api_pesanan WHERE shop_id = ? AND pay_per_sale <> 0 LIMIT 1').get(String(token.shop_id)) : null,
     log24Jam: logServer.ringkas24Jam(),
   });
 });
@@ -593,6 +595,11 @@ function ringkasDiagnostik(token) {
       dari: angka('SELECT MIN(tanggal) FROM iklan_toko_harian WHERE shop_id = ?', shop), sampai: angka('SELECT MAX(tanggal) FROM iklan_toko_harian WHERE shop_id = ?', shop),
       perubahanTercatat: angka('SELECT COUNT(*) FROM iklan_riwayat_setelan WHERE shop_id = ?', shop) },
     tingkatCairTerukur: terukur ? terukur.toko : null,
+    // Biaya iklan per pesanan (pay-per-sale): harusnya 0 karena toko tidak memakainya. Kalau ada,
+    // untung toko tetap benar (sudah dipotong di escrow_amount), tapi hitungan iklan belum.
+    payPerSale: db.prepare(`SELECT COUNT(pay_per_sale) dicek, COALESCE(SUM(pay_per_sale <> 0), 0) pesanan,
+      COALESCE(SUM(ABS(pay_per_sale)), 0) total, MIN(CASE WHEN pay_per_sale <> 0 THEN tanggal_dilepaskan END) sejak
+      FROM api_pesanan WHERE shop_id = ?`).get(shop),
   };
 }
 

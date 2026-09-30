@@ -175,3 +175,22 @@ test('ads sync records Seller Centre target/budget changes and exposes the lates
   assert.equal(biayaTokoHarian['2026-10-01'], 0);
   assert.deepEqual(kampanye[0].perHari['2026-10-01'], { biaya: 0, terjual: 0, omzet: 0, omzetLangsung: 0 });
 });
+
+test('pay_per_sale from the escrow detail is stored; missing field stays null', async () => {
+  const shopee = {
+    orderList: [], escrowList: [{ order_sn: 'PPS1', escrow_release_time: now - 3600 }, { order_sn: 'PPS2', escrow_release_time: now - 3600 }],
+    orderDetail: {
+      PPS1: { order_sn: 'PPS1', create_time: now - 5 * 86400, order_status: 'COMPLETED' },
+      PPS2: { order_sn: 'PPS2', create_time: now - 5 * 86400, order_status: 'COMPLETED' },
+    },
+    escrowDetail: {
+      PPS1: { order_sn: 'PPS1', order_income: { escrow_amount: 70000, pay_per_sale: 8000, items: [{ item_id: 1, quantity_purchased: 1, discounted_price: 100000 }] } },
+      PPS2: { order_sn: 'PPS2', order_income: { escrow_amount: 78000, items: [{ item_id: 1, quantity_purchased: 1, discounted_price: 100000 }] } },
+    },
+    returDetail: {},
+  };
+  await sinkronkan({ db, panggil: mockShopee(shopee), shopId: 'pps' });
+  const nilai = (sn) => db.prepare('SELECT pay_per_sale, escrow_amount FROM api_pesanan WHERE order_sn = ?').get(sn);
+  assert.deepEqual({ ...nilai('PPS1') }, { pay_per_sale: 8000, escrow_amount: 70000 }, 'payout is escrow_amount as-is (fee already inside)');
+  assert.equal(nilai('PPS2').pay_per_sale, null);
+});

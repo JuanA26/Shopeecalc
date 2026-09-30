@@ -348,11 +348,12 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
   // tanggal_dilepaskan: pesanan ambil-ulang bisa di luar jendela get_escrow_list (tanggalnya
   // kosong) — pertahankan tanggal yang sudah tersimpan.
   const simpanPesanan = db.prepare(
-    `INSERT INTO api_pesanan (order_sn, shop_id, waktu_pesanan, tanggal_dilepaskan, escrow_amount, status_pesanan, ada_retur, synced_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `INSERT INTO api_pesanan (order_sn, shop_id, waktu_pesanan, tanggal_dilepaskan, escrow_amount, status_pesanan, ada_retur, pay_per_sale, synced_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
      ON CONFLICT(order_sn) DO UPDATE SET waktu_pesanan = COALESCE(NULLIF(excluded.waktu_pesanan, ''), api_pesanan.waktu_pesanan),
        tanggal_dilepaskan = COALESCE(NULLIF(excluded.tanggal_dilepaskan, ''), api_pesanan.tanggal_dilepaskan),
-       escrow_amount = excluded.escrow_amount, status_pesanan = excluded.status_pesanan, ada_retur = excluded.ada_retur, synced_at = excluded.synced_at`
+       escrow_amount = excluded.escrow_amount, status_pesanan = excluded.status_pesanan, ada_retur = excluded.ada_retur,
+       pay_per_sale = excluded.pay_per_sale, synced_at = excluded.synced_at`
   );
   const hapusItem = db.prepare('DELETE FROM api_pesanan_item WHERE order_sn = ?');
   const simpanItem = db.prepare(
@@ -364,6 +365,7 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
   // untuk yang belum tersimpan (mis. pesanan lama di luar jendela langkah pesanan).
   const orderTersimpan = db.prepare('SELECT create_time, status FROM api_order WHERE order_sn = ?');
   let selesai = 0;
+  let kenaPayPerSale = 0;
   const terlewat = []; // order_sn yang tidak ada di respons Shopee — dicoba lagi di sinkron berikutnya
   await paralel(potong(baru, UKURAN_BATCH), PARALEL, async (potongan) => {
     const dikenal = new Map();
@@ -397,10 +399,14 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
     db.exec('BEGIN');
     try {
       for (const p of siapSimpan) {
+        const income = p.detail.order_income || {};
+        // Biaya iklan per pesanan (pay-per-sale), sudah dipotong di escrow_amount. Tidak ada = null.
+        const payPerSale = income.pay_per_sale === undefined || income.pay_per_sale === null ? null : Number(income.pay_per_sale) || 0;
+        if (payPerSale) kenaPayPerSale++;
         simpanPesanan.run(
           p.sn, String(shopId), tanggalWib(p.order.create_time), tanggalWib(escrow.get(p.sn)),
-          Number(p.detail.order_income && p.detail.order_income.escrow_amount) || 0,
-          p.order.order_status || null, p.adaRetur ? 1 : 0
+          Number(income.escrow_amount) || 0,
+          p.order.order_status || null, p.adaRetur ? 1 : 0, payPerSale
         );
         hapusItem.run(p.sn);
         p.baris.forEach((b, idx) =>
@@ -419,6 +425,7 @@ async function sinkronkan({ db, panggil, shopId, hariMundur, onProgres } = {}) {
   });
 
   if (terlewat.length) console.warn(`[SINKRON] ${terlewat.length} pesanan cair tidak ada di respons escrow — dicoba lagi nanti.`);
+  if (kenaPayPerSale) console.warn(`[SINKRON] ${kenaPayPerSale} pesanan kena biaya iklan per pesanan (pay_per_sale). Untung toko sudah benar; hitungan iklan belum memperhitungkannya.`);
   const returTertunda = ulangRetur.sisa();
   if (returTertunda) console.warn(`[SINKRON] ${returTertunda} pesanan menunggu rincian retur diambil ulang.`);
   // Batas "sudah ditarik" tidak boleh melewati pesanan yang terlewat, supaya sinkron berikutnya

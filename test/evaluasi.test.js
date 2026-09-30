@@ -73,21 +73,24 @@ const KECIL = [330000, 660000];   // +5 rb and +10 rb: noise
 const rowP = (extra = {}) => ({ ...row(), p: { idProduk: 'p', roasImpas: 6 }, ...extra });
 const rowQ = () => ({ ...row('q'), p: { idProduk: 'q', roasImpas: 6 } });
 
-test('store comparison includes other products and return costs; requires mature complete evidence', () => {
+test('rolling store check: latest 7 mature days vs the 7 before, incl. other products and returns; needs complete data', () => {
   const { data, sumber } = fixture();
-  assert.equal(E.evaluasiPerubahan(data, sumber, '2026-09-29').status, 'tunggu');
-  const r = E.evaluasiPerubahan(data, sumber, '2026-09-30');
+  const r = E.cekToko(data, sumber, '2026-09-30'); // 16–22 Sep vs 9–15 Sep
+  assert.equal(r.dariSesudah, '2026-09-16'); assert.equal(r.sampaiSebelum, '2026-09-15');
   assert.equal(r.status, 'selesai'); assert.equal(r.sebelum, 100000); assert.equal(r.sesudah, 60000); assert.equal(r.turunJauh, false);
+  // No setting change needed: the check runs every day and does not turn 'campur' when changes overlap.
+  data.riwayatSetelan = [{ ...change, tanggal: '2026-09-10' }, { ...change, idProduk: 'q', campaignId: '2', tanggal: '2026-09-13' }];
+  assert.equal(E.cekToko(data, sumber, '2026-09-30').status, 'selesai');
   sumber.items.push({ waktuPesanan: '2026-09-16', dikembalikan: true, totalPenghasilan: -7000 });
-  assert.equal(E.evaluasiPerubahan(data, sumber, '2026-09-30').sesudah, 59000);
-  data.dataSiapEvaluasi = false; assert.equal(E.evaluasiPerubahan(data, sumber, '2026-09-30').status, 'data');
+  assert.equal(E.cekToko(data, sumber, '2026-09-30').sesudah, 59000);
+  data.dataSiapEvaluasi = false; assert.equal(E.cekToko(data, sumber, '2026-09-30').status, 'data');
   data.dataSiapEvaluasi = true;
-  sumber.items[15].hpp = null; assert.equal(E.evaluasiPerubahan(data, sumber, '2026-09-30').status, 'data');
+  sumber.items[15].hpp = null; assert.equal(E.cekToko(data, sumber, '2026-09-30').status, 'data');
   sumber.items[15].hpp = 50000; delete data.biayaTokoHarian['2026-09-18'];
-  assert.equal(E.evaluasiPerubahan(data, sumber, '2026-09-30').status, 'data');
+  assert.equal(E.cekToko(data, sumber, '2026-09-30').status, 'data');
   data.biayaTokoHarian['2026-09-18'] = 20000;
   sumber.items = sumber.items.filter(i => i.waktuPesanan !== '2026-09-18');
-  assert.equal(E.evaluasiPerubahan(data, sumber, '2026-09-30').status, 'data');
+  assert.equal(E.cekToko(data, sumber, '2026-09-30').status, 'data');
 });
 
 test('each change is judged by its own direct contribution; Shopee broad movement is context', () => {
@@ -118,15 +121,15 @@ test('a worse ad is reversed even when store profit is flat; a store drop alone 
   const { data, sumber } = fixture(120000);
   iklan(data, SEBELUM, BURUK);
   const rows = [rowP(), rowQ()];
-  E.terapkanEvaluasiToko(rows, E.evaluasiPerubahan(data, sumber, '2026-09-30'), data, true, '2026-09-30');
+  E.terapkanEvaluasiToko(rows, E.cekToko(data, sumber, '2026-09-30'), data, true, '2026-09-30');
   assert.equal(rows[0].keputusan, 'kembalikan'); assert.equal(rows[0].targetBaru, 9); assert.equal(rows[0].modalBaru, 60000);
   assert.equal(rows[1].keputusan, 'naikkan'); // a reversal no longer holds other ads
   const lagi = fixture(80000); iklan(lagi.data, SEBELUM, KECIL);
   const tetap = rowP({ keputusan: 'lanjut', targetBaru: null });
-  E.terapkanEvaluasiToko([tetap], E.evaluasiPerubahan(lagi.data, lagi.sumber, '2026-09-30'), lagi.data, true, '2026-09-30');
+  E.terapkanEvaluasiToko([tetap], E.cekToko(lagi.data, lagi.sumber, '2026-09-30'), lagi.data, true, '2026-09-30');
   assert.equal(tetap.keputusan, 'lanjut'); assert.equal(tetap.alasan, 'belum-jelas');
   const pause = { ...row('unsafe'), keputusan: 'jeda', modalBaru: 0 };
-  E.terapkanEvaluasiToko([pause], E.evaluasiPerubahan(data, sumber, '2026-09-29'), data, false, '2026-09-29');
+  E.terapkanEvaluasiToko([pause], E.cekToko(data, sumber, '2026-09-29'), data, false, '2026-09-29');
   assert.equal(pause.keputusan, 'jeda');
 });
 
@@ -134,7 +137,7 @@ test('an unclear raise is not repeated; a good result lets the steps continue; s
   const { data, sumber } = fixture(120000);
   iklan(data, SEBELUM, KECIL);
   let rows = [rowP(), rowQ()];
-  E.terapkanEvaluasiToko(rows, E.evaluasiPerubahan(data, sumber, '2026-09-30'), data, true, '2026-09-30');
+  E.terapkanEvaluasiToko(rows, E.cekToko(data, sumber, '2026-09-30'), data, true, '2026-09-30');
   assert.equal(rows[0].keputusan, 'lanjut'); assert.equal(rows[0].alasan, 'belum-jelas'); assert.equal(rows[0].targetBaru, null);
   assert.equal(rows[1].keputusan, 'naikkan');
   // Still blocked after the 28-day result window: no clear gain was ever shown.
@@ -142,33 +145,32 @@ test('an unclear raise is not repeated; a good result lets the steps continue; s
   assert.equal(rows[0].keputusan, 'lanjut');
   iklan(data, SEBELUM, BAIK);
   rows = [rowP(), rowQ(), { ...row('r'), p: { idProduk: 'r', roasImpas: 6 } }];
-  E.terapkanEvaluasiToko(rows, E.evaluasiPerubahan(data, sumber, '2026-09-30'), data, true, '2026-09-30');
+  E.terapkanEvaluasiToko(rows, E.cekToko(data, sumber, '2026-09-30'), data, true, '2026-09-30');
   assert.ok(rows.every(b => b.keputusan === 'naikkan'));
 });
 
-test('budget-only changes reverse the budget; a large store drop holds new trials for a week', () => {
+test('budget-only changes reverse the budget; a large store drop holds new changes while it shows', () => {
   const { data, sumber } = fixture(-580000); // store after ads: 100 rb → −600 rb a day
   data.riwayatSetelan = [{ ...change, targetLama: 10.8, targetBaru: 10.8, modalLama: 50000, modalBaru: 60000 }];
   iklan(data, SEBELUM, BURUK);
-  const ev = E.evaluasiPerubahan(data, sumber, '2026-09-30');
+  const ev = E.cekToko(data, sumber, '2026-09-30');
   assert.equal(ev.turunJauh, true);
   const rows = [rowP(), rowQ()];
   E.terapkanEvaluasiToko(rows, ev, data, true, '2026-09-30');
   assert.equal(rows[0].keputusan, 'kembalikan'); assert.equal(rows[0].modalBaru, 50000); assert.equal(rows[0].targetBaru, null);
-  assert.equal(rows[1].alasan, 'toko-turun-jauh'); assert.equal(rows[1].bisaDiubahLagi, '2026-10-07');
-  assert.equal(E.evaluasiPerubahan(data, sumber, '2026-10-07').turunJauh, false);
+  assert.equal(rows[1].alasan, 'toko-turun-jauh');
+  // A week later both windows are after the drop: the brake releases by itself.
+  assert.equal(E.cekToko(data, sumber, '2026-10-07').turunJauh, false);
 });
 
 test('a pending change on one ad does not hold others; mixed trials are reviewed; rollback does not loop', () => {
   const { data, sumber } = fixture();
   iklan(data, SEBELUM, BURUK);
   const rows = [rowP(), rowQ()];
-  E.terapkanEvaluasiToko(rows, E.evaluasiPerubahan(data, sumber, '2026-09-29'), data, true, '2026-09-29');
+  E.terapkanEvaluasiToko(rows, E.cekToko(data, sumber, '2026-09-29'), data, true, '2026-09-29');
   assert.equal(rows[1].keputusan, 'naikkan'); assert.equal(rows[1].alasan, ''); // q was not changed: not held
-  data.riwayatSetelan.unshift({ ...change, idProduk: 'q', campaignId: '2', tanggal: '2026-09-10' });
-  assert.equal(E.evaluasiPerubahan(data, sumber, '2026-09-30').status, 'campur');
-  data.riwayatSetelan.shift(); data.riwayatSetelan[0].modalBaru = 70000;
-  const mixed = rowP(); E.terapkanEvaluasiToko([mixed], E.evaluasiPerubahan(data, sumber, '2026-09-30'), data, true, '2026-09-30');
+  data.riwayatSetelan[0].modalBaru = 70000;
+  const mixed = rowP(); E.terapkanEvaluasiToko([mixed], E.cekToko(data, sumber, '2026-09-30'), data, true, '2026-09-30');
   assert.equal(mixed.keputusan, 'tinjau'); assert.equal(mixed.alasan, 'tinjau-iklan');
   data.riwayatSetelan = [{ ...change }, { ...change, tanggal: '2026-09-30', targetLama: 10.8, targetBaru: 9 }];
   const repeat = row(); E.terapkanEvaluasiToko([repeat], null, data, true);
@@ -234,8 +236,7 @@ test('same-day edits of one campaign count as one change (user, 2026-09-29)', ()
     [['c', '2026-09-20', 40000, 50000], ['c', '2026-09-28', 50000, 77097], ['d', '2026-09-28', 60000, 70000]]);
   // An edit undone the same day is no change.
   assert.deepEqual(gabungUbahSehari([u('2026-09-28', 50000, 60000), u('2026-09-28', 60000, 50000)]), []);
-  // The merged change is judged normally (not 'campur') and the store check is no longer mixed.
+  // The merged change is judged normally (not 'campur').
   const data = { dataSiapEvaluasi: true, kampanye: [], riwayatSetelan: gabungUbahSehari([u('2026-09-28', 50000, 76129), u('2026-09-28', 76129, 77097)]) };
   assert.equal(E.hasilIklan(data, 'p', '2026-10-13', 6).status, 'data'); // no campaign data in this fixture, but not 'campur'
-  assert.notEqual(E.evaluasiPerubahan(data, null, '2026-10-13').status, 'campur');
 });

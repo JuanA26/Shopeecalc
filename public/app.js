@@ -1753,13 +1753,17 @@ function panelRincianIklan(p, kampanyePerProduk, b = null) {
   const rek = b && b.rekomendasi && b.rekomendasi.rendah && b.rekomendasi.tinggi
     ? item('Saran Shopee', `${formatRoas(b.rekomendasi.rendah)}–${formatRoas(b.rekomendasi.tinggi)}${b.batasShopee ? ` <small>batas ${formatRoas(b.batasShopee)}</small>` : ''}`)
     : '';
+  // Untung iklan 7 hari matang terakhir, hanya produk ini (di baris tidak ditampilkan; lihat KATA_GRUP).
+  const h7 = untungIklanTujuhHari(p);
+  const periode7 = p.penilaian && p.penilaian.siap ? ` <small>${rentangTanggal(p.penilaian.dari, p.penilaian.sampai)}</small>` : ' <small>selama berjalan</small>';
+  const hasil7 = h7 ? item('Untung iklan', `<span class="${warnaUntung(h7.untung)}">${rupiahPendek(h7.untung)}</span>${periode7}`) : '';
   const angka = p.aksi === 'toko' ? '' : '<dl class="rincian-angka">' +
     item('ROAS langsung', `<span class="${rendah ? 'untung-negatif' : ''}">${formatRoas(m.roasLangsung)}</span>`) +
     item('ROAS minimum', p.roasImpas !== null ? formatRoas(p.roasImpas) : p.marginPerRp !== null ? 'tidak mungkin' : '-') +
     item('ROAS Shopee', formatRoas(m.roasShopee)) + rek +
     item('Harga / HPP', `${rupiahPendek(p.hargaRata)} / ${p.hpp === null ? 'belum diisi' : rupiahPendek(p.hpp)}`) +
     item('Margin', p.marginPerRp === null ? '-' : formatPersen(p.marginPerRp * 100)) +
-    item('Pesanan dibayar', dibayar) +
+    item('Pesanan dibayar', dibayar) + hasil7 +
     '</dl>';
 
   const catatan = b ? catatanKeputusanTeks(b).filter((t) => !t.startsWith('Berakhir')) : [p.tindakan].filter(Boolean);
@@ -1906,6 +1910,7 @@ function keputusanBerjalan() {
   if (!dataIklan) return { baris, modalSekarang: 0, modalSaran: null, belumDiisi: 0 };
   const berjalan = dataIklan.produk.filter((p) => p.sedangBerjalan > 0);
   let dataBelumLengkap = null; // kenapa semua iklan ditahan: ditampilkan SEKALI sebagai banner
+  let toko = null; // cek untung toko bergulir (rem pengaman)
   // Untung toko mingguan turun sementara iklan naik → jangan tambah modal dulu.
   const tokoTurun = !!(aturanTerakhir && aturanTerakhir.kelas === 'aturan-kurangi');
   const hariIni = hariIniWib();
@@ -1962,18 +1967,18 @@ function keputusanBerjalan() {
   terapkanGanti(baris, saranIklanSekarang(), (b) => EvaluasiIklan.hasilIklan(dataIklan, b.p.idProduk, hariIni, b.p.roasImpas));
   urutkan();
   if (dariApi() && Array.isArray(dataIklan.riwayatSetelan)) {
-    const evaluasi = EvaluasiIklan.evaluasiPerubahan(dataIklan, sumberIklan(), hariIni);
+    toko = EvaluasiIklan.cekToko(dataIklan, sumberIklan(), hariIni);
     const sampai = geserHari(hariIni, -8);
     const dasar = EvaluasiIklan.rincianUntungToko(sumberIklan(), dataIklan.biayaTokoHarian, geserHari(sampai, -6), sampai);
     dasar.dari = geserHari(sampai, -6); dasar.sampai = sampai;
-    EvaluasiIklan.terapkanEvaluasiToko(baris, evaluasi, dataIklan, dasar.nilai !== null, hariIni);
+    EvaluasiIklan.terapkanEvaluasiToko(baris, toko, dataIklan, dasar.nilai !== null, hariIni);
     if (baris.some((b) => b.alasan === 'data-toko')) {
       dataBelumLengkap = { dasar: dasar.nilai === null ? dasar : null, sinkron: dataIklan.sinkronBelumSiap || (dataIklan.dataSiapEvaluasi ? null : { jenis: 'gagal' }) };
     }
     modalSaran = baris.reduce((n, b) => n + (b.modalBaru ?? b.modal ?? 0), 0);
     urutkan();
   }
-  return { baris, modalSekarang, modalSaran: adaModal ? modalSaran : null, belumDiisi, tokoTurun, dataBelumLengkap };
+  return { baris, modalSekarang, modalSaran: adaModal ? modalSaran : null, belumDiisi, tokoTurun, dataBelumLengkap, toko };
 }
 
 // Satu banner kuning untuk "data belum lengkap" (bukan kalimat yang sama di setiap iklan).
@@ -2101,7 +2106,7 @@ function kalimatKeputusan(b) {
     'tinjau-hasil': 'Untung toko turun. Periksa hasil perubahan sebelum mencoba lagi.',
     'tinjau-iklan': 'Untung iklan ini turun setelah beberapa setelan diubah bersama. Periksa dulu.',
     'data-iklan': 'Tetap dulu. Data harian iklan ini belum lengkap.',
-    'toko-turun-jauh': `Untung toko turun jauh. Jangan ubah iklan dulu sampai ${tanggalSingkat(b.bisaDiubahLagi)}.`,
+    'toko-turun-jauh': 'Untung toko turun jauh. Jangan ubah iklan dulu. Dicek lagi setiap hari.',
     'sudah-kembali': 'Target sudah diturunkan kembali. Jangan ulangi kenaikan dulu.',
     'hasil-baik': 'Hasil bagus. Biarkan.',
     'belum-jelas': 'Hasil belum jelas. Biarkan; target tidak dinaikkan lagi.',
@@ -2144,7 +2149,7 @@ function alasanTugas(b) {
     case 'kembalikan': return `Untung iklan ini turun ${turunHasil(b.hasilIklan)}/hari setelah perubahan.`;
     case 'tinjau': return 'Beberapa setelan diubah bersama, jadi penyebabnya belum jelas.';
     case 'tambah': return 'Iklan untung dan modalnya hampir selalu habis.';
-    case 'naikkan': return b.p.aksi === 'rugi' ? 'Iklan masih rugi. Naikkan sedikit dulu, jangan dimatikan.' : 'Belum tentu untung. Naikkan sedikit supaya lebih hemat.';
+    case 'naikkan': return 'Naikkan sedikit supaya biaya iklan lebih hemat.';
     case 'turunkan': return 'Iklan jadi jarang tayang.';
     case 'kurangi': return b.rugiBesar
       ? `Rugi ${rupiahPendek(b.rugiBesar.rugi)} selama ${b.rugiBesar.hari} hari iklan, dan belum ada produk pengganti.`
@@ -2293,61 +2298,59 @@ function untungIklanTujuhHari(p) {
   const m = metrikBerjalan(p);
   return m.biaya > 0 ? { untung: m.omzetLangsung / p.roasImpas - m.biaya, m } : null;
 }
-function kinerjaIklan(p) {
-  const hasil = untungIklanTujuhHari(p);
-  if (!hasil) return '';
-  const { untung, m } = hasil;
-  return `<strong class="hasil-angka ${warnaUntung(untung)}">${untung >= 0 ? 'Untung' : 'Rugi'} ${formatRupiahRingkas(Math.abs(untung))}</strong>` +
-    `<small class="hasil-ket">Biaya ${rupiahPendek(m.biaya)} · jual ${rupiahPendek(m.omzetLangsung)}${p.penilaian ? '' : ' (selama berjalan)'}</small>`;
-}
 
-// Kalimat utama dan catatan kecil per iklan, menurut kelompoknya.
+// Satu kata tindakan per iklan (user, 30/09): orang tua cukup melihat apa yang harus dilakukan.
+// Angka untung/rugi per iklan hanya di "Rincian" (untuk Aaron).
+const KATA_GRUP = { hentikan: 'Matikan', ganti: 'Ganti', ubah: 'Ubah', belajar: 'Tunggu', lanjut: 'Biarkan' };
+
+// Kalimat utama (tanpa mengulang kata tindakan) dan catatan kecil per iklan, menurut kelompoknya.
 function isiKartuIklan(b, grup, hariIni) {
   const p = b.p;
+  const kata = KATA_GRUP[grup];
   switch (grup) {
-    case 'hentikan': return { aksi: 'Matikan iklan ini.', ket: String(p.tindakan || '').replace(/^Jeda — /, '') };
-    case 'ganti': return { aksi: 'Matikan. Ganti dengan:',
+    case 'hentikan': return { kata, aksi: String(p.tindakan || '').replace(/^Jeda — /, '') };
+    case 'ganti': return { kata, aksi: 'Matikan iklan ini. Pasang iklan baru:',
       tambahan: `<span class="iklan-pengganti" title="${escapeHtml(b.pengganti.nama)}">${escapeHtml(namaRapi(b.pengganti.nama, 44))}</span>` +
         `<span class="iklan-mode">${escapeHtml(modePengganti(b.pengganti))}</span>`,
-      ket: `Rugi ${rupiahPendek(b.rugiBesar.rugi)} selama ${b.rugiBesar.hari} hari. Penggantinya ${buktiPengganti(b.pengganti)}` };
-    case 'ubah':
-      if (b.keputusan === 'isi-hpp') return { aksi: 'Isi HPP (harga modal) dulu.', ket: 'Belum bisa dinilai tanpa harga modal.', tombolHpp: true };
-      return { aksi: kalimatKeputusan(b), ket: alasanTugas(b) };
+      ket: `Penggantinya ${buktiPengganti(b.pengganti)}` };
+    case 'ubah': {
+      if (b.keputusan === 'isi-hpp') return { kata: 'Isi HPP', aksi: 'Harga modal belum diisi.', tombolHpp: true };
+      const kalimat = kalimatKeputusan(b).replace(/^Ubah (\S)/, (_, h) => h.toUpperCase());
+      return { kata, aksi: kalimat, ket: alasanTugas(b) };
+    }
     case 'belajar': {
       if (b.perubahan && geserHari(b.perubahan.tanggal, HARI_TUNGGU_UBAH) > hariIni) {
         const apa = teksPerubahan(b.perubahan);
-        return { aksi: `Baru diubah ${tanggalSingkat(b.perubahan.tanggal)}${apa ? ` (${apa})` : ''}.`, ket: `Hasil keluar ${tanggalSingkat(geserHari(b.perubahan.tanggal, HARI_TUNGGU_UBAH))}.` };
+        return { kata, aksi: `Sampai ${tanggalSingkat(geserHari(b.perubahan.tanggal, HARI_TUNGGU_UBAH))}.`, ket: `Baru diubah ${tanggalSingkat(b.perubahan.tanggal)}${apa ? ` (${apa})` : ''}.` };
       }
       if (p.berjalan && p.berjalan.hari < 7 && p.berjalan.tanggalMulaiIso) {
-        return { aksi: `Iklan baru, hari ke-${p.berjalan.hari}.`, ket: `Cek lagi ${tanggalSingkat(geserHari(p.berjalan.tanggalMulaiIso, 7))}.` };
+        return { kata, aksi: `Sampai ${tanggalSingkat(geserHari(p.berjalan.tanggalMulaiIso, 7))}.`, ket: `Iklan baru, hari ke-${p.berjalan.hari}.` };
       }
-      if (p.penilaian && p.penilaian.siapTanggal) return { aksi: 'Iklan baru. Hasilnya belum lengkap.', ket: `Hasil pertama ${tanggalSingkat(p.penilaian.siapTanggal)}.` };
-      return { aksi: 'Belum ada biaya iklan.', ket: 'Tunggu beberapa hari.' };
+      if (p.penilaian && p.penilaian.siapTanggal) return { kata, aksi: `Sampai ${tanggalSingkat(p.penilaian.siapTanggal)}.`, ket: 'Iklan baru. Hasilnya belum lengkap.' };
+      return { kata, aksi: 'Belum ada biaya iklan.', ket: 'Cek lagi beberapa hari lagi.' };
     }
     default: {
+      if (p.aksi === 'toko') return { kata, aksi: 'Iklan toko. Dinilai dari untung toko per minggu.' };
       const catatan = {
         'hasil-baik': 'Perubahan terakhir berhasil.',
-        'belum-jelas': 'Hasil perubahan belum jelas. Target tidak dinaikkan lagi.',
+        'belum-jelas': 'Target tidak dinaikkan lagi dulu.',
         'sudah-kembali': 'Target sudah dikembalikan. Jangan dinaikkan lagi dulu.',
         'uji-campur': 'Ada beberapa perubahan berdekatan. Tunggu dulu.',
         'data-toko': 'Tunggu data lengkap.',
         'data-iklan': 'Tunggu data lengkap.',
         'toko-turun-jauh': 'Untung toko turun jauh. Tunggu dulu.',
-        'toko-turun': 'Untung, tapi untung toko belum naik. Modal tidak ditambah dulu.',
+        'toko-turun': 'Modal tidak ditambah dulu.',
         'di-batas': 'Target sudah di batas tertinggi.',
         'di-atas-batas': 'Target sudah di batas tertinggi.',
       }[b.alasan];
-      if (p.aksi === 'toko') return { aksi: 'Biarkan.', ket: 'Iklan toko. Dinilai dari untung toko per minggu (lihat Rincian).' };
-      if (catatan) return { aksi: 'Biarkan.', ket: catatan };
-      if (p.aksi === 'abu') return { aksi: 'Biarkan.', ket: 'Rugi dari produk ini sendiri, tapi untung kalau produk lain yang ikut terbeli dihitung.' };
-      return { aksi: 'Biarkan.', ket: '' };
+      return { kata, aksi: catatan || '' };
     }
   }
 }
 
-// Satu baris per iklan: produk + setelan sekarang · yang harus dilakukan · hasil 7 hari.
-// "Rincian" membuka angka-angkanya (untuk Aaron) di bawah baris itu.
-function barisIklan(b, grup, hariIni, labelHasil, kampanyePerProduk) {
+// Satu baris per iklan: produk + setelan sekarang · kata tindakan + petunjuk · tombol "Rincian"
+// (angka-angkanya, untuk Aaron) yang membuka panel di bawah baris itu.
+function barisIklan(b, grup, hariIni, kampanyePerProduk) {
   const p = b.p;
   const isi = isiKartuIklan(b, grup, hariIni);
   const setelan = p.aksi === 'toko' ? ['Iklan toko'] : [
@@ -2357,33 +2360,38 @@ function barisIklan(b, grup, hariIni, labelHasil, kampanyePerProduk) {
   const berakhir = b.berakhir && !['jeda', 'ganti'].includes(b.keputusan) ? `<span class="tanda-berakhir">Berakhir ${tanggalSingkat(b.berakhir)}</span>` : '';
   const terbuka = iklanTerbuka.has(p.idProduk);
   const idPanel = `rincian-iklan-${escapeHtml(p.idProduk)}`;
-  const hasil = kinerjaIklan(p);
   return `<div class="iklan-baris${terbuka ? ' terbuka' : ''}">` +
     '<div class="iklan-produk">' +
       `<div class="iklan-nama" title="${escapeHtml(p.namaProduk)}">${escapeHtml(namaRapi(p.namaProduk, 52))}</div>` +
       `<div class="iklan-setelan">${setelan.map((t) => `<span>${t}</span>`).join('')}${berakhir}</div>` +
     '</div>' +
     '<div class="iklan-tindakan">' +
-      `<div class="iklan-aksi">${escapeHtml(isi.aksi)}</div>` + (isi.tambahan || '') +
-      (isi.ket ? `<div class="iklan-ket">${escapeHtml(isi.ket)}</div>` : '') +
-      (isi.tombolHpp ? '<button type="button" class="tombol tombol-kecil" data-ke-hpp>Isi HPP</button>' : '') +
+      `<span class="iklan-kata">${escapeHtml(isi.kata)}</span>` +
+      '<div class="iklan-petunjuk">' +
+        (isi.aksi ? `<div class="iklan-aksi">${escapeHtml(isi.aksi)}</div>` : '') + (isi.tambahan || '') +
+        (isi.ket ? `<div class="iklan-ket">${escapeHtml(isi.ket)}</div>` : '') +
+        (isi.tombolHpp ? '<button type="button" class="tombol tombol-kecil" data-ke-hpp>Isi HPP</button>' : '') +
+      '</div>' +
     '</div>' +
-    '<div class="iklan-hasil">' +
-      `<span class="hasil-label">${labelHasil}</span>` +
-      (hasil || '<span class="teks-redup">Belum ada</span>') +
-      `<button type="button" class="tombol-rincian" data-rincian-iklan="${escapeHtml(p.idProduk)}" aria-expanded="${terbuka}" aria-controls="${idPanel}">` +
-        'Rincian <svg class="ikon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>' +
-    '</div>' +
+    `<button type="button" class="tombol-rincian" data-rincian-iklan="${escapeHtml(p.idProduk)}" aria-expanded="${terbuka}" aria-controls="${idPanel}">` +
+      'Rincian <svg class="ikon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>' +
     (terbuka ? `<div class="iklan-rincian" id="${idPanel}">${panelRincianIklan(p, kampanyePerProduk, b)}</div>` : '') +
   '</div>';
+}
+
+// Rem pengaman: untung toko 7 hari matang terakhir turun jauh dibanding 7 hari sebelumnya.
+function bannerTokoTurun(toko) {
+  const rinci = toko && Number.isFinite(toko.sesudah)
+    ? `<span>Untung toko ${tanggalSingkat(toko.dariSesudah)}–${tanggalSingkat(toko.sampaiSesudah)}: ${formatRupiahRingkas(toko.sesudah)}/hari. ` +
+      `Seminggu sebelumnya: ${formatRupiahRingkas(toko.sebelum)}/hari. Dicek lagi setiap hari.</span>`
+    : '';
+  return `<div class="banner-data"><strong>Untung toko turun jauh. Jangan ubah target dan modal iklan dulu.</strong>${rinci}</div>`;
 }
 
 // Pemberitahuan di atas daftar: data belum lengkap, untung toko turun jauh, iklan yang segera berakhir.
 function pemberitahuanIklan(kep) {
   let atas = bannerDataBelumLengkap(kep.dataBelumLengkap);
-  if (kep.baris.some((b) => b.alasan === 'toko-turun-jauh')) {
-    atas += '<div class="banner-data"><strong>Untung toko turun jauh. Jangan ubah iklan dulu.</strong></div>';
-  }
+  if (kep.baris.some((b) => b.alasan === 'toko-turun-jauh')) atas += bannerTokoTurun(kep.toko);
   const berakhir = kep.baris.filter((b) => b.berakhir && !['jeda', 'ganti'].includes(b.keputusan)).map((b) => b.berakhir).sort();
   if (berakhir.length) {
     const kapan = berakhir[0] === berakhir[berakhir.length - 1] ? tanggalSingkat(berakhir[0]) : `mulai ${tanggalSingkat(berakhir[0])}`;
@@ -2404,10 +2412,6 @@ function renderGrupIklan(kep) {
   }
   const perGrup = new Map(GRUP_IKLAN.map((g) => [g.kunci, []]));
   for (const b of kep.baris) perGrup.get(grupIklan(b, hariIni)).push(b);
-  // Semua iklan dinilai pada 7 hari matang yang sama; tanggalnya cukup sekali di judul kolom.
-  const dinilai = kep.baris.find((b) => b.p.penilaian && b.p.penilaian.siap);
-  const periode = dinilai ? rentangTanggal(dinilai.p.penilaian.dari, dinilai.p.penilaian.sampai) : '';
-  const labelHasil = periode ? `Hasil ${periode}` : 'Hasil 7 hari';
   const perlu = ['hentikan', 'ganti', 'ubah'].reduce((n, k) => n + perGrup.get(k).length, 0);
   const ringkas = (angka, label, kelas = '') => `<div class="ringkas-item ${kelas}"><span class="ringkas-angka">${angka}</span><span class="ringkas-label">${label}</span></div>`;
   const kampanyePerProduk = kampanyePerProdukMap();
@@ -2418,12 +2422,12 @@ function renderGrupIklan(kep) {
       (kep.modalSekarang > 0 ? ringkas(formatRupiahRingkas(kep.modalSekarang), 'modal per hari') : '') +
       ringkas(perlu, 'perlu dikerjakan', perlu ? 'ringkas-perlu' : 'ringkas-beres') +
     '</div>' +
-    `<div class="iklan-kepala" aria-hidden="true"><span>Iklan</span><span>Yang harus dilakukan</span><span>Hasil 7 hari${periode ? `<small>${periode}</small>` : ''}</span></div>` +
+    '<div class="iklan-kepala" aria-hidden="true"><span>Iklan</span><span>Yang harus dilakukan</span></div>' +
     GRUP_IKLAN.filter((g) => perGrup.get(g.kunci).length).map((g) => {
       const daftar = perGrup.get(g.kunci);
       return `<section class="iklan-grup grup-${g.warna}" aria-label="${g.judul}">` +
         `<h3 class="iklan-grup-judul"><span class="grup-judul">${g.judul}</span><span class="grup-jumlah">${daftar.length}</span><span class="grup-ket">${g.ket}</span></h3>` +
-        daftar.map((b) => barisIklan(b, g.kunci, hariIni, labelHasil, kampanyePerProduk)).join('') + '</section>';
+        daftar.map((b) => barisIklan(b, g.kunci, hariIni, kampanyePerProduk)).join('') + '</section>';
     }).join('') + '</div>';
 }
 
@@ -2621,9 +2625,7 @@ function renderTugas() {
   const teksHasil = { baik: 'hasil bagus', 'belum-jelas': 'hasil belum jelas' };
   const barisHasil = kep.baris.filter((b) => b.hasilIklan && b.hasilIklan.baru && teksHasil[b.hasilIklan.status] && !['kembalikan', 'tinjau'].includes(b.keputusan))
     .map((b) => `<p class="tugas-lain">${escapeHtml(namaSingkat(b.p.namaProduk, 32))}: <strong>${teksHasil[b.hasilIklan.status]}${PERLU_TINDAKAN.has(b.keputusan) ? '' : ', biarkan'}</strong>.</p>`);
-  if (kep.baris.some((b) => b.alasan === 'toko-turun-jauh')) {
-    barisHasil.unshift('<div class="banner-data"><strong>Untung toko turun jauh. Jangan ubah iklan dulu.</strong></div>');
-  }
+  if (kep.baris.some((b) => b.alasan === 'toko-turun-jauh')) barisHasil.unshift(bannerTokoTurun(kep.toko));
   hasilEl.innerHTML = barisHasil.join('');
   renderSaranIklan();
 }

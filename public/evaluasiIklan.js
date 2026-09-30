@@ -115,26 +115,18 @@
     return { ...hasil, sebelum, sesudah, bedaLangsung, bedaShopee, status };
   }
 
-  // Store safety check for the latest batch of changes. It never reverses anything; a large drop
-  // holds new trials for one week after the check date.
-  function evaluasiPerubahan(data, sumber, hariIni) {
-    const riwayat = (data.riwayatSetelan || []).filter(u => u.tanggal <= hariIni);
-    const t = riwayat.map(u => u.tanggal).sort().pop();
-    if (!t || t < geser(hariIni, -28)) return null;
-    const kelompok = riwayat.filter(u => u.tanggal === t);
-    const cekLagi = geser(t, 15);
-    const hasil = { tanggal: t, kelompok, cekLagi, dariSebelum: geser(t, -7), sampaiSebelum: geser(t, -1), dariSesudah: geser(t, 1), sampaiSesudah: geser(t, 7) };
-    if (hariIni < cekLagi) return { ...hasil, status: 'tunggu' };
-    // Edits of two campaigns of one product that day, or edits in the baseline, are not a clean comparison
-    // (same-day edits of one campaign are merged into one change by the server).
-    if (new Set(kelompok.map(u => u.campaignId)).size !== kelompok.length || riwayat.some(u => u.tanggal >= hasil.dariSebelum && u.tanggal < t)) {
-      return { ...hasil, status: 'campur' };
-    }
-    const sebelum = untungToko(sumber, data.biayaTokoHarian, hasil.dariSebelum, hasil.sampaiSebelum);
-    const sesudah = untungToko(sumber, data.biayaTokoHarian, hasil.dariSesudah, hasil.sampaiSesudah);
+  // Rolling store safety check (user, 30/09): whole-store profit per day over the latest 7 mature days
+  // (today−14…today−8) vs the 7 days before. It works while several ads change on different days and
+  // never reverses anything; a drop ≥ BATAS_TURUN_TOKO holds new changes until it no longer shows.
+  // On the 29/09 export (52 windows, Aug–Sep) it fired on 1 day in 52 without a known cause.
+  function cekToko(data, sumber, hariIni) {
+    const sampaiSesudah = geser(hariIni, -8), dariSesudah = geser(sampaiSesudah, -6);
+    const sampaiSebelum = geser(dariSesudah, -1), dariSebelum = geser(sampaiSebelum, -6);
+    const hasil = { dariSebelum, sampaiSebelum, dariSesudah, sampaiSesudah };
+    const sebelum = untungToko(sumber, data.biayaTokoHarian, dariSebelum, sampaiSebelum);
+    const sesudah = untungToko(sumber, data.biayaTokoHarian, dariSesudah, sampaiSesudah);
     if (!data.dataSiapEvaluasi || sebelum === null || sesudah === null) return { ...hasil, status: 'data' };
-    const turunJauh = sesudah - sebelum <= -BATAS_TURUN_TOKO && hariIni < geser(cekLagi, 7);
-    return { ...hasil, sebelum, sesudah, status: 'selesai', turunJauh };
+    return { ...hasil, sebelum, sesudah, status: 'selesai', turunJauh: sesudah - sebelum <= -BATAS_TURUN_TOKO };
   }
 
   // Remember a raise followed by a return towards the old target; do not immediately repeat it.
@@ -147,16 +139,15 @@
     });
   }
 
-  function terapkanEvaluasiToko(baris, evaluasi, data, dasarLengkap, hariIni) {
+  function terapkanEvaluasiToko(baris, toko, data, dasarLengkap, hariIni) {
     const ubah = new Set(['naikkan', 'turunkan', 'tambah', 'kurangi']);
     // ditahan = the change that was held back.
     const tahan = (b, alasan) => { if (ubah.has(b.keputusan)) b.ditahan = b.keputusan; b.keputusan = 'tunggu'; b.alasan = alasan; b.targetBaru = null; b.modalBaru = b.modal; };
     // Each ad is judged on its own direct sales, so several ads may be changed at once (user, 30/09).
     // New changes wait only for complete data and the store safety check.
-    const tahanUji = !data.dataSiapEvaluasi || !dasarLengkap || (evaluasi && evaluasi.status === 'data') ? 'data-toko'
-      : evaluasi && evaluasi.turunJauh ? 'toko-turun-jauh' : null;
+    const tahanUji = !data.dataSiapEvaluasi || !dasarLengkap || (toko && toko.status === 'data') ? 'data-toko'
+      : toko && toko.turunJauh ? 'toko-turun-jauh' : null;
     for (const b of baris) {
-      b.evaluasi = evaluasi;
       if (['jeda', 'isi-hpp', 'toko', 'ganti'].includes(b.keputusan)) continue;
       const h = hariIni ? hasilIklan(data, b.p.idProduk, hariIni, b.p.roasImpas) : null;
       b.hasilIklan = h;
@@ -189,13 +180,12 @@
     if (tahanUji) for (const b of baris) {
       if (['jeda', 'isi-hpp', 'toko', 'ganti', 'kembalikan', 'tinjau'].includes(b.keputusan)) continue;
       tahan(b, tahanUji);
-      if (tahanUji === 'toko-turun-jauh') b.bisaDiubahLagi = geser(evaluasi.cekLagi, 7);
     }
     return baris;
   }
 
   const api = { geser, metrikTerbaru, untungToko, rincianUntungToko, BATAS_TANPA_HPP, BEDA_LANGSUNG, BEDA_SHOPEE, BATAS_TURUN_TOKO,
-    untungIklanHarian, hasilIklan, evaluasiPerubahan, pernahDikembalikan, terapkanEvaluasiToko };
+    untungIklanHarian, hasilIklan, cekToko, pernahDikembalikan, terapkanEvaluasiToko };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.EvaluasiIklan = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

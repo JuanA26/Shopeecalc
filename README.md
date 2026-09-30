@@ -109,9 +109,10 @@ phone: profit, then tasks, then shortcuts.
   different margins. **Lebih baik** keeps the setting and the steps continue; **lebih buruk** returns towards the old target or budget (at most 20%
   per step); **belum jelas** keeps the setting, and after a target raise that ad's target is not raised
   again. Missing data is never zero profit.
-- **Store safety check:** total store profit per day before/after the latest change. Store profit swings
-  about ±400 rb/day between ordinary weeks, more than one ad can move it, so it never reverses anything;
-  a drop of 700 rb/day or more holds new trials for one week. This is an observed comparison, not proof.
+- **Store safety check (rolling):** total store profit per day over the latest 7 mature days vs the 7 days
+  before, checked every day. Store profit swings about ±400 rb/day between ordinary weeks, more than one ad
+  can move it, so it never reverses anything; a drop of 700 rb/day or more holds new target/budget changes
+  while it shows. This is an observed comparison, not proof.
 - Missing HPP for more than 5% of the week's payout (smaller gaps are estimated at the margin of the
   other products), missing daily records, stale/failed syncs, retries, or overlapping changes block new
   trials. The reason is shown once as a yellow banner (with an "Isi HPP" button), not on every ad. Several edits of one ad on the same day count as one change (first old value → last new value). Mixed target/budget changes with worse results require review. A target increase followed by
@@ -159,10 +160,12 @@ phone: profit, then tasks, then shortcuts.
 Ads data (last 90 days, every product campaign, plus the budget and target set in Seller Centre) comes
 from Shopee automatically. A summary line (running ads, total daily budget, how many need work) sits above
 the **running ads in one table, grouped in five sections**. Each row: product with its current target and
-budget (orange tag when the ad ends soon) · what to do · result = profit or loss on the advertised product
-itself over the latest seven mature days (today−14 to today−8), with ad spend and sales. **Rincian** on a
-row opens its numbers: direct ROAS vs the minimum, Shopee's ROAS and recommended range, price/HPP, margin,
-paid rate and that product's campaigns. On phones each row stacks. The groups, most urgent first:
+budget (orange tag when the ad ends soon) · one action word (Matikan, Ganti, Ubah, Tunggu, Biarkan) with the
+exact instruction. Rows show no profit figures: most ads are below break-even on their own product (a strict
+measure), which reads as failure next to "Biarkan". **Rincian** on a row opens the numbers: direct ROAS vs the
+minimum, Shopee's ROAS and recommended range, price/HPP, margin, paid rate, the ad's profit on its own product
+over the latest seven mature days (today−14 to today−8) and that product's campaigns. On phones each row
+stacks. The groups, most urgent first:
 
 1. **Hentikan** (red): turn the ad off. Only when price ≤ cost or no ad orders are ever paid.
 2. **Ganti** (red): a big loser (see "Ganti iklan" above). The row names the product to advertise instead.
@@ -170,7 +173,7 @@ paid rate and that product's campaigns. On phones each row stacks. The groups, m
    reversals of a change that made things worse, and "Isi HPP" for ads without a cost price.
 4. **Masa Belajar** (blue): ads in their first days, or changed less than 15 days ago (the card shows the
    change and when the result comes out). Don't touch.
-5. **Lanjutkan** (green): nothing to change. A short note says why when that isn't obvious: the ad is
+5. **Lanjutkan** (green): nothing to change. A short note says why when that isn't obvious:
    data is incomplete, the last change worked, or the target is already at the limit. Several ads can be
    changed at once (each is judged on its own direct sales); within a group, the biggest 7-day loss comes
    first.

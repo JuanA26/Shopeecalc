@@ -85,3 +85,15 @@ test('each running ad lands in exactly one group', () => {
   assert.equal(g(row('a', 'tunggu', { alasan: 'satu-uji' })), 'lanjut'); // queued
   assert.equal(g(row('a', 'toko', { p: { idProduk: 'a', aksi: 'toko' } })), 'lanjut');
 });
+
+test('new-ad target: past winner at its best target; never advertised at Shopee middle (≥ break-even); both capped; none → Auto', () => {
+  const rek = { w: { rendah: 8, tengah: 10, tinggi: 11 }, n: { rendah: 5, tengah: 6, tinggi: 9 }, m: { rendah: 3, tengah: 4, tinggi: 8 } };
+  const c = { dataIklan: { rekomendasiProduk: rek }, setelanProduk: () => ({}), formatRoas: (n) => n.toFixed(1).replace('.', ','),
+    batasTargetShopee: (st) => (st.rekomendasi && st.rekomendasi.tinggi ? Math.floor(st.rekomendasi.tinggi * 1.25 * 10 + 1e-9) / 10 : null) };
+  vm.runInNewContext(`${extract('targetPengganti')};${extract('modePengganti')};globalThis.t = targetPengganti; globalThis.m = modePengganti;`, c);
+  assert.equal(c.m({ idProduk: 'w', targetTerbaik: 15, roasMinimum: 6 }), 'GMV Max ROAS, Target 13,7'); // 11 × 1.25
+  assert.equal(c.m({ idProduk: 'x', targetTerbaik: 15, roasMinimum: 6 }), 'GMV Max ROAS, Target 15,0 (cek batas Shopee)');
+  assert.equal(c.t({ idProduk: 'n', roasMinimum: 5.2 }).target, 6);    // Shopee middle above break-even
+  assert.equal(c.t({ idProduk: 'm', roasMinimum: 5.21 }).target, 5.3); // break-even (rounded up) above Shopee middle
+  assert.equal(c.m({ idProduk: 'y', roasMinimum: 5 }), 'GMV Max Auto (cek setelah 7–14 hari)'); // no recommendation yet
+});

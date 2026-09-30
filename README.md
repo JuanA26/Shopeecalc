@@ -126,7 +126,7 @@ phone: profit, then tasks, then shortcuts.
   direct ROAS < 0.6 × break-even is replaced rather than tuned. It shows which ad to turn off and which
   product to advertise instead (Iklankan lagi first, then Coba iklankan; Tidak Terbatas, 50 rb/day).
   A past winner restarts in **GMV Max ROAS at the target of its most profitable ROAS-mode campaign**
-  (capped at the Shopee limit when known; otherwise the page asks the seller to check that limit); a never-advertised product starts on **Auto** and is reviewed after 7–14 days. A clearly worse result from
+  (capped at the Shopee limit when known; otherwise the page asks the seller to check that limit); a never-advertised product starts in **ROAS mode at Shopee's middle recommended target** (not below its break-even, capped at the limit; user 30/09, Shopee's FAQ treats such items as regular products), or on **Auto** when Shopee gives no recommendation, reviewed after 7–14 days. A clearly worse result from
   the latest setting change (≤ 28 days old) is reviewed for reversal before replacement. In this shop Auto ads reached a median
   direct ROAS of 2.1 vs 4.6 in ROAS mode, and past winners made their profit in ROAS mode. Why: 20% target steps up to the limit raise the target by about 30% at most, while these
   ads need 1.7× or more; 90% of this shop's ROAS-mode campaigns already beat their target on Shopee's

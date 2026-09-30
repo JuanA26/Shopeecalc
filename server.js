@@ -780,7 +780,7 @@ app.post('/api/iklan/dari-shopee', requireLogin, (req, res) => {
   const body = req.body || {};
   const sampai = tanggalValid(body.sampai) ? body.sampai : hariIniWib();
   const dari = tanggalValid(body.dari) ? body.dari : sampai;
-  const { kampanye, setelan, adaData, riwayatSetelan, biayaTokoHarian } = kampanyeDariDb(db, token.shop_id, dari, sampai);
+  const { kampanye, setelan, rekomendasiProduk, adaData, riwayatSetelan, biayaTokoHarian } = kampanyeDariDb(db, token.shop_id, dari, sampai);
   const s = db.prepare('SELECT status, terakhir_selesai, iklan_status, iklan_pesan, iklan_selesai, iklan_sampai FROM sinkron_shopee WHERE shop_id = ?').get(token.shop_id) || {};
   const statusIklan = { status: s.iklan_status || null, pesan: s.iklan_pesan || null, terakhirSelesai: s.iklan_selesai || null };
   if (!adaData && !kampanye.length) return res.json({ kosong: true, statusIklan });
@@ -799,7 +799,7 @@ app.post('/api/iklan/dari-shopee', requireLogin, (req, res) => {
   const analisis = hitungAnalisisIklan(kampanye, petaHppUntukIklan(), rasio, produkIncomeDariPermintaan(body.produkIncome), opsi);
   const tampil = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
   res.json({
-    ...analisis, sumber: 'api', setelanApi: setelan, rentangData: { dari, sampai }, statusIklan,
+    ...analisis, sumber: 'api', setelanApi: setelan, rekomendasiProduk, rentangData: { dari, sampai }, statusIklan,
     riwayatSetelan, biayaTokoHarian, dataSiapEvaluasi, sinkronBelumSiap,
     sumberRasio, sumberTingkatCair: opsi.sumberTingkatCair, tingkatCairTerukurToko: opsi.tingkatCairTerukurToko,
     periode: `${tampil(dari)} - ${tampil(sampai)}`, namaToko: '', tanggalLaporanIso: sampai,

@@ -2634,11 +2634,25 @@ function renderTugas() {
 const buktiPengganti = (pg) => (pg.jenis === 'ulang' ? `dulu untung ${rupiahPendek(pg.untungIklan)} dari iklan.` : `laku ${pg.pcsA} pcs dalam 4 minggu tanpa iklan.`);
 // Mode iklan pengganti (user, 2026-09-28): produk yang dulu untung → GMV Max ROAS di target kampanye
 // ROAS-nya yang paling untung (paling tinggi batas Shopee kalau diketahui); belum pernah → Auto.
+// Target iklan baru (pengganti / Saran iklan), selalu GMV Max ROAS kalau ada angkanya:
+// - dulu untung di mode ROAS → target terbaik dulu;
+// - belum pernah (user, 30/09; Shopee: produk reguler → ROAS) → target tengah Shopee, tidak di bawah
+//   titik impas produk itu.
+// Keduanya dibatasi rekomendasi tertinggi Shopee × 1,25. Rekomendasi juga diambil untuk produk yang
+// tidak sedang beriklan (rekomendasiProduk). null = belum ada angka → GMV Max Auto.
+function targetPengganti(pg) {
+  const st = setelanProduk(pg.idProduk);
+  const rekomendasi = st.rekomendasi || (dataIklan && dataIklan.rekomendasiProduk || {})[pg.idProduk];
+  const batas = batasTargetShopee({ rekomendasi });
+  const impas = pg.roasMinimum > 0 ? Math.ceil(pg.roasMinimum * 10 - 1e-9) / 10 : 0;
+  const dasar = pg.targetTerbaik || (rekomendasi && rekomendasi.tengah > 0 ? Math.max(rekomendasi.tengah, impas) : null);
+  if (!dasar) return null;
+  return { target: batas !== null ? Math.min(dasar, batas) : dasar, pasti: batas !== null };
+}
 function modePengganti(pg) {
-  if (!pg.targetTerbaik) return 'GMV Max Auto (cek setelah 7–14 hari)';
-  const batas = batasTargetShopee(setelanProduk(pg.idProduk));
-  const target = batas !== null ? Math.min(pg.targetTerbaik, batas) : pg.targetTerbaik;
-  return `GMV Max ROAS, Target ${formatRoas(target)}${batas === null ? ' (cek batas Shopee)' : ''}`;
+  const t = targetPengganti(pg);
+  if (!t) return 'GMV Max Auto (cek setelah 7–14 hari)';
+  return `GMV Max ROAS, Target ${formatRoas(t.target)}${t.pasti ? '' : ' (cek batas Shopee)'}`;
 }
 function ketPengganti(b) {
   const bukti = buktiPengganti(b.pengganti);
@@ -2661,9 +2675,10 @@ function renderSaranIklan() {
     ? `<h3 class="saran-judul">${judul}</h3><small class="langkah-ket">${ket}</small><ul class="langkah-daftar">` +
       daftar.map((p) => `<li><span title="${escapeHtml(namaSingkat(p.nama, 200))}">${escapeHtml(namaSingkat(p.nama, 32))}</span><strong>${nilai(p)}</strong></li>`).join('') + '</ul>'
     : '');
-  const isi = bagian('Iklankan lagi', 'Dulu untung dari iklan. Pasang GMV Max ROAS di target yang dulu untung.', s.ulang,
-    (p) => `untung ${rupiahPendek(p.untungIklan)}${p.targetTerbaik ? ` · target ${formatRoas(p.targetTerbaik)}` : ''}`) +
-    bagian('Coba iklankan', 'Laku tanpa iklan, untungnya cukup. Pasang GMV Max Auto. Cek setelah 7–14 hari.', s.coba, (p) => `${p.pcsA} terjual / 4 minggu`);
+  const isi = bagian('Iklankan lagi', 'Dulu untung dari iklan. Pasang GMV Max ROAS di target yang tertulis.', s.ulang,
+    (p) => { const t = targetPengganti(p); return `untung ${rupiahPendek(p.untungIklan)} · ${t ? `target ${formatRoas(t.target)}` : 'Auto'}`; }) +
+    bagian('Coba iklankan', 'Laku tanpa iklan, untungnya cukup. Pasang GMV Max ROAS di target yang tertulis (tanpa target: GMV Max Auto).', s.coba,
+      (p) => { const t = targetPengganti(p); return `${p.pcsA} terjual / 4 minggu · ${t ? `target ${formatRoas(t.target)}` : 'Auto'}`; });
   el.hidden = !isi;
   document.getElementById('saranIklanIsi').innerHTML = isi &&
     isi + '<small class="langkah-ket">Cek stok dulu. Periode Tidak Terbatas. Boleh beberapa sekaligus. Iklan yang rugi besar sudah ada di langkah "Ganti iklan".</small>';

@@ -194,3 +194,44 @@ test('pay_per_sale from the escrow detail is stored; missing field stays null', 
   assert.deepEqual({ ...nilai('PPS1') }, { pay_per_sale: 8000, escrow_amount: 70000 }, 'payout is escrow_amount as-is (fee already inside)');
   assert.equal(nilai('PPS2').pay_per_sale, null);
 });
+
+test('Shopee target recommendations are also fetched for recently advertised products that are not running', async () => {
+  const { sinkronIklan, kampanyeDariDb } = require('../sinkronIklan');
+  const diminta = [];
+  const panggil = async (p, opsi) => {
+    if (p.endsWith('/get_product_level_campaign_id_list')) return { response: { campaign_list: [{ campaign_id: 91 }, { campaign_id: 92 }], has_next_page: false } };
+    if (p.endsWith('/get_product_level_campaign_setting_info')) return { response: { campaign_list: [
+      { campaign_id: 91, common_info: { item_id_list: [701], ad_name: 'Jalan', campaign_status: 'ongoing', bidding_method: 'auto', campaign_budget: 50000,
+        campaign_duration: { start_time: now - 20 * 86400, end_time: 0 } }, auto_bidding_info: { roas_target: 9 } },
+      { campaign_id: 92, common_info: { item_id_list: [702], ad_name: 'Selesai', campaign_status: 'ended', bidding_method: 'auto', campaign_budget: 50000,
+        campaign_duration: { start_time: now - 40 * 86400, end_time: now - 10 * 86400 } }, auto_bidding_info: { roas_target: 15 } },
+    ] } };
+    if (p.endsWith('/get_product_recommended_roi_target')) {
+      diminta.push(String(opsi.query.item_id));
+      return { response: { upper_bound: { value: 12 }, exact: { value: 10 }, lower_bound: { value: 8 } } };
+    }
+    if (p.endsWith('/get_product_campaign_daily_performance')) return { response: { campaign_list: [
+      { campaign_id: 91, metrics_list: [{ date: '01-10-2026', expense: 1000, broad_gmv: 0, direct_gmv: 0 }] },
+      { campaign_id: 92, metrics_list: [{ date: '01-10-2026', expense: 5000, broad_gmv: 0, direct_gmv: 0 }] }] } };
+    if (p.endsWith('/get_all_cpc_ads_daily_performance')) return { response: [{ date: '01-10-2026', expense: 6000 }] };
+    throw new Error('unexpected endpoint ' + p);
+  };
+  await sinkronIklan({ db, panggil, shopId: 'rek', hariIni: '2026-10-01' });
+  assert.deepEqual(diminta, ['701']); // no daily spend stored yet for the ended ad
+  await sinkronIklan({ db, panggil, shopId: 'rek', iklanSampai: '2026-10-01', hariIni: '2026-10-02' });
+  assert.deepEqual(diminta, ['701', '702']); // running: daily (already fresh); ended with spend: weekly
+  const { setelan, rekomendasiProduk } = kampanyeDariDb(db, 'rek', '2026-09-01', '2026-10-02');
+  assert.equal(setelan['702'], undefined);
+  assert.equal(rekomendasiProduk['702'].tinggi, 12);
+  await sinkronIklan({ db, panggil, shopId: 'rek', iklanSampai: '2026-10-02', hariIni: '2026-10-03' });
+  assert.deepEqual(diminta, ['701', '702']); // both still fresh
+  // Best sellers without ads (≥ 8 pcs in 4 weeks, paid): "Coba iklankan" candidates. Cancelled orders don't count.
+  const order = db.prepare('INSERT INTO api_order (order_sn, shop_id, tanggal_pesanan, status) VALUES (?, ?, ?, ?)');
+  const item = db.prepare('INSERT INTO api_order_item (order_sn, baris, id_produk, jumlah, harga_satuan) VALUES (?, 0, ?, ?, 50000)');
+  order.run('R1', 'rek', '2026-09-25', 'COMPLETED'); item.run('R1', '801', 8);
+  order.run('R2', 'rek', '2026-09-25', 'CANCELLED'); item.run('R2', '802', 9);
+  order.run('R3', 'rek', '2026-09-25', 'COMPLETED'); item.run('R3', '803', 3);
+  order.run('R4', 'rek', '2026-09-25', 'COMPLETED'); item.run('R4', '701', 20); // already advertised
+  await sinkronIklan({ db, panggil, shopId: 'rek', iklanSampai: '2026-10-03', hariIni: '2026-10-04' });
+  assert.deepEqual(diminta, ['701', '702', '801']);
+});

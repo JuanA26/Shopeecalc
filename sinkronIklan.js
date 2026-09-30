@@ -118,6 +118,31 @@ async function sinkronIklan({ db, panggil, shopId, iklanSampai, hariIni = tangga
      WHERE k.shop_id = ? AND k.status = 'ongoing' AND k.id_produk IS NOT NULL
        AND (r.updated_at IS NULL OR r.updated_at < datetime('now', '-20 hours'))`
   ).all(shopId).map((r) => r.id_produk);
+  //     Juga produk yang beriklan dalam 90 hari terakhir tapi tidak sedang berjalan: calon "Iklankan
+  //     lagi" / pengganti di langkah Ganti, supaya targetnya bisa dibatasi tanpa "cek batas Shopee"
+  //     (user, 30/09). Endpoint ini memang dipakai sebelum membuat iklan. Seminggu sekali, maks 30.
+  perluRekomendasi.push(...db.prepare(
+    `SELECT k.id_produk FROM iklan_kampanye k
+     JOIN iklan_harian h ON h.shop_id = k.shop_id AND h.campaign_id = k.campaign_id AND h.tanggal >= ?
+     LEFT JOIN iklan_rekomendasi r ON r.shop_id = k.shop_id AND r.id_produk = k.id_produk
+     WHERE k.shop_id = ? AND k.id_produk IS NOT NULL
+       AND k.id_produk NOT IN (SELECT id_produk FROM iklan_kampanye WHERE shop_id = ? AND status = 'ongoing' AND id_produk IS NOT NULL)
+       AND (r.updated_at IS NULL OR r.updated_at < datetime('now', '-6 days'))
+     GROUP BY k.id_produk HAVING SUM(h.biaya) > 0 ORDER BY SUM(h.biaya) DESC LIMIT 30`
+  ).all(tambahHari(hariIni, -90), shopId, shopId).map((r) => r.id_produk));
+  //     Dan produk terlaris tanpa iklan (≥ 8 pcs dalam 4 minggu, < 50 rb biaya iklan dalam 90 hari):
+  //     calon "Coba iklankan", dipasang GMV Max ROAS di target tengah Shopee (user, 30/09). Maks 20.
+  perluRekomendasi.push(...db.prepare(
+    `SELECT i.id_produk FROM api_order o JOIN api_order_item i ON i.order_sn = o.order_sn
+     LEFT JOIN iklan_rekomendasi r ON r.shop_id = o.shop_id AND r.id_produk = i.id_produk
+     WHERE o.shop_id = ? AND o.tanggal_pesanan >= ? AND COALESCE(o.status, '') NOT IN ('UNPAID', 'CANCELLED', 'IN_CANCEL')
+       AND i.id_produk NOT IN (SELECT id_produk FROM iklan_kampanye WHERE shop_id = ? AND status = 'ongoing' AND id_produk IS NOT NULL)
+       AND i.id_produk NOT IN (SELECT k.id_produk FROM iklan_kampanye k JOIN iklan_harian h ON h.shop_id = k.shop_id AND h.campaign_id = k.campaign_id
+         WHERE k.shop_id = ? AND h.tanggal >= ? AND k.id_produk IS NOT NULL GROUP BY k.id_produk HAVING SUM(h.biaya) >= 50000)
+       AND (r.updated_at IS NULL OR r.updated_at < datetime('now', '-6 days'))
+     GROUP BY i.id_produk HAVING SUM(i.jumlah) >= 8 ORDER BY SUM(i.jumlah) DESC LIMIT 20`
+  ).all(shopId, tambahHari(hariIni, -28), shopId, shopId, tambahHari(hariIni, -90)).map((r) => r.id_produk)
+    .filter((id) => !perluRekomendasi.includes(id)));
   const simpanRekomendasi = db.prepare(
     `INSERT INTO iklan_rekomendasi (shop_id, id_produk, rendah, tengah, tinggi, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now'))
      ON CONFLICT(shop_id, id_produk) DO UPDATE SET rendah = excluded.rendah, tengah = excluded.tengah, tinggi = excluded.tinggi, updated_at = excluded.updated_at`
@@ -328,9 +353,12 @@ function kampanyeDariDb(db, shopId, dari, sampai) {
     s.mode = info.target_roas > 0 ? 'GMV Max ROAS' : 'GMV Max Auto';
   }
   for (const s of Object.values(setelan)) if (!s.modal_harian) s.modal_harian = null;
-  // Rekomendasi Target ROAS Shopee (rendah/tengah/tinggi) untuk produk yang sedang beriklan.
+  // Rekomendasi Target ROAS Shopee (rendah/tengah/tinggi): di setelan produk yang sedang beriklan,
+  // dan untuk semua produk (juga yang tidak beriklan) di rekomendasiProduk — dipakai pengganti.
+  const rekomendasiProduk = {};
   for (const r of db.prepare('SELECT id_produk, rendah, tengah, tinggi FROM iklan_rekomendasi WHERE shop_id = ?').all(shopId)) {
-    if (setelan[r.id_produk]) setelan[r.id_produk].rekomendasi = { rendah: r.rendah, tengah: r.tengah, tinggi: r.tinggi };
+    rekomendasiProduk[r.id_produk] = { rendah: r.rendah, tengah: r.tengah, tinggi: r.tinggi };
+    if (setelan[r.id_produk]) setelan[r.id_produk].rekomendasi = rekomendasiProduk[r.id_produk];
   }
   // Keep 90 days of changes, including ended campaigns, to detect overlapping store trials.
   const kampanyeBerjalan = new Set([...infoKampanye.values()].filter((i) => i.status === 'ongoing').map((i) => i.campaign_id));
@@ -348,7 +376,7 @@ function kampanyeDariDb(db, shopId, dari, sampai) {
     s.perubahan = perubahan;
   }
 
-  return { kampanye, setelan, riwayatSetelan, biayaTokoHarian: Object.fromEntries(toko.map(d => [d.tanggal, d.biaya])), adaData: harian.length > 0 || toko.length > 0 };
+  return { kampanye, setelan, rekomendasiProduk, riwayatSetelan, biayaTokoHarian: Object.fromEntries(toko.map(d => [d.tanggal, d.biaya])), adaData: harian.length > 0 || toko.length > 0 };
 }
 
 module.exports = { sinkronIklan, kampanyeDariDb, jendela, gabungUbahSehari };

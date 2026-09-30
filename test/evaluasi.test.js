@@ -87,6 +87,26 @@ test('store profit of the latest 7 mature days: incl. other products and returns
   assert.equal(toko().alasan, 'hari');
 });
 
+test('per-ad before/after judge leaves out busy store days in either week', () => {
+  const { data } = fixture();
+  iklan(data, SEBELUM, SEBELUM); // flat: 10 rb/day direct before and after the change on 15/09
+  data.kampanye[0].perHari['2026-09-13'].omzetLangsung += 1000000; // 9.9-style spike in the week before
+  assert.equal(E.hasilIklan(data, 'p', '2026-09-30', 6).status, 'buruk'); // without store data: looks worse
+  data.penghasilanHarian = {};
+  for (let i = 1; i <= 30; i++) data.penghasilanHarian[`2026-09-${String(i).padStart(2, '0')}`] = 200000;
+  data.penghasilanHarian['2026-09-13'] = 1000000;
+  assert.deepEqual([...E.hariRamai(data.penghasilanHarian, '2026-09-08', '2026-09-22')], ['2026-09-13']);
+  const h = E.hasilIklan(data, 'p', '2026-09-30', 6);
+  assert.equal(h.status, 'belum-jelas'); assert.equal(h.bedaLangsung, 0); assert.equal(h.sebelum.hari, 6);
+  assert.equal(h.ramai.join(), '2026-09-13');
+  // A real change on ordinary days is still judged.
+  iklan(data, SEBELUM, BURUK); assert.equal(E.hasilIklan(data, 'p', '2026-09-30', 6).status, 'buruk');
+  // Fewer than 4 ordinary days in a week: the busy stretch is the norm, so all 7 days are compared.
+  for (const d of ['2026-09-17', '2026-09-18', '2026-09-19', '2026-09-20']) data.penghasilanHarian[d] = 1000000;
+  const semua = E.hasilIklan(data, 'p', '2026-09-30', 6);
+  assert.equal(semua.ramai.length, 0); assert.equal(semua.sebelum.hari, 7);
+});
+
 test('each change is judged by its own direct contribution; Shopee broad movement is context', () => {
   const { data } = fixture();
   iklan(data, SEBELUM, BURUK);
@@ -195,8 +215,8 @@ test('dashboard shows numbered simple steps: HPP first, then extend period; no p
 });
 
 test('Dashboard week comparison leaves out busy days (> 1.8 × median payout) and compares per day', () => {
-  const ctx = { geserHari: E.geser };
-  vm.runInNewContext('const BATAS_HARI_RAMAI = 1.8;' + extract('bandingMingguBiasa') + ';this.f = bandingMingguBiasa', ctx);
+  const ctx = { geserHari: E.geser, EvaluasiIklan: E };
+  vm.runInNewContext(extract('bandingMingguBiasa') + ';this.f = bandingMingguBiasa', ctx);
   // 1–28 Sep: 200 rb payout, 80 rb profit, 20 rb ads a day. Week A = 8–14 Sep, week B = 15–21 Sep.
   const items = [], perHari = {};
   for (let i = 1; i <= 28; i++) {

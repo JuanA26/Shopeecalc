@@ -80,17 +80,36 @@
   const BEDA_LANGSUNG = 20000;
   const BEDA_SHOPEE = 60000;
 
+  // Busy days (user, 30/09): store payout > 1.8 × the median day of the reference period (at least the
+  // 28 days ending with `sampai`). Sale days (9.9, 25th, 15th) run 2–4× a normal day and swing any
+  // comparison, so week comparisons and the per-ad before/after judge leave them out.
+  // penghasilanHarian = { iso: store payout of that order date }; returns the busy days in dari…sampai.
+  const BATAS_HARI_RAMAI = 1.8;
+  const MIN_HARI_BIASA = 4;
+  function hariRamai(penghasilanHarian, dari, sampai) {
+    if (!penghasilanHarian) return [];
+    const rentang = tanggal(dari, sampai);
+    const acuan = tanggal(geser(sampai, 1 - Math.max(28, rentang.length)), sampai)
+      .map(d => penghasilanHarian[d]).filter(n => n > 0).sort((a, b) => a - b);
+    if (!acuan.length) return [];
+    const tengah = (acuan[(acuan.length - 1) >> 1] + acuan[acuan.length >> 1]) / 2;
+    return rentang.filter(d => penghasilanHarian[d] > BATAS_HARI_RAMAI * tengah);
+  }
+
   // Per day over seven full days of one campaign: profit on the advertised product (langsung) and
   // a broad scenario (shopee). The broad scenario applies this SKU's margin to other products too;
-  // keep it for context, never as the automatic setting-change verdict.
-  function untungIklanHarian(k, dari, sampai, roasMin) {
-    let biaya = 0, omzet = 0, omzetLangsung = 0;
+  // keep it for context, never as the automatic setting-change verdict. Days in `lewati` (busy days)
+  // are left out; the average is over the remaining days.
+  function untungIklanHarian(k, dari, sampai, roasMin, lewati) {
+    let biaya = 0, omzet = 0, omzetLangsung = 0, hari = 0;
     for (const d of tanggal(dari, sampai)) {
+      if (lewati && lewati.has(d)) continue;
       const v = k.perHari && k.perHari[d];
       if (!v || !['biaya', 'omzet', 'omzetLangsung'].every(f => Number.isFinite(v[f]))) return null;
-      biaya += v.biaya; omzet += v.omzet; omzetLangsung += v.omzetLangsung;
+      biaya += v.biaya; omzet += v.omzet; omzetLangsung += v.omzetLangsung; hari += 1;
     }
-    return { biaya: biaya / 7, langsung: (omzetLangsung / roasMin - biaya) / 7, shopee: (omzet / roasMin - biaya) / 7 };
+    if (!hari) return null;
+    return { biaya: biaya / hari, langsung: (omzetLangsung / roasMin - biaya) / hari, shopee: (omzet / roasMin - biaya) / hari, hari };
   }
 
   // The product's latest recorded change, judged at T+15.
@@ -106,12 +125,18 @@
     if (riwayat.some(v => v !== u && v.tanggal >= geser(t, -7))) return { ...hasil, status: 'campur' };
     const k = (data.kampanye || []).find(k => k.campaignId === u.campaignId);
     if (!k || !(roasMin > 0) || !data.dataSiapEvaluasi) return { ...hasil, status: 'data' };
-    const sebelum = untungIklanHarian(k, geser(t, -7), geser(t, -1), roasMin);
-    const sesudah = untungIklanHarian(k, geser(t, 1), geser(t, 7), roasMin);
-    if (!sebelum || !sesudah) return { ...hasil, status: 'data' };
+    // Busy days in either week are left out of both averages (user, 30/09). A week needs at least
+    // MIN_HARI_BIASA ordinary days; otherwise the busy stretch is the norm and all days are compared.
+    let ramai = hariRamai(data.penghasilanHarian, geser(t, -7), geser(t, 7)).filter(d => d !== t);
+    const biasa = (dari) => tanggal(dari, geser(dari, 6)).filter(d => !ramai.includes(d)).length;
+    if (biasa(geser(t, -7)) < MIN_HARI_BIASA || biasa(geser(t, 1)) < MIN_HARI_BIASA) ramai = [];
+    const lewati = new Set(ramai);
+    const sebelum = untungIklanHarian(k, geser(t, -7), geser(t, -1), roasMin, lewati);
+    const sesudah = untungIklanHarian(k, geser(t, 1), geser(t, 7), roasMin, lewati);
+    if (!sebelum || !sesudah) return { ...hasil, ramai, status: 'data' };
     const bedaLangsung = sesudah.langsung - sebelum.langsung, bedaShopee = sesudah.shopee - sebelum.shopee;
     const status = bedaLangsung >= BEDA_LANGSUNG ? 'baik' : bedaLangsung <= -BEDA_LANGSUNG ? 'buruk' : 'belum-jelas';
-    return { ...hasil, sebelum, sesudah, bedaLangsung, bedaShopee, status };
+    return { ...hasil, sebelum, sesudah, bedaLangsung, bedaShopee, status, ramai };
   }
 
   // Remember a raise followed by a return towards the old target; do not immediately repeat it.
@@ -168,7 +193,7 @@
     return baris;
   }
 
-  const api = { geser, metrikTerbaru, rincianUntungToko, BATAS_TANPA_HPP, BEDA_LANGSUNG, BEDA_SHOPEE,
+  const api = { geser, metrikTerbaru, rincianUntungToko, BATAS_TANPA_HPP, BEDA_LANGSUNG, BEDA_SHOPEE, BATAS_HARI_RAMAI, hariRamai,
     untungIklanHarian, hasilIklan, pernahDikembalikan, terapkanEvaluasiToko };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.EvaluasiIklan = api;

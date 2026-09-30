@@ -104,7 +104,9 @@ phone: profit, then tasks, then shortcuts.
   Profit is labelled as an estimate.
 - **Hasil percobaan:** each settings change is judged by **the changed ad's direct product contribution**, seven days
   before vs seven days after (the change day is skipped), on change date +15 after seven full days for
-  delayed attribution. The direct change must reach 20 rb/day to count as a clear improvement or decline;
+  delayed attribution. Busy store days (payout > 1.8 × the 28-day median, e.g. 9.9 or payday) in either week are
+  left out of both averages, unless a week would keep fewer than 4 ordinary days.
+  The direct change must reach 20 rb/day to count as a clear improvement or decline;
   the broad Shopee figure remains in the owner's details as context, because it can include products with
   different margins. **Lebih baik** keeps the setting and the steps continue; **lebih buruk** returns towards the old target or budget (at most 20%
   per step); **belum jelas** keeps the setting, and after a target raise that ad's target is not raised

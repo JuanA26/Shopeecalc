@@ -1910,11 +1910,25 @@ function terapkanGanti(baris, saran, hasilTerakhir) {
   }
 }
 
+function penghasilanHarianToko() {
+  const sumber = sumberIklan();
+  if (!sumber) return null;
+  const harian = {};
+  for (const it of sumber.items) {
+    if (it.dikembalikan) continue;
+    const d = String(it.waktuPesanan || '').slice(0, 10);
+    if (d) harian[d] = (harian[d] || 0) + (it.totalPenghasilan || 0);
+  }
+  return harian;
+}
+
 function keputusanBerjalan() {
   const baris = [];
   if (!dataIklan) return { baris, modalSekarang: 0, modalSaran: null, belumDiisi: 0 };
   const berjalan = dataIklan.produk.filter((p) => p.sedangBerjalan > 0);
   let dataBelumLengkap = null; // kenapa semua iklan ditahan: ditampilkan SEKALI sebagai banner
+  // Penghasilan toko per tanggal pesanan: hasil perubahan per iklan tidak menghitung hari ramai.
+  dataIklan.penghasilanHarian = penghasilanHarianToko();
   // Untung toko mingguan turun sementara iklan naik → jangan tambah modal dulu.
   const tokoTurun = !!(aturanTerakhir && aturanTerakhir.kelas === 'aturan-kurangi');
   const hariIni = hariIniWib();
@@ -2091,7 +2105,8 @@ function catatanKeputusanTeks(b) {
   const h = b.hasilIklan;
   if (h && Number.isFinite(h.bedaLangsung) && Number.isFinite(h.bedaShopee)) {
     const beda = (n) => `${n > 0 ? '+' : ''}${formatRupiahRingkas(n)}`;
-    catatan.push(`Hasil perubahan: ${beda(h.bedaLangsung)}/hari dari produk ini (versi Shopee ${beda(h.bedaShopee)}/hari).`);
+    catatan.push(`Hasil perubahan: ${beda(h.bedaLangsung)}/hari dari produk ini (versi Shopee ${beda(h.bedaShopee)}/hari).` +
+      (h.ramai && h.ramai.length ? ` Hari ramai tidak dihitung: ${h.ramai.map(tanggalSingkat).join(', ')}.` : ''));
   }
   return catatan;
 }
@@ -2504,13 +2519,12 @@ function untungTokoPerBulan() {
   return bulan;
 }
 
-// Hari ramai (user, 30/09): penghasilan hari itu > 1,8 × median harian 28 hari terakhir (9.9, tanggal
-// 25, 15, 17 Agustus, ...). Satu hari promo bisa membuat minggu kelihatan naik/turun jutaan, jadi
-// perbandingan minggu di Dashboard memakai rata-rata per hari dari hari biasa saja.
+// Hari ramai (user, 30/09; EvaluasiIklan.hariRamai): penghasilan hari itu > 1,8 × median harian 28 hari
+// terakhir (9.9, tanggal 25, 15, 17 Agustus, ...). Satu hari promo bisa membuat minggu kelihatan naik/turun
+// jutaan, jadi perbandingan minggu di Dashboard memakai rata-rata per hari dari hari biasa saja.
 // Juga dipakai aturan 4 minggu (n = 4): pembandingnya median seluruh 8 minggu itu.
 // Hasil (per hari biasa): { a, b, iklanA, iklanB, selisih (b − a), ramai: [iso] } atau null kalau biaya
 // iklan harian tidak ada.
-const BATAS_HARI_RAMAI = 1.8;
 function bandingMingguBiasa(items, kampanye, mulaiA, mulaiB, n = 1) {
   if (!kampanye || !kampanye.some((k) => k.perHari)) return null;
   const akhirB = geserHari(mulaiB, 7 * n - 1), dari = geserHari(akhirB, -Math.max(28, 14 * n) + 1);
@@ -2528,9 +2542,10 @@ function bandingMingguBiasa(items, kampanye, mulaiA, mulaiB, n = 1) {
     if (!k.perHari) continue;
     for (const [d, v] of Object.entries(k.perHari)) if (d >= dari && d <= akhirB) ambil(d).biaya += v.biaya || 0;
   }
-  const urut = [...hari.values()].map((h) => h.penghasilan).filter((n) => n > 0).sort((a, b) => a - b);
-  const tengah = urut.length ? (urut[(urut.length - 1) >> 1] + urut[urut.length >> 1]) / 2 : 0;
-  const ramai = (d) => tengah > 0 && hari.has(d) && hari.get(d).penghasilan > BATAS_HARI_RAMAI * tengah;
+  const harian = {};
+  for (const [d, h] of hari) harian[d] = h.penghasilan;
+  const daftarRamai = new Set(EvaluasiIklan.hariRamai(harian, mulaiA, akhirB));
+  const ramai = (d) => daftarRamai.has(d);
   // Sama dengan kartu mingguan: produk tanpa HPP memakai margin produk lain di hari-hari itu.
   const rata = (mulai) => {
     const t = { penghasilan: 0, diketahui: 0, untungDiketahui: 0, retur: 0, biaya: 0 };

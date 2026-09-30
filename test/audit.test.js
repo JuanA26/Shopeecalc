@@ -144,8 +144,8 @@ test('profit zones: direct above break-even, only broad above it, both below, pr
 });
 
 test('running-ad ladder: target cap, budget steps on mature days, and attribution wait', () => {
-  const src = ['keputusanBerjalan', 'harianProduk', 'pemakaianModal'].map((n) => sourceFunction('public/app.js', n)).join('\n');
-  const run = (produk, setelan, { aturan = null, perHari = null } = {}) => vm.runInNewContext(`${src};keputusanBerjalan()`, {
+  const src = ['keputusanBerjalan', 'penghasilanHarianToko', 'harianProduk', 'pemakaianModal'].map((n) => sourceFunction('public/app.js', n)).join('\n');
+  const run = (produk, setelan, { aturan = null, perHari = null } = {}) => vm.runInNewContext(`${src};keputusanBerjalan()`, { sumberIklan: () => null,
     dataIklan: { sumber: 'api', produk: [{ idProduk: 'p', sedangBerjalan: 1, biaya: 1, targetDisarankan: 7, berjalan: { roasShopee: 9 }, ...produk }],
       kampanye: [{ kodeProduk: 'p', status: 'Berjalan', perHari: perHari || {} }], setelanApi: { p: setelan } },
     aturanTerakhir: aturan, hariIniWib: () => '2026-10-10',
@@ -190,13 +190,13 @@ test('running-ad ladder: target cap, budget steps on mature days, and attributio
 });
 
 test('same decision: the ad with the biggest 7-day loss comes first, not the biggest spender', () => {
-  const src = ['keputusanBerjalan', 'harianProduk', 'pemakaianModal', 'untungIklanTujuhHari'].map((n) => sourceFunction('public/app.js', n)).join('\n');
+  const src = ['keputusanBerjalan', 'penghasilanHarianToko', 'harianProduk', 'pemakaianModal', 'untungIklanTujuhHari'].map((n) => sourceFunction('public/app.js', n)).join('\n');
   // a: spends more in total, loses 20 rb in 7 days (60k ÷ 6 − 30k); b: loses 50 rb (no direct sales).
   const produk = [
     { idProduk: 'a', aksi: 'rugi', sedangBerjalan: 1, biaya: 900000, roasImpas: 6, berjalan: { biaya: 30000, omzetLangsung: 60000, roasShopee: 9 } },
     { idProduk: 'b', aksi: 'rugi', sedangBerjalan: 1, biaya: 100000, roasImpas: 6, berjalan: { biaya: 50000, omzetLangsung: 0, roasShopee: 9 } },
   ];
-  const baris = vm.runInNewContext(`${src};keputusanBerjalan()`, {
+  const baris = vm.runInNewContext(`${src};keputusanBerjalan()`, { sumberIklan: () => null,
     dataIklan: { sumber: 'api', produk, kampanye: [], setelanApi: {} }, aturanTerakhir: null, hariIniWib: () => '2026-10-10',
     geserHari: (iso) => iso, bulatkanModal: (rp) => rp, bulatkanTargetBawah: (n) => Math.floor(n * 10 + 1e-9) / 10,
     LANGKAH_TARGET: 1.2, LANGKAH_MODAL: 1.2, MODAL_HABIS: 0.9, HARI_TUNGGU_UBAH: 15, batasTargetShopee: () => null,

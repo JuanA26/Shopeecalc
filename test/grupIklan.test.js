@@ -33,7 +33,7 @@ test('big losers are replaced (past winners first, then new candidates); without
   assert.equal(d.keputusan, 'tunggu'); // still learning: never replaced
 });
 
-test('replacement leaves HPP, pause, reversal and shop rows alone, and never takes the one-trial slot', () => {
+test('replacement leaves HPP, pause, reversal and shop rows alone, and is never held', () => {
   const rows = ['isi-hpp', 'jeda', 'kembalikan', 'toko'].map((k, i) => row(`x${i}`, k));
   const before = JSON.stringify(rows);
   ctx.terapkanGanti(rows, { ganti: rows.map((r) => rugi(r.p.idProduk, -200000)), ulang: [{ idProduk: 'w', nama: 'W', untungIklan: 1 }], coba: [] });
@@ -42,8 +42,7 @@ test('replacement leaves HPP, pause, reversal and shop rows alone, and never tak
   const trial = [{ ...row('g', 'ganti'), pengganti: { idProduk: 'w' } }, row('t', 'naikkan'), row('u', 'naikkan')];
   E.terapkanEvaluasiToko(trial, null, { dataSiapEvaluasi: true, riwayatSetelan: [] }, true);
   assert.equal(trial[0].keputusan, 'ganti');
-  assert.equal(trial[1].keputusan, 'naikkan'); // the one trial this round
-  assert.equal(trial[2].keputusan, 'tunggu'); assert.equal(trial[2].alasan, 'satu-uji'); assert.equal(trial[2].ditahan, 'naikkan');
+  assert.equal(trial[1].keputusan, 'naikkan'); assert.equal(trial[2].keputusan, 'naikkan'); // no one-at-a-time limit (30/09)
   // Missing data holds trials, but not a replacement.
   const held = [{ ...row('g', 'ganti'), pengganti: { idProduk: 'w' } }, row('t', 'naikkan')];
   E.terapkanEvaluasiToko(held, null, { dataSiapEvaluasi: false, riwayatSetelan: [] }, true);

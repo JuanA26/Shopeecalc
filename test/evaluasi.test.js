@@ -120,7 +120,7 @@ test('a worse ad is reversed even when store profit is flat; a store drop alone 
   const rows = [rowP(), rowQ()];
   E.terapkanEvaluasiToko(rows, E.evaluasiPerubahan(data, sumber, '2026-09-30'), data, true, '2026-09-30');
   assert.equal(rows[0].keputusan, 'kembalikan'); assert.equal(rows[0].targetBaru, 9); assert.equal(rows[0].modalBaru, 60000);
-  assert.equal(rows[1].alasan, 'satu-uji');
+  assert.equal(rows[1].keputusan, 'naikkan'); // a reversal no longer holds other ads
   const lagi = fixture(80000); iklan(lagi.data, SEBELUM, KECIL);
   const tetap = rowP({ keputusan: 'lanjut', targetBaru: null });
   E.terapkanEvaluasiToko([tetap], E.evaluasiPerubahan(lagi.data, lagi.sumber, '2026-09-30'), lagi.data, true, '2026-09-30');
@@ -130,7 +130,7 @@ test('a worse ad is reversed even when store profit is flat; a store drop alone 
   assert.equal(pause.keputusan, 'jeda');
 });
 
-test('an unclear raise is not repeated; a good result lets the steps continue; one new trial at a time', () => {
+test('an unclear raise is not repeated; a good result lets the steps continue; several ads may change at once', () => {
   const { data, sumber } = fixture(120000);
   iklan(data, SEBELUM, KECIL);
   let rows = [rowP(), rowQ()];
@@ -143,7 +143,7 @@ test('an unclear raise is not repeated; a good result lets the steps continue; o
   iklan(data, SEBELUM, BAIK);
   rows = [rowP(), rowQ(), { ...row('r'), p: { idProduk: 'r', roasImpas: 6 } }];
   E.terapkanEvaluasiToko(rows, E.evaluasiPerubahan(data, sumber, '2026-09-30'), data, true, '2026-09-30');
-  assert.equal(rows[0].keputusan, 'naikkan'); assert.equal(rows[1].alasan, 'satu-uji'); assert.equal(rows[2].alasan, 'satu-uji');
+  assert.ok(rows.every(b => b.keputusan === 'naikkan'));
 });
 
 test('budget-only changes reverse the budget; a large store drop holds new trials for a week', () => {
@@ -159,12 +159,12 @@ test('budget-only changes reverse the budget; a large store drop holds new trial
   assert.equal(E.evaluasiPerubahan(data, sumber, '2026-10-07').turunJauh, false);
 });
 
-test('pending, overlapping and mixed trials block tuning; rollback does not create a raise/lower loop', () => {
+test('a pending change on one ad does not hold others; mixed trials are reviewed; rollback does not loop', () => {
   const { data, sumber } = fixture();
   iklan(data, SEBELUM, BURUK);
   const rows = [rowP(), rowQ()];
   E.terapkanEvaluasiToko(rows, E.evaluasiPerubahan(data, sumber, '2026-09-29'), data, true, '2026-09-29');
-  assert.ok(rows.every(b => b.keputusan === 'tunggu'));
+  assert.equal(rows[1].keputusan, 'naikkan'); assert.equal(rows[1].alasan, ''); // q was not changed: not held
   data.riwayatSetelan.unshift({ ...change, idProduk: 'q', campaignId: '2', tanggal: '2026-09-10' });
   assert.equal(E.evaluasiPerubahan(data, sumber, '2026-09-30').status, 'campur');
   data.riwayatSetelan.shift(); data.riwayatSetelan[0].modalBaru = 70000;

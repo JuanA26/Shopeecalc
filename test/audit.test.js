@@ -155,6 +155,7 @@ test('running-ad ladder: target cap, budget steps on mature days, and attributio
     batasTargetShopee: (st) => (st.rekomendasi ? Math.floor(st.rekomendasi.tinggi * 1.25 * 10 + 1e-9) / 10 : null),
     metrikBerjalan: (p) => p.berjalan || p, dariApi: () => true, setelanProduk: () => setelan, berakhirSegera: () => null,
     terapkanGanti: () => {}, saranIklanSekarang: () => null, // replacement rule: test/grupIklan.test.js
+    untungIklanTujuhHari: () => null,
   }).baris[0];
   const rek = (tinggi) => ({ rendah: 8, tengah: 10, tinggi });
   // Losing ad (like blouse V14): 11 × 1.2 = 13.2 would pass the cap 10.2 × 1.25 = 12.7.
@@ -186,4 +187,21 @@ test('running-ad ladder: target cap, budget steps on mature days, and attributio
   // Exclude change day, collect seven days, then allow seven full days for attribution.
   b = run({ aksi: 'rugi' }, { target_roas: 9, modal_harian: 60000, perubahan: { tanggal: '2026-10-07' } });
   assert.equal(b.keputusan, 'tunggu'); assert.equal(b.bisaDiubahLagi, '2026-10-22');
+});
+
+test('same decision: the ad with the biggest 7-day loss comes first, not the biggest spender', () => {
+  const src = ['keputusanBerjalan', 'harianProduk', 'pemakaianModal', 'untungIklanTujuhHari'].map((n) => sourceFunction('public/app.js', n)).join('\n');
+  // a: spends more in total, loses 20 rb in 7 days (60k ÷ 6 − 30k); b: loses 50 rb (no direct sales).
+  const produk = [
+    { idProduk: 'a', aksi: 'rugi', sedangBerjalan: 1, biaya: 900000, roasImpas: 6, berjalan: { biaya: 30000, omzetLangsung: 60000, roasShopee: 9 } },
+    { idProduk: 'b', aksi: 'rugi', sedangBerjalan: 1, biaya: 100000, roasImpas: 6, berjalan: { biaya: 50000, omzetLangsung: 0, roasShopee: 9 } },
+  ];
+  const baris = vm.runInNewContext(`${src};keputusanBerjalan()`, {
+    dataIklan: { sumber: 'api', produk, kampanye: [], setelanApi: {} }, aturanTerakhir: null, hariIniWib: () => '2026-10-10',
+    geserHari: (iso) => iso, bulatkanModal: (rp) => rp, bulatkanTargetBawah: (n) => Math.floor(n * 10 + 1e-9) / 10,
+    LANGKAH_TARGET: 1.2, LANGKAH_MODAL: 1.2, MODAL_HABIS: 0.9, HARI_TUNGGU_UBAH: 15, batasTargetShopee: () => null,
+    metrikBerjalan: (p) => p.berjalan, dariApi: () => true, setelanProduk: () => ({ target_roas: 9, modal_harian: 60000 }),
+    berakhirSegera: () => null, terapkanGanti: () => {}, saranIklanSekarang: () => null,
+  }).baris;
+  assert.equal(baris.map((b) => `${b.p.idProduk}:${b.keputusan}`).join(' '), 'b:naikkan a:naikkan');
 });

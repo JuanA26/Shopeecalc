@@ -149,15 +149,12 @@
 
   function terapkanEvaluasiToko(baris, evaluasi, data, dasarLengkap, hariIni) {
     const ubah = new Set(['naikkan', 'turunkan', 'tambah', 'kurangi']);
-    // ditahan = the change that was held back (shown as "maybe later" on Analisis Iklan).
+    // ditahan = the change that was held back.
     const tahan = (b, alasan) => { if (ubah.has(b.keputusan)) b.ditahan = b.keputusan; b.keputusan = 'tunggu'; b.alasan = alasan; b.targetBaru = null; b.modalBaru = b.modal; };
-    // New trials wait for complete data, the running trial and the store safety check.
-    const tahanUji = !data.dataSiapEvaluasi || !dasarLengkap ? 'data-toko'
-      : !evaluasi ? null
-      : evaluasi.status === 'tunggu' ? 'uji-berjalan'
-      : evaluasi.status === 'campur' ? 'uji-campur'
-      : evaluasi.status === 'data' ? 'data-toko'
-      : evaluasi.turunJauh ? 'toko-turun-jauh' : null;
+    // Each ad is judged on its own direct sales, so several ads may be changed at once (user, 30/09).
+    // New changes wait only for complete data and the store safety check.
+    const tahanUji = !data.dataSiapEvaluasi || !dasarLengkap || (evaluasi && evaluasi.status === 'data') ? 'data-toko'
+      : evaluasi && evaluasi.turunJauh ? 'toko-turun-jauh' : null;
     for (const b of baris) {
       b.evaluasi = evaluasi;
       if (['jeda', 'isi-hpp', 'toko', 'ganti'].includes(b.keputusan)) continue;
@@ -188,18 +185,11 @@
         b.alasan = 'belum-jelas';
       }
     }
-    // A reversal is this round's one change. Otherwise offer just one new trial.
-    // A replacement ('ganti') is not a settings trial and never takes the slot.
-    let dipilih = baris.some(b => ['kembalikan', 'tinjau'].includes(b.keputusan));
-    for (const b of baris) {
+    // Reversals, reviews and replacements are never held.
+    if (tahanUji) for (const b of baris) {
       if (['jeda', 'isi-hpp', 'toko', 'ganti', 'kembalikan', 'tinjau'].includes(b.keputusan)) continue;
-      if (tahanUji) {
-        tahan(b, tahanUji);
-        if (evaluasi) b.bisaDiubahLagi = tahanUji === 'toko-turun-jauh' ? geser(evaluasi.cekLagi, 7) : evaluasi.cekLagi;
-      } else if (ubah.has(b.keputusan)) {
-        if (dipilih) tahan(b, 'satu-uji');
-        else dipilih = true;
-      }
+      tahan(b, tahanUji);
+      if (tahanUji === 'toko-turun-jauh') b.bisaDiubahLagi = geser(evaluasi.cekLagi, 7);
     }
     return baris;
   }

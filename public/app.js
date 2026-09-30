@@ -1955,9 +1955,12 @@ function keputusanBerjalan() {
     baris.push({ p, target, modal, minimal: p.targetDisarankan, keputusan, modalBaru, targetBaru, alasan, tanpaBatas, modeAuto,
       rekomendasi: st.rekomendasi || null, batasShopee, perubahan, bisaDiubahLagi, berakhir: p.aksi === 'toko' ? null : berakhirSegera(p.idProduk) });
   }
+  // Keputusan sama: rugi 7 hari paling besar dulu (user, 30/09), lalu biaya paling besar.
+  const untung7 = (b) => { const h = untungIklanTujuhHari(b.p); return h ? h.untung : 0; };
+  const urutkan = () => baris.sort((a, b) => urutan[a.keputusan] - urutan[b.keputusan] || untung7(a) - untung7(b) || b.p.biaya - a.p.biaya);
   const urutan = { jeda: 0, ganti: 0, kembalikan: 1, tinjau: 1, kurangi: 2, turunkan: 3, naikkan: 4, tambah: 5, 'isi-hpp': 6, tunggu: 7, lanjut: 8, toko: 9 };
   terapkanGanti(baris, saranIklanSekarang(), (b) => EvaluasiIklan.hasilIklan(dataIklan, b.p.idProduk, hariIni, b.p.roasImpas));
-  baris.sort((a, b) => urutan[a.keputusan] - urutan[b.keputusan] || b.p.biaya - a.p.biaya);
+  urutkan();
   if (dariApi() && Array.isArray(dataIklan.riwayatSetelan)) {
     const evaluasi = EvaluasiIklan.evaluasiPerubahan(dataIklan, sumberIklan(), hariIni);
     const sampai = geserHari(hariIni, -8);
@@ -1968,7 +1971,7 @@ function keputusanBerjalan() {
       dataBelumLengkap = { dasar: dasar.nilai === null ? dasar : null, sinkron: dataIklan.sinkronBelumSiap || (dataIklan.dataSiapEvaluasi ? null : { jenis: 'gagal' }) };
     }
     modalSaran = baris.reduce((n, b) => n + (b.modalBaru ?? b.modal ?? 0), 0);
-    baris.sort((a, b) => urutan[a.keputusan] - urutan[b.keputusan] || b.p.biaya - a.p.biaya);
+    urutkan();
   }
   return { baris, modalSekarang, modalSaran: adaModal ? modalSaran : null, belumDiisi, tokoTurun, dataBelumLengkap };
 }
@@ -2043,8 +2046,6 @@ const LABEL_KEPUTUSAN = {
 // "Tunggu" punya beberapa sebab; beri warna berbeda supaya tidak semuanya abu-abu.
 const LABEL_TUNGGU = {
   'baru-diubah': ['Tunggu hasil', 'pill-biru'],
-  'uji-berjalan': ['Tunggu hasil', 'pill-biru'],
-  'satu-uji': ['Antre', 'pill-biru'],
   'data-toko': ['Data belum lengkap', 'pill-kuning'],
   'uji-campur': ['Periksa dulu', 'pill-kuning'],
   'tinjau-hasil': ['Periksa dulu', 'pill-kuning'],
@@ -2095,14 +2096,12 @@ const rupiahPendek = (n) => formatRupiahRingkas(n).replace('Rp ', '');
 function kalimatKeputusan(b) {
   const f = formatRoas;
   const pesan = {
-    'uji-berjalan': `Sedang mencoba perubahan — cek lagi ${tanggalSingkat(b.bisaDiubahLagi)}.`,
     'uji-campur': 'Ada perubahan berdekatan. Periksa hasil bersama sebelum mengubah lagi.',
     'data-toko': 'Tetap dulu. Lihat catatan kuning di atas.',
     'tinjau-hasil': 'Untung toko turun. Periksa hasil perubahan sebelum mencoba lagi.',
     'tinjau-iklan': 'Untung iklan ini turun setelah beberapa setelan diubah bersama. Periksa dulu.',
     'data-iklan': 'Tetap dulu. Data harian iklan ini belum lengkap.',
     'toko-turun-jauh': `Untung toko turun jauh. Jangan ubah iklan dulu sampai ${tanggalSingkat(b.bisaDiubahLagi)}.`,
-    'satu-uji': 'Tunggu hasil iklan yang dicoba lebih dulu.',
     'sudah-kembali': 'Target sudah diturunkan kembali. Jangan ulangi kenaikan dulu.',
     'hasil-baik': 'Hasil bagus. Biarkan.',
     'belum-jelas': 'Hasil belum jelas. Biarkan; target tidak dinaikkan lagi.',
@@ -2288,12 +2287,16 @@ function teksPerubahan(u) {
   return bagian.join(' · ');
 }
 
-// Hasil iklan: 7 hari matang terakhir (atau selama berjalan), untung dari produk ini sendiri.
-function kinerjaIklan(p) {
-  if (p.aksi === 'toko' || !(p.roasImpas > 0) || (p.penilaian && !p.penilaian.siap)) return '';
+// Untung iklan dari produk ini sendiri: 7 hari matang terakhir (atau selama berjalan); null = belum ada.
+function untungIklanTujuhHari(p) {
+  if (p.aksi === 'toko' || !(p.roasImpas > 0) || (p.penilaian && !p.penilaian.siap)) return null;
   const m = metrikBerjalan(p);
-  if (!(m.biaya > 0)) return '';
-  const untung = m.omzetLangsung / p.roasImpas - m.biaya;
+  return m.biaya > 0 ? { untung: m.omzetLangsung / p.roasImpas - m.biaya, m } : null;
+}
+function kinerjaIklan(p) {
+  const hasil = untungIklanTujuhHari(p);
+  if (!hasil) return '';
+  const { untung, m } = hasil;
   return `<strong class="hasil-angka ${warnaUntung(untung)}">${untung >= 0 ? 'Untung' : 'Rugi'} ${formatRupiahRingkas(Math.abs(untung))}</strong>` +
     `<small class="hasil-ket">Biaya ${rupiahPendek(m.biaya)} · jual ${rupiahPendek(m.omzetLangsung)}${p.penilaian ? '' : ' (selama berjalan)'}</small>`;
 }
@@ -2335,9 +2338,6 @@ function isiKartuIklan(b, grup, hariIni) {
         'di-atas-batas': 'Target sudah di batas tertinggi.',
       }[b.alasan];
       if (p.aksi === 'toko') return { aksi: 'Biarkan.', ket: 'Iklan toko. Dinilai dari untung toko per minggu (lihat Rincian).' };
-      if (b.ditahan && ['satu-uji', 'uji-berjalan'].includes(b.alasan)) {
-        return { aksi: 'Biarkan dulu.', ket: 'Mungkin diubah nanti. Satu perubahan dulu, tunggu hasilnya.' };
-      }
       if (catatan) return { aksi: 'Biarkan.', ket: catatan };
       if (p.aksi === 'abu') return { aksi: 'Biarkan.', ket: 'Rugi dari produk ini sendiri, tapi untung kalau produk lain yang ikut terbeli dihitung.' };
       return { aksi: 'Biarkan.', ket: '' };
@@ -2610,7 +2610,7 @@ function renderTugas() {
     : '<p class="tugas-judul">Tidak ada tugas minggu ini.</p>';
 
   // 3. Satu kalimat untuk iklan lain (tanpa daftar panjang).
-  const dicoba = kep.baris.filter((b) => b.bisaDiubahLagi && ['baru-diubah', 'uji-berjalan'].includes(b.alasan));
+  const dicoba = kep.baris.filter((b) => b.bisaDiubahLagi && b.alasan === 'baru-diubah');
   const cekLagi = dicoba.map((b) => b.bisaDiubahLagi).sort().pop();
   lainEl.innerHTML = kep.baris.some((b) => !PERLU_TINDAKAN.has(b.keputusan) && b.keputusan !== 'toko')
     ? `<p class="tugas-lain">Target dan modal ${langkah.some((l) => l.ubah) ? 'iklan lain' : 'semua iklan'}: <strong>jangan diubah</strong>${cekLagi ? ` sampai ${tanggalSingkat(cekLagi)}` : ' dulu'}.</p>`

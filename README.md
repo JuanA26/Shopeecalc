@@ -171,8 +171,9 @@ paid rate and that product's campaigns. On phones each row stacks. The groups, m
 4. **Masa Belajar** (blue): ads in their first days, or changed less than 15 days ago (the card shows the
    change and when the result comes out). Don't touch.
 5. **Lanjutkan** (green): nothing to change. A short note says why when that isn't obvious: the ad is
-   waiting its turn (one trial at a time), data is incomplete, the last change worked, or the target is
-   already at the limit.
+   data is incomplete, the last change worked, or the target is already at the limit. Several ads can be
+   changed at once (each is judged on its own direct sales); within a group, the biggest 7-day loss comes
+   first.
 
 Notices appear once at the top: missing data (yellow, with an "Isi HPP" button), a large store-profit drop,
 and how many ads end soon ("ubah Periode jadi Tidak Terbatas"; the rows carry the date).
@@ -231,7 +232,7 @@ The ads CSV from Seller Centre can still be uploaded under "Cadangan" if the aut
 Run `npm test` for the regression tests (profit and break-even maths, paid-order rate with partial
 returns, payout split, return deductions, ad-only weeks, retry rotation, stuck retries and historical
 recovery against a mock Shopee). Trial tests cover recent vs old performance, store-profit reversals,
-cross-product sales, missing/zero days, overlapping changes, one trial at a time and expiry reminders.
+cross-product sales, missing/zero days, overlapping changes, parallel per-ad changes and expiry reminders.
 `keamanan.test.js` starts the real server and checks headers, the cross-site block, the login limit,
 that sessions survive a restart, the public health check, the log and read-only accounts.
 `shopeeApi.test.js` checks the rate-limit retry and the read-only endpoint guard. `ekspor.test.js` checks the Excel export. No Shopee credentials are needed.

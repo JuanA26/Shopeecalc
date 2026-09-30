@@ -15,7 +15,7 @@
       <svg class="ikon" viewBox="0 0 24 24"><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24L4 3a1 1 0 0 0-1 1l.24 5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.82Z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>
     </div>
     <h1>Kalkulator Untung Toko</h1>
-    <p class="subjudul">Silakan masuk dulu untuk melihat data.</p>
+    <p class="subjudul">Masuk dulu untuk melihat data.</p>
     <form id="formLogin">
       <label for="inputUsername">Username</label>
       <input type="text" id="inputUsername" autocomplete="username" required>
@@ -95,7 +95,7 @@
           <div id="tugasLain"></div>
           <div id="tugasHasil"></div>
           <details class="details-dalam saran-iklan" id="saranIklan" hidden>
-            <summary>Saran iklan (produk yang layak diiklankan)</summary>
+            <summary>Saran iklan: produk yang layak diiklankan</summary>
             <div id="saranIklanIsi"></div>
           </details>
           <p class="keterangan tugas-cara">Semua perubahan iklan dilakukan di Seller Centre → Iklan Shopee.</p>
@@ -109,7 +109,7 @@
               <h3>Kalkulator Margin</h3>
             </div>
             <div id="widgetKalkulatorKosong">
-              <p class="keterangan">Belum ada data. Buka Kalkulator — data penjualan diambil otomatis dari Shopee.</p>
+              <p class="keterangan">Belum ada data. Data penjualan diambil otomatis dari Shopee.</p>
             </div>
             <p id="widgetPeriode" class="widget-periode tersembunyi"></p>
             <div id="widgetKalkulatorIsi" class="tersembunyi widget-statistik-baris">
@@ -133,7 +133,7 @@
               <h3>Analisis Iklan</h3>
             </div>
             <div id="widgetIklanKosong">
-              <p class="keterangan">Data iklan diambil otomatis dari Shopee. Buka Analisis Iklan untuk melihat iklan mana yang untung dan mana yang rugi.</p>
+              <p class="keterangan">Lihat iklan mana yang untung dan mana yang rugi.</p>
             </div>
             <div id="widgetIklanIsi" class="tersembunyi widget-statistik-baris">
               <div>
@@ -165,7 +165,7 @@
     <div id="subUpload" class="subtab-isi aktif">
     <div class="kartu" id="kartuSinkron">
       <h2><span class="langkah">1</span> Data Penjualan dari Shopee</h2>
-      <p class="keterangan">Diambil otomatis dari Shopee. Pilih periode (berdasarkan tanggal pesanan dibuat):</p>
+      <p class="keterangan">Diambil otomatis dari Shopee. Pilih periode (menurut tanggal pesanan):</p>
       <div class="pill-filter-row baris-periode">
         <button type="button" class="pill-filter" data-periode="hari-ini">Hari ini</button>
         <button type="button" class="pill-filter" data-periode="7">7 hari</button>
@@ -206,7 +206,7 @@
         <div class="kartu-ringkasan">
           <div class="label-ringkasan">Rata-rata Margin</div>
           <div class="angka-ringkasan" id="ringkasanMargin">-</div>
-          <div class="keterangan-ringkasan">Untung &divide; pendapatan, produk yang sudah ada HPP</div>
+          <div class="keterangan-ringkasan">Untung &divide; pendapatan (produk yang ada HPP)</div>
         </div>
         <div class="kartu-ringkasan kartu-peringatan" id="kartuBelumHpp">
           <div class="label-ringkasan">Belum Ada Harga Modal</div>
@@ -216,7 +216,7 @@
         <div class="kartu-ringkasan kartu-netral tersembunyi" id="kartuDikembalikan">
           <div class="label-ringkasan">Pesanan Dikembalikan</div>
           <div class="angka-ringkasan" id="ringkasanDikembalikan">0 pesanan</div>
-          <div class="keterangan-ringkasan">Modal kembali jadi stok; potongan retur tetap dihitung</div>
+          <div class="keterangan-ringkasan">Barang kembali jadi stok. Potongan retur tetap dihitung.</div>
         </div>
       </div>
 
@@ -371,7 +371,7 @@
       <section id="halamanIklan" class="halaman">
         <div class="judul-halaman">
           <h1>Analisis Iklan</h1>
-          <p class="keterangan">Iklan yang sedang berjalan, hasilnya, dan apa yang harus dilakukan.</p>
+          <p class="keterangan">Iklan yang berjalan dan apa yang harus dilakukan.</p>
         </div>
 
         <div id="areaIklan" class="tersembunyi">
@@ -441,7 +441,7 @@
           <p id="statusIklanShopee" class="keterangan">Memuat data iklan...</p>
           <details class="details-dalam" id="detailsUnggahIklan">
             <summary>Cadangan: unggah file dari Seller Centre</summary>
-            <p class="keterangan">Hanya perlu kalau data otomatis dari Shopee bermasalah. File yang diunggah dipakai sampai halaman dimuat ulang.</p>
+            <p class="keterangan">Hanya kalau data otomatis dari Shopee bermasalah. File dipakai sampai halaman dimuat ulang.</p>
           <div class="baris-unggah">
             <label class="dropzone" id="dropzoneIklan" for="inputFileIklan">
               <span class="widget-ikon">

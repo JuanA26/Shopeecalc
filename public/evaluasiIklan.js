@@ -71,15 +71,14 @@
     }
     return { ...hasil, nilai: total / 7 };
   }
-  const untungToko = (sumber, iklanHarian, dari, sampai) => rincianUntungToko(sumber, iklanHarian, dari, sampai).nilai;
 
   // Each change is judged by the changed ad's own profit (user, 2026-09-27). Store profit swings
-  // ±400 rb/day between ordinary weeks, far more than one ad can move it, so it is only a safety check.
+  // ±400 rb/day between ordinary weeks, far more than one ad can move it, so it holds nothing
+  // (store brake removed 30/09, user: every drop on record came with flat ad spend).
   // Thresholds = 80th percentile of |after − before| over 150 no-change windows on this shop's ads
-  // (Jul–Sep 2026); smaller moves count as noise. Store limit ≈ 90th percentile of store windows.
+  // (Jul–Sep 2026); smaller moves count as noise.
   const BEDA_LANGSUNG = 20000;
   const BEDA_SHOPEE = 60000;
-  const BATAS_TURUN_TOKO = 700000;
 
   // Per day over seven full days of one campaign: profit on the advertised product (langsung) and
   // a broad scenario (shopee). The broad scenario applies this SKU's margin to other products too;
@@ -115,20 +114,6 @@
     return { ...hasil, sebelum, sesudah, bedaLangsung, bedaShopee, status };
   }
 
-  // Rolling store safety check (user, 30/09): whole-store profit per day over the latest 7 mature days
-  // (today−14…today−8) vs the 7 days before. It works while several ads change on different days and
-  // never reverses anything; a drop ≥ BATAS_TURUN_TOKO holds new changes until it no longer shows.
-  // On the 29/09 export (52 windows, Aug–Sep) it fired on 1 day in 52 without a known cause.
-  function cekToko(data, sumber, hariIni) {
-    const sampaiSesudah = geser(hariIni, -8), dariSesudah = geser(sampaiSesudah, -6);
-    const sampaiSebelum = geser(dariSesudah, -1), dariSebelum = geser(sampaiSebelum, -6);
-    const hasil = { dariSebelum, sampaiSebelum, dariSesudah, sampaiSesudah };
-    const sebelum = untungToko(sumber, data.biayaTokoHarian, dariSebelum, sampaiSebelum);
-    const sesudah = untungToko(sumber, data.biayaTokoHarian, dariSesudah, sampaiSesudah);
-    if (!data.dataSiapEvaluasi || sebelum === null || sesudah === null) return { ...hasil, status: 'data' };
-    return { ...hasil, sebelum, sesudah, status: 'selesai', turunJauh: sesudah - sebelum <= -BATAS_TURUN_TOKO };
-  }
-
   // Remember a raise followed by a return towards the old target; do not immediately repeat it.
   function pernahDikembalikan(riwayat, idProduk) {
     const daftar = (riwayat || []).filter(u => u.idProduk === idProduk);
@@ -139,14 +124,13 @@
     });
   }
 
-  function terapkanEvaluasiToko(baris, toko, data, dasarLengkap, hariIni) {
+  function terapkanEvaluasiToko(baris, data, dasarLengkap, hariIni) {
     const ubah = new Set(['naikkan', 'turunkan', 'tambah', 'kurangi']);
     // ditahan = the change that was held back.
     const tahan = (b, alasan) => { if (ubah.has(b.keputusan)) b.ditahan = b.keputusan; b.keputusan = 'tunggu'; b.alasan = alasan; b.targetBaru = null; b.modalBaru = b.modal; };
     // Each ad is judged on its own direct sales, so several ads may be changed at once (user, 30/09).
-    // New changes wait only for complete data and the store safety check.
-    const tahanUji = !data.dataSiapEvaluasi || !dasarLengkap || (toko && toko.status === 'data') ? 'data-toko'
-      : toko && toko.turunJauh ? 'toko-turun-jauh' : null;
+    // New changes wait only for complete data (sync, HPP, the latest 7 mature days).
+    const tahanUji = !data.dataSiapEvaluasi || !dasarLengkap ? 'data-toko' : null;
     for (const b of baris) {
       if (['jeda', 'isi-hpp', 'toko', 'ganti'].includes(b.keputusan)) continue;
       const h = hariIni ? hasilIklan(data, b.p.idProduk, hariIni, b.p.roasImpas) : null;
@@ -184,8 +168,8 @@
     return baris;
   }
 
-  const api = { geser, metrikTerbaru, untungToko, rincianUntungToko, BATAS_TANPA_HPP, BEDA_LANGSUNG, BEDA_SHOPEE, BATAS_TURUN_TOKO,
-    untungIklanHarian, hasilIklan, cekToko, pernahDikembalikan, terapkanEvaluasiToko };
+  const api = { geser, metrikTerbaru, rincianUntungToko, BATAS_TANPA_HPP, BEDA_LANGSUNG, BEDA_SHOPEE,
+    untungIklanHarian, hasilIklan, pernahDikembalikan, terapkanEvaluasiToko };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.EvaluasiIklan = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

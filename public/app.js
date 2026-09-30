@@ -279,7 +279,7 @@ function renderStatusSinkron(s) {
   document.getElementById('tautanHubungkan').classList.toggle('tersembunyi', terhubung);
   tombolTampilkan.disabled = !terhubung;
   if (!terhubung) {
-    teksStatusSinkron.textContent = 'Toko belum terhubung ke Shopee. Hubungkan sekali, setelah itu data diambil otomatis.';
+    teksStatusSinkron.textContent = 'Toko belum terhubung ke Shopee. Cukup hubungkan sekali, lalu data diambil otomatis.';
     renderStatusData();
     return;
   }
@@ -291,8 +291,8 @@ function renderStatusSinkron(s) {
   } else bagian.push('Belum pernah sinkron');
   if (s.jumlahPesanan) bagian.push(`${s.jumlahPesanan.toLocaleString('id-ID')} pesanan tersimpan (${formatTanggalPendek(s.tanggalTerlama)} – ${formatTanggalPendek(s.tanggalTerbaru)})`);
   bagian.push('otomatis tiap 30 menit');
-  if (s.ulangTertunda) bagian.push(`${s.ulangTertunda} pemeriksaan menunggu — dilanjutkan otomatis`);
-  if (s.ulangMacet) bagian.push(`${s.ulangMacet} pesanan belum bisa diperiksa ulang — tetap dicoba otomatis`);
+  if (s.ulangTertunda) bagian.push(`${s.ulangTertunda} pesanan menunggu diperiksa. Dilanjutkan otomatis`);
+  if (s.ulangMacet) bagian.push(`${s.ulangMacet} pesanan belum bisa diperiksa. Tetap dicoba otomatis`);
   teksStatusSinkron.textContent = bagian.join(' · ');
   tampilkanErrorSinkron(s.status === 'gagal' && s.pesan ? `Sinkron terakhir gagal: ${s.pesan}` : '');
   renderStatusData();
@@ -336,7 +336,7 @@ function renderStatusData() {
   const isi = document.getElementById('progresHeaderIsi');
   if (!s || !s.terhubung) { tombolStatusData.classList.add('tersembunyi'); bar.classList.add('tersembunyi'); return; }
   const otomatis = 'Data diambil otomatis tiap 30 menit.';
-  const caraTekan = akunBacaSaja ? 'Akun baca saja: tekan untuk memuat ulang data tersimpan.' : 'Tekan untuk ambil data terbaru sekarang.';
+  const caraTekan = akunBacaSaja ? 'Akun baca saja: tekan untuk memuat ulang data.' : 'Tekan untuk mengambil data terbaru.';
 
   if (s.sedangBerjalan || sinkronKlienAktif) {
     clearTimeout(jedaHasilSinkron); hasilSinkronBaru = null;
@@ -530,7 +530,7 @@ function teksPeriode({ dari, sampai }) {
 
 function renderRingkasan(r) {
   // "≈" kecil di depan angka yang sebagian masih perkiraan (dana belum cair).
-  const approx = r.penghasilanPerkiraan ? '<span class="tanda-kira" title="Sebagian masih perkiraan — dana belum cair">≈</span>' : '';
+  const approx = r.penghasilanPerkiraan ? '<span class="tanda-kira" title="Sebagian masih perkiraan karena dana belum cair">≈</span>' : '';
   document.getElementById('ringkasanOmzet').textContent = formatRupiah(r.totalOmzet || 0);
   document.getElementById('ketOmzet').textContent = `${(r.jumlahPesanan || 0).toLocaleString('id-ID')} pesanan · ${(r.totalPcs || 0).toLocaleString('id-ID')} pcs`;
   document.getElementById('ringkasanPendapatan').innerHTML = approx + escapeHtml(formatRupiah(r.totalPenghasilan));
@@ -539,8 +539,8 @@ function renderRingkasan(r) {
   catatan.classList.toggle('tersembunyi', !r.penghasilanPerkiraan);
   if (r.penghasilanPerkiraan) {
     catatan.textContent = `≈ Termasuk ${r.jumlahPesananPerkiraan} pesanan yang dananya belum cair (${formatRupiah(r.penghasilanPerkiraan)}): ` +
-      `penghasilannya diperkirakan ${formatPersen((r.rasioPerkiraan || 0) * 100)} dari harga jual (rata-rata pesanan cair 60 hari terakhir). ` +
-      'Angka pasti muncul otomatis setelah dana cair.';
+      `penghasilannya diperkirakan ${formatPersen((r.rasioPerkiraan || 0) * 100)} dari harga jual (rata-rata 60 hari terakhir). ` +
+      'Angka pasti muncul setelah dana cair.';
   }
   document.getElementById('ringkasanMargin').textContent = formatPersen(r.marginRataRataPersen);
   document.getElementById('ringkasanBelumHpp').textContent = `${r.jumlahBelumAdaHpp} produk`;
@@ -820,7 +820,7 @@ function renderTabelData(items) {
       // (yang sudah dikali jumlah pcs) sebagai angka utama, dengan HPP per-pcs kecil
       // di bawahnya supaya tetap transparan dari mana angkanya berasal.
       const selHpp = it.dikembalikan
-        ? '<span class="teks-redup" title="Tidak relevan — pesanan ini dikembalikan.">-</span>'
+        ? '<span class="teks-redup" title="Pesanan ini dikembalikan.">-</span>'
         : punyaHpp
         ? it.jumlah > 1
           ? `${formatRupiah(it.hppTotal)}<br><span class="pill pill-abu" title="HPP per 1 pcs: ${formatRupiah(it.hpp)}, dikali jumlah pcs di kolom &quot;Jumlah&quot; sebelah kiri.">${formatRupiah(it.hpp)}/pcs</span>`
@@ -834,14 +834,14 @@ function renderTabelData(items) {
 
       // Jumlah pcs langsung dari Shopee (model_quantity_purchased / quantity_purchased).
       const selJumlah = it.dikembalikan
-        ? '<span class="teks-redup" title="Tidak relevan — pesanan ini dikembalikan.">-</span>'
+        ? '<span class="teks-redup" title="Pesanan ini dikembalikan.">-</span>'
         : String(it.jumlah);
 
       // Pesanan yang dananya belum cair: penghasilan = harga jual × rasio pencairan toko
       // (perkiraan), ditandai "≈" dan pill "Belum cair" supaya jelas bukan angka final.
       const approx = it.perkiraan ? '≈ ' : '';
       const selDanaCair = it.perkiraan
-        ? `<span class="pill pill-abu" title="Dana pesanan ini belum dilepas Shopee — penghasilan & untungnya masih perkiraan.">Belum cair</span>`
+        ? `<span class="pill pill-abu" title="Dana pesanan ini belum cair. Penghasilan dan untungnya masih perkiraan.">Belum cair</span>`
         : escapeHtml(it.tanggalDilepaskan);
 
       const totalPenghasilanTampil = it.dikembalikan
@@ -1056,9 +1056,9 @@ function renderRingkasanBelumHpp(semua) {
   if (!dataHasilUpload || !belum.length) { el.classList.add('tersembunyi'); return; }
   const totalRp = belum.reduce((t, r) => t + r.terjualRp, 0);
   el.innerHTML =
-    `<strong>${belum.length} produk</strong> yang terjual di periode ini belum ada HPP — nilai penjualannya ` +
+    `<strong>${belum.length} produk</strong> yang terjual di periode ini belum ada HPP. Nilai penjualannya ` +
     `<strong title="${escapeHtml(formatRupiah(totalRp))}">${formatRupiahRingkas(totalRp)}</strong>. ` +
-    `Daftar di bawah diurutkan dari yang penjualannya paling besar: isi yang di atas dulu.`;
+    `Isi dari atas dulu: yang paling laku ada di atas.`;
   el.classList.remove('tersembunyi');
 }
 
@@ -1398,7 +1398,7 @@ function teksStatusIklan(body) {
   const st = body.statusIklan || {};
   const gagal = st.status === 'gagal' ? ` <span class="teks-merah">Sinkron iklan terakhir gagal: ${escapeHtml(st.pesan || '')}</span>` : '';
   if (body.kosong) {
-    return (st.status === 'gagal' ? 'Data iklan belum bisa diambil dari Shopee.' : 'Data iklan belum ada — diambil otomatis saat sinkron berikutnya (tiap 30 menit, atau tombol "Sinkron Sekarang" di Kalkulator Margin).') + gagal;
+    return (st.status === 'gagal' ? 'Data iklan belum bisa diambil dari Shopee.' : 'Data iklan belum ada. Diambil otomatis tiap 30 menit, atau tekan tombol status data di atas.') + gagal;
   }
   const waktu = st.terakhirSelesai ? ` · diperbarui ${waktuSingkat(st.terakhirSelesai)}` : '';
   return `Otomatis dari Shopee · <strong>${escapeHtml(body.periode)}</strong>${waktu}.` + gagal;
@@ -1562,24 +1562,24 @@ function untungTokoPerMinggu() {
 // (N = 4 kalau datanya ≥ 8 minggu, supaya naik-turun mingguan tidak mengecoh; minimal 2).
 function aturanMingguan(data) {
   const lengkap = data.minggu.filter((t) => t.lengkap && t.iklanLengkap);
-  if (lengkap.length < 4) return { kelas: '', teks: 'Perlu minimal 4 minggu data lengkap (Income + iklan) untuk menilai.', detail: '' };
+  if (lengkap.length < 4) return { kelas: '', teks: 'Perlu data lengkap 4 minggu dulu.', detail: '' };
   const n = Math.min(4, Math.floor(lengkap.length / 2));
   const akhir = lengkap.slice(-n), awal = lengkap.slice(-2 * n, -n);
   const dibandingkan = [...awal, ...akhir];
   if (dibandingkan.some((t, i) => i > 0 && t.mulai !== tambahHari(dibandingkan[i - 1].mulai, 7))) {
-    return { kelas: '', teks: 'Ada minggu yang datanya belum lengkap — periksa sinkron sebelum mengubah modal.', detail: '' };
+    return { kelas: '', teks: 'Ada minggu yang datanya belum lengkap. Jangan ubah modal dulu.', detail: '' };
   }
   const jml = (arr, f) => arr.reduce((a, t) => a + t[f], 0);
   const iklanA = jml(awal, 'biayaIklan'), iklanB = jml(akhir, 'biayaIklan');
   const untungA = jml(awal, 'untungSetelahIklan'), untungB = jml(akhir, 'untungSetelahIklan');
   const pctIklan = iklanA ? (iklanB - iklanA) / iklanA : 0;
   const pctUntung = untungA ? (untungB - untungA) / Math.abs(untungA) : 0;
-  const detail = `${n} minggu terakhir vs ${n} minggu sebelumnya: biaya iklan ${pctIklan >= 0 ? '+' : ''}${Math.round(pctIklan * 100)}%, untung setelah iklan ${pctUntung >= 0 ? '+' : ''}${Math.round(pctUntung * 100)}%.`;
-  if (pctIklan >= 0.1 && untungB <= untungA) return { kelas: 'aturan-kurangi', teks: 'Iklan naik, untung tidak naik → jangan tambah Modal Harian dulu.', detail };
-  if (pctIklan <= -0.1 && untungB >= untungA * 0.95) return { kelas: 'aturan-aman', teks: 'Iklan dikurangi, untung tidak turun → pertahankan.', detail };
-  if (untungB > untungA && pctIklan >= 0.1) return { kelas: 'aturan-aman', teks: 'Iklan naik dan untung ikut naik → pertahankan.', detail };
-  if (pctUntung <= -0.15) return { kelas: '', teks: 'Untung turun → cek iklan, harga, stok, dan retur.', detail };
-  return { kelas: '', teks: 'Pertahankan, cek lagi minggu depan.', detail };
+  const detail = `${n} minggu terakhir dibanding ${n} minggu sebelumnya: biaya iklan ${pctIklan >= 0 ? '+' : ''}${Math.round(pctIklan * 100)}%, untung ${pctUntung >= 0 ? '+' : ''}${Math.round(pctUntung * 100)}%.`;
+  if (pctIklan >= 0.1 && untungB <= untungA) return { kelas: 'aturan-kurangi', teks: 'Biaya iklan naik, untung tidak ikut naik. Jangan tambah modal dulu.', detail };
+  if (pctIklan <= -0.1 && untungB >= untungA * 0.95) return { kelas: 'aturan-aman', teks: 'Biaya iklan turun, untung tetap. Pertahankan.', detail };
+  if (untungB > untungA && pctIklan >= 0.1) return { kelas: 'aturan-aman', teks: 'Biaya iklan naik, untung ikut naik. Pertahankan.', detail };
+  if (pctUntung <= -0.15) return { kelas: '', teks: 'Untung turun. Cek iklan, harga, stok, dan retur.', detail };
+  return { kelas: '', teks: 'Pertahankan. Cek lagi minggu depan.', detail };
 }
 
 function grafikMingguanSvg(minggu) {
@@ -1616,7 +1616,7 @@ function renderMingguan() {
   if (!data || !data.minggu.length) {
     aturanTerakhir = null;
     aturanEl.className = 'aturan-mingguan';
-    aturanEl.innerHTML = 'Buka Kalkulator Margin (data penjualan) untuk melihat untung toko per minggu.';
+    aturanEl.innerHTML = 'Untung toko per minggu muncul setelah data penjualan masuk.';
     grafik.innerHTML = '';
     return null;
   }
@@ -1626,7 +1626,7 @@ function renderMingguan() {
   aturanEl.className = `aturan-mingguan ${aturan.kelas}`;
   aturanEl.innerHTML = `<span>${escapeHtml(aturan.teks)}</span>` + (aturan.detail ? `<small>${escapeHtml(aturan.detail)}</small>` : '');
   grafik.innerHTML = grafikMingguanSvg(data.minggu.slice(-8)) +
-    '<p class="catatan-grafik">Senin–Minggu, menurut tanggal pesanan. Batang pucat = minggu yang belum lengkap (pesanan masih bisa batal).</p>';
+    '<p class="catatan-grafik">Satu batang = Senin–Minggu, menurut tanggal pesanan. Batang pucat = minggu belum lengkap.</p>';
   return { data, lengkapTerakhir: [...data.minggu].reverse().find((t) => t.lengkap) };
 }
 
@@ -1723,7 +1723,7 @@ function barisProdukIklan(p, kampanyePerProduk) {
     : `<span class="${roasRendah ? 'untung-negatif' : ''}">${formatRoas(p.roasLangsung)}</span>` +
       `<small>${p.roasImpas !== null ? `min ${formatRoas(p.roasImpas)} · ` : ''}Shopee ${formatRoas(p.roasShopee)}</small>`;
   const untung = p.untungLangsung === null
-    ? '<span class="teks-redup" title="Belum bisa dihitung — HPP produk ini belum diisi">-</span>'
+    ? '<span class="teks-redup" title="Belum bisa dihitung. HPP produk ini belum diisi.">-</span>'
     : `<span class="${warnaUntung(p.untungLangsung)}">${formatRupiahRingkas(p.untungLangsung)}</span>` +
       `<small>Shopee ${formatRupiahRingkas(p.untungLuas)}</small>`;
   const baris = `
@@ -1910,7 +1910,6 @@ function keputusanBerjalan() {
   if (!dataIklan) return { baris, modalSekarang: 0, modalSaran: null, belumDiisi: 0 };
   const berjalan = dataIklan.produk.filter((p) => p.sedangBerjalan > 0);
   let dataBelumLengkap = null; // kenapa semua iklan ditahan: ditampilkan SEKALI sebagai banner
-  let toko = null; // cek untung toko bergulir (rem pengaman)
   // Untung toko mingguan turun sementara iklan naik → jangan tambah modal dulu.
   const tokoTurun = !!(aturanTerakhir && aturanTerakhir.kelas === 'aturan-kurangi');
   const hariIni = hariIniWib();
@@ -1967,18 +1966,17 @@ function keputusanBerjalan() {
   terapkanGanti(baris, saranIklanSekarang(), (b) => EvaluasiIklan.hasilIklan(dataIklan, b.p.idProduk, hariIni, b.p.roasImpas));
   urutkan();
   if (dariApi() && Array.isArray(dataIklan.riwayatSetelan)) {
-    toko = EvaluasiIklan.cekToko(dataIklan, sumberIklan(), hariIni);
     const sampai = geserHari(hariIni, -8);
     const dasar = EvaluasiIklan.rincianUntungToko(sumberIklan(), dataIklan.biayaTokoHarian, geserHari(sampai, -6), sampai);
     dasar.dari = geserHari(sampai, -6); dasar.sampai = sampai;
-    EvaluasiIklan.terapkanEvaluasiToko(baris, toko, dataIklan, dasar.nilai !== null, hariIni);
+    EvaluasiIklan.terapkanEvaluasiToko(baris, dataIklan, dasar.nilai !== null, hariIni);
     if (baris.some((b) => b.alasan === 'data-toko')) {
       dataBelumLengkap = { dasar: dasar.nilai === null ? dasar : null, sinkron: dataIklan.sinkronBelumSiap || (dataIklan.dataSiapEvaluasi ? null : { jenis: 'gagal' }) };
     }
     modalSaran = baris.reduce((n, b) => n + (b.modalBaru ?? b.modal ?? 0), 0);
     urutkan();
   }
-  return { baris, modalSekarang, modalSaran: adaModal ? modalSaran : null, belumDiisi, tokoTurun, dataBelumLengkap, toko };
+  return { baris, modalSekarang, modalSaran: adaModal ? modalSaran : null, belumDiisi, tokoTurun, dataBelumLengkap };
 }
 
 // Satu banner kuning untuk "data belum lengkap" (bukan kalimat yang sama di setiap iklan).
@@ -1988,19 +1986,19 @@ function bannerDataBelumLengkap(info) {
   const d = info.dasar;
   if (d && d.alasan === 'hpp') {
     const nama = d.produkTanpaHpp.slice(0, 3).map((t) => escapeHtml(namaSingkat(t.namaProduk || t.idProduk, 32))).join(', ');
-    alasan.push(`HPP kosong untuk <strong>${Math.round(d.bagianTanpaHpp * 100)}%</strong> penjualan ${tanggalSingkat(d.dari)}–${tanggalSingkat(d.sampai)} (boleh paling banyak ${Math.round(EvaluasiIklan.BATAS_TANPA_HPP * 100)}%).` +
+    alasan.push(`HPP belum diisi untuk <strong>${Math.round(d.bagianTanpaHpp * 100)}%</strong> penjualan ${tanggalSingkat(d.dari)}–${tanggalSingkat(d.sampai)} (batasnya ${Math.round(EvaluasiIklan.BATAS_TANPA_HPP * 100)}%).` +
       (nama ? ` Paling besar: ${nama}.` : ''));
   } else if (d) {
-    alasan.push(`Data penjualan atau biaya iklan ${tanggalSingkat(d.dari)}–${tanggalSingkat(d.sampai)} belum lengkap. Tunggu sinkron berikutnya.`);
+    alasan.push(`Data penjualan atau biaya iklan ${tanggalSingkat(d.dari)}–${tanggalSingkat(d.sampai)} belum lengkap. Tunggu data berikutnya.`);
   }
   const s = info.sinkron;
   if (s) {
     alasan.push(s.jenis === 'antrean'
-      ? `${s.menunggu + s.macet} pesanan masih diambil ulang dari Shopee${s.macet ? ` (${s.macet} macet)` : ''}.`
-      : s.jenis === 'lama' ? 'Sinkron Shopee belum berhasil dalam 24 jam terakhir.' : 'Sinkron Shopee terakhir gagal.');
+      ? `${s.menunggu + s.macet} pesanan masih diambil lagi dari Shopee${s.macet ? ` (${s.macet} macet)` : ''}.`
+      : s.jenis === 'lama' ? 'Data Shopee belum masuk dalam 24 jam terakhir.' : 'Pengambilan data Shopee terakhir gagal.');
   }
   const tombol = d && d.alasan === 'hpp' ? '<button type="button" class="tombol-kecil" data-ke-hpp>Isi HPP</button>' : '';
-  return `<div class="banner-data"><strong>Data belum lengkap — target dan modal semua iklan tetap dulu.</strong>` +
+  return `<div class="banner-data"><strong>Data belum lengkap. Target dan modal iklan tetap dulu.</strong>` +
     alasan.map((t) => `<span>${t}</span>`).join('') + tombol + '</div>';
 }
 
@@ -2056,7 +2054,6 @@ const LABEL_TUNGGU = {
   'tinjau-hasil': ['Periksa dulu', 'pill-kuning'],
   'tinjau-iklan': ['Periksa dulu', 'pill-kuning'],
   'data-iklan': ['Data belum lengkap', 'pill-kuning'],
-  'toko-turun-jauh': ['Tunggu', 'pill-kuning'],
   'sudah-kembali': ['Tetap', 'pill-abu'],
 };
 function labelKeputusan(b) {
@@ -2072,24 +2069,24 @@ function catatanKeputusanTeks(b) {
   const f = formatRoas;
   const catatan = [];
   if (b.berakhir && b.keputusan !== 'jeda') {
-    catatan.push(`Berakhir ${tanggalSingkat(b.berakhir)} → ubah Periode jadi Tidak Terbatas.`);
+    catatan.push(`Berakhir ${tanggalSingkat(b.berakhir)}. Ubah Periode jadi Tidak Terbatas.`);
   }
   if (b.alasan === 'di-atas-batas') {
-    catatan.push(`Target ${f(b.target)} sudah di atas batas Shopee (${f(b.batasShopee)}). Jangan dinaikkan lagi; iklan jadi jarang tayang.`);
+    catatan.push(`Target ${f(b.target)} sudah di atas batas (${f(b.batasShopee)}). Jangan dinaikkan lagi. Iklan bisa jarang tayang.`);
   }
   if (b.alasan === 'ke-batas' || b.alasan === 'di-batas') {
-    catatan.push(`${f(b.batasShopee)} = batas panduan. Target lebih tinggi bisa mengurangi penjualan (Shopee menyarankan paling tinggi ${f(b.rekomendasi.tinggi)}).`);
+    catatan.push(`Batas tertinggi ${f(b.batasShopee)} (saran Shopee paling tinggi ${f(b.rekomendasi.tinggi)}). Lebih tinggi bisa mengurangi penjualan.`);
   }
   if (b.keputusan === 'turunkan') {
-    catatan.push(`Batas panduan ${f(b.batasShopee)} (Shopee menyarankan paling tinggi ${f(b.rekomendasi.tinggi)}). Target lebih tinggi bisa mengurangi penjualan.`);
+    catatan.push(`Batas tertinggi ${f(b.batasShopee)} (saran Shopee paling tinggi ${f(b.rekomendasi.tinggi)}). Lebih tinggi bisa mengurangi penjualan.`);
   }
   if (b.keputusan === 'lanjut' && b.target !== null && b.batasShopee !== null && b.target > b.batasShopee + 0.05) {
-    catatan.push(`Target ${f(b.target)} di atas batas Shopee (${f(b.batasShopee)}) — iklan bisa jarang tayang.`);
+    catatan.push(`Target ${f(b.target)} di atas batas (${f(b.batasShopee)}). Iklan bisa jarang tayang.`);
   }
   const h = b.hasilIklan;
   if (h && Number.isFinite(h.bedaLangsung) && Number.isFinite(h.bedaShopee)) {
     const beda = (n) => `${n > 0 ? '+' : ''}${formatRupiahRingkas(n)}`;
-    catatan.push(`Hasil perubahan per hari: langsung ${beda(h.bedaLangsung)}; versi Shopee ${beda(h.bedaShopee)} (perkiraan, bukan dasar keputusan).`);
+    catatan.push(`Hasil perubahan: ${beda(h.bedaLangsung)}/hari dari produk ini (versi Shopee ${beda(h.bedaShopee)}/hari).`);
   }
   return catatan;
 }
@@ -2101,15 +2098,14 @@ const rupiahPendek = (n) => formatRupiahRingkas(n).replace('Rp ', '');
 function kalimatKeputusan(b) {
   const f = formatRoas;
   const pesan = {
-    'uji-campur': 'Ada perubahan berdekatan. Periksa hasil bersama sebelum mengubah lagi.',
+    'uji-campur': 'Ada dua perubahan berdekatan. Periksa hasilnya dulu.',
     'data-toko': 'Tetap dulu. Lihat catatan kuning di atas.',
-    'tinjau-hasil': 'Untung toko turun. Periksa hasil perubahan sebelum mencoba lagi.',
-    'tinjau-iklan': 'Untung iklan ini turun setelah beberapa setelan diubah bersama. Periksa dulu.',
+    'tinjau-hasil': 'Untung toko turun. Periksa hasil perubahan dulu.',
+    'tinjau-iklan': 'Untung iklan ini turun setelah beberapa setelan diubah. Periksa dulu.',
     'data-iklan': 'Tetap dulu. Data harian iklan ini belum lengkap.',
-    'toko-turun-jauh': 'Untung toko turun jauh. Jangan ubah iklan dulu. Dicek lagi setiap hari.',
-    'sudah-kembali': 'Target sudah diturunkan kembali. Jangan ulangi kenaikan dulu.',
+    'sudah-kembali': 'Target sudah dikembalikan. Jangan dinaikkan lagi dulu.',
     'hasil-baik': 'Hasil bagus. Biarkan.',
-    'belum-jelas': 'Hasil belum jelas. Biarkan; target tidak dinaikkan lagi.',
+    'belum-jelas': 'Hasil belum jelas. Biarkan, target tidak dinaikkan lagi.',
   };
   if (pesan[b.alasan]) return pesan[b.alasan];
   switch (b.keputusan) {
@@ -2120,7 +2116,7 @@ function kalimatKeputusan(b) {
     case 'ganti': return `Matikan iklan ini. Pasang iklan baru untuk ${namaSingkat(b.pengganti.nama, 40)}.`;
     case 'jeda': case 'toko': return b.p.tindakan;
     case 'tunggu': return b.alasan === 'baru-diubah'
-      ? `Baru diubah ${tanggalSingkat(b.perubahan.tanggal)} — jangan diubah sampai ${tanggalSingkat(b.bisaDiubahLagi)}.`
+      ? `Baru diubah ${tanggalSingkat(b.perubahan.tanggal)}. Jangan diubah sampai ${tanggalSingkat(b.bisaDiubahLagi)}.`
       : b.p.tindakan;
     case 'naikkan': return b.target === null
       ? `Ganti ke GMV Max ROAS, target ${f(b.targetBaru)}.`
@@ -2128,10 +2124,10 @@ function kalimatKeputusan(b) {
     case 'turunkan': return `Target ${f(b.target)} terlalu tinggi. Ubah Target ROAS ke ${f(b.targetBaru)}.`;
     case 'kurangi': return b.modal !== null
       ? `Turunkan Modal Harian ${rupiahPendek(b.modal)} → ${rupiahPendek(b.modalBaru)}. Target tetap.`
-      : 'Batasi Modal Harian (sekarang tanpa batas). Target tetap.';
+      : 'Beri batas Modal Harian (sekarang tanpa batas). Target tetap.';
     case 'tambah': return `Naikkan Modal Harian ${rupiahPendek(b.modal)} → ${rupiahPendek(b.modalBaru)}. Target tetap.`;
     default:
-      if (b.alasan === 'toko-turun') return 'Biarkan. Untung toko belum naik — jangan tambah modal dulu.';
+      if (b.alasan === 'toko-turun') return 'Biarkan. Modal belum ditambah karena untung toko belum naik.';
       if (b.alasan === 'di-batas' || b.alasan === 'di-atas-batas') return 'Biarkan. Target sudah di batas tertinggi.';
       return 'Tidak ada yang perlu diubah.';
   }
@@ -2150,11 +2146,11 @@ function alasanTugas(b) {
     case 'tinjau': return 'Beberapa setelan diubah bersama, jadi penyebabnya belum jelas.';
     case 'tambah': return 'Iklan untung dan modalnya hampir selalu habis.';
     case 'naikkan': return 'Naikkan sedikit supaya biaya iklan lebih hemat.';
-    case 'turunkan': return 'Iklan jadi jarang tayang.';
+    case 'turunkan': return 'Target terlalu tinggi, iklan jarang tayang.';
     case 'kurangi': return b.rugiBesar
-      ? `Rugi ${rupiahPendek(b.rugiBesar.rugi)} selama ${b.rugiBesar.hari} hari iklan, dan belum ada produk pengganti.`
-      : 'Masih rugi, dan target sudah di batas panduan.';
-    case 'ganti': return `Rugi ${rupiahPendek(b.rugiBesar.rugi)} selama ${b.rugiBesar.hari} hari iklan. Menaikkan target tidak cukup untuk menutupnya.`;
+      ? `Rugi ${rupiahPendek(b.rugiBesar.rugi)} dalam ${b.rugiBesar.hari} hari. Belum ada produk pengganti.`
+      : 'Masih rugi. Target sudah di batas tertinggi.';
+    case 'ganti': return `Rugi ${rupiahPendek(b.rugiBesar.rugi)} dalam ${b.rugiBesar.hari} hari. Menaikkan target tidak cukup.`;
     case 'jeda': return 'Iklan ini tidak mungkin untung.';
     case 'isi-hpp': return 'Belum bisa dinilai tanpa harga modal.';
     default: return '';
@@ -2308,7 +2304,7 @@ function isiKartuIklan(b, grup, hariIni) {
   const p = b.p;
   const kata = KATA_GRUP[grup];
   switch (grup) {
-    case 'hentikan': return { kata, aksi: String(p.tindakan || '').replace(/^Jeda — /, '') };
+    case 'hentikan': return { kata, aksi: String(p.tindakan || '').replace(/^Jeda — (\S)/, (_, h) => h.toUpperCase()) };
     case 'ganti': return { kata, aksi: 'Matikan iklan ini. Pasang iklan baru:',
       tambahan: `<span class="iklan-pengganti" title="${escapeHtml(b.pengganti.nama)}">${escapeHtml(namaRapi(b.pengganti.nama, 44))}</span>` +
         `<span class="iklan-mode">${escapeHtml(modePengganti(b.pengganti))}</span>`,
@@ -2327,7 +2323,7 @@ function isiKartuIklan(b, grup, hariIni) {
         return { kata, aksi: `Sampai ${tanggalSingkat(geserHari(p.berjalan.tanggalMulaiIso, 7))}.`, ket: `Iklan baru, hari ke-${p.berjalan.hari}.` };
       }
       if (p.penilaian && p.penilaian.siapTanggal) return { kata, aksi: `Sampai ${tanggalSingkat(p.penilaian.siapTanggal)}.`, ket: 'Iklan baru. Hasilnya belum lengkap.' };
-      return { kata, aksi: 'Belum ada biaya iklan.', ket: 'Cek lagi beberapa hari lagi.' };
+      return { kata, aksi: 'Belum ada biaya iklan.', ket: 'Cek lagi dalam beberapa hari.' };
     }
     default: {
       if (p.aksi === 'toko') return { kata, aksi: 'Iklan toko. Dinilai dari untung toko per minggu.' };
@@ -2335,10 +2331,9 @@ function isiKartuIklan(b, grup, hariIni) {
         'hasil-baik': 'Perubahan terakhir berhasil.',
         'belum-jelas': 'Target tidak dinaikkan lagi dulu.',
         'sudah-kembali': 'Target sudah dikembalikan. Jangan dinaikkan lagi dulu.',
-        'uji-campur': 'Ada beberapa perubahan berdekatan. Tunggu dulu.',
+        'uji-campur': 'Ada dua perubahan berdekatan. Tunggu dulu.',
         'data-toko': 'Tunggu data lengkap.',
         'data-iklan': 'Tunggu data lengkap.',
-        'toko-turun-jauh': 'Untung toko turun jauh. Tunggu dulu.',
         'toko-turun': 'Modal tidak ditambah dulu.',
         'di-batas': 'Target sudah di batas tertinggi.',
         'di-atas-batas': 'Target sudah di batas tertinggi.',
@@ -2379,19 +2374,9 @@ function barisIklan(b, grup, hariIni, kampanyePerProduk) {
   '</div>';
 }
 
-// Rem pengaman: untung toko 7 hari matang terakhir turun jauh dibanding 7 hari sebelumnya.
-function bannerTokoTurun(toko) {
-  const rinci = toko && Number.isFinite(toko.sesudah)
-    ? `<span>Untung toko ${tanggalSingkat(toko.dariSesudah)}–${tanggalSingkat(toko.sampaiSesudah)}: ${formatRupiahRingkas(toko.sesudah)}/hari. ` +
-      `Seminggu sebelumnya: ${formatRupiahRingkas(toko.sebelum)}/hari. Dicek lagi setiap hari.</span>`
-    : '';
-  return `<div class="banner-data"><strong>Untung toko turun jauh. Jangan ubah target dan modal iklan dulu.</strong>${rinci}</div>`;
-}
-
-// Pemberitahuan di atas daftar: data belum lengkap, untung toko turun jauh, iklan yang segera berakhir.
+// Pemberitahuan di atas daftar: data belum lengkap, iklan yang segera berakhir.
 function pemberitahuanIklan(kep) {
   let atas = bannerDataBelumLengkap(kep.dataBelumLengkap);
-  if (kep.baris.some((b) => b.alasan === 'toko-turun-jauh')) atas += bannerTokoTurun(kep.toko);
   const berakhir = kep.baris.filter((b) => b.berakhir && !['jeda', 'ganti'].includes(b.keputusan)).map((b) => b.berakhir).sort();
   if (berakhir.length) {
     const kapan = berakhir[0] === berakhir[berakhir.length - 1] ? tanggalSingkat(berakhir[0]) : `mulai ${tanggalSingkat(berakhir[0])}`;
@@ -2550,16 +2535,16 @@ function renderTugas() {
     const bIni = perBulan && perBulan.get(bulanIni), bLalu = perBulan && perBulan.get(bulanLalu);
     const baris = bIni && bIni.untungSetelahIklan !== null
       ? `<div class="tugas-bulan">${namaBulan(bulanIni)} sampai hari ini: <strong>${formatRupiahRingkas(bIni.untungSetelahIklan)}</strong>` +
-        (bLalu && bLalu.untungSetelahIklan !== null ? ` · ${namaBulan(bulanLalu)} (sebulan penuh): ${formatRupiahRingkas(bLalu.untungSetelahIklan)}` : '') + '</div>'
+        (bLalu && bLalu.untungSetelahIklan !== null ? ` · ${namaBulan(bulanLalu)}: ${formatRupiahRingkas(bLalu.untungSetelahIklan)}` : '') + '</div>'
       : '';
-    untungEl.innerHTML = `<div class="label-ringkasan">Perkiraan untung toko minggu ${labelMinggu(akhir.mulai)}–${labelMinggu(akhir.selesai)} (setelah iklan)</div>
+    untungEl.innerHTML = `<div class="label-ringkasan">Untung toko ${labelMinggu(akhir.mulai)}–${labelMinggu(akhir.selesai)}, setelah iklan</div>
       <div class="angka-ringkasan${akhir.untungSetelahIklan < 0 ? ' angka-negatif' : ''}" id="angkaUntungTugas">${formatRupiah(akhir.untungSetelahIklan)}</div>
       ${selisih !== null ? `<div class="tugas-selisih ${selisih >= 0 ? 'untung-positif' : 'untung-negatif'}">${selisih >= 0 ? 'Naik' : 'Turun'} ${formatRupiahRingkas(Math.abs(selisih))} dari minggu sebelumnya</div>` : ''}
       ${baris}<small class="keterangan">Perkiraan. Belum termasuk biaya operasional.</small>`;
     untungEl.removeAttribute('aria-busy');
     hitungNaik(document.getElementById('angkaUntungTugas'), akhir.untungSetelahIklan);
   } else {
-    untungEl.innerHTML = '<div class="keterangan">Untung toko muncul setelah data penjualan dan iklan termuat.</div>';
+    untungEl.innerHTML = '<div class="keterangan">Untung toko muncul setelah data penjualan dan iklan masuk.</div>';
     untungEl.removeAttribute('aria-busy');
   }
 
@@ -2586,7 +2571,7 @@ function renderTugas() {
       '<button type="button" class="tombol tombol-kecil tombol-langkah-kedua" data-ke-hpp>Buka daftar HPP</button>' +
       `<small class="langkah-ket">Isi harga modal per pcs, lalu tekan Simpan.${info ? ' Setelah itu saran iklan muncul lagi.' : ''}</small>` });
   } else if (info) {
-    langkah.push({ warna: 'abu', judul: 'Tunggu data dari Shopee', isi: '<small class="langkah-ket">Tidak perlu melakukan apa-apa. Cek lagi besok.</small>' });
+    langkah.push({ warna: 'abu', judul: 'Tunggu data dari Shopee', isi: '<small class="langkah-ket">Tidak perlu apa-apa. Cek lagi besok.</small>' });
   }
 
   // b. Perpanjang periode iklan yang segera berakhir (paling dekat dulu).
@@ -2621,11 +2606,10 @@ function renderTugas() {
     : '';
 
   // Hasil perubahan (≤ 28 hari): satu baris per iklan yang dinilai, dengan untung iklan itu sendiri.
-  // Hasil "buruk" sudah menjadi langkah di atas. Turun jauh di toko = satu baris kuning.
+  // Hasil "buruk" sudah menjadi langkah di atas.
   const teksHasil = { baik: 'hasil bagus', 'belum-jelas': 'hasil belum jelas' };
   const barisHasil = kep.baris.filter((b) => b.hasilIklan && b.hasilIklan.baru && teksHasil[b.hasilIklan.status] && !['kembalikan', 'tinjau'].includes(b.keputusan))
     .map((b) => `<p class="tugas-lain">${escapeHtml(namaSingkat(b.p.namaProduk, 32))}: <strong>${teksHasil[b.hasilIklan.status]}${PERLU_TINDAKAN.has(b.keputusan) ? '' : ', biarkan'}</strong>.</p>`);
-  if (kep.baris.some((b) => b.alasan === 'toko-turun-jauh')) barisHasil.unshift(bannerTokoTurun(kep.toko));
   hasilEl.innerHTML = barisHasil.join('');
   renderSaranIklan();
 }
@@ -2675,13 +2659,13 @@ function renderSaranIklan() {
     ? `<h3 class="saran-judul">${judul}</h3><small class="langkah-ket">${ket}</small><ul class="langkah-daftar">` +
       daftar.map((p) => `<li><span title="${escapeHtml(namaSingkat(p.nama, 200))}">${escapeHtml(namaSingkat(p.nama, 32))}</span><strong>${nilai(p)}</strong></li>`).join('') + '</ul>'
     : '');
-  const isi = bagian('Iklankan lagi', 'Dulu untung dari iklan. Pasang GMV Max ROAS di target yang tertulis.', s.ulang,
+  const isi = bagian('Iklankan lagi', 'Dulu untung dari iklan. Pasang GMV Max ROAS dengan target yang tertulis.', s.ulang,
     (p) => { const t = targetPengganti(p); return `untung ${rupiahPendek(p.untungIklan)} · ${t ? `target ${formatRoas(t.target)}` : 'Auto'}`; }) +
-    bagian('Coba iklankan', 'Laku tanpa iklan, untungnya cukup. Pasang GMV Max ROAS di target yang tertulis (tanpa target: GMV Max Auto).', s.coba,
+    bagian('Coba iklankan', 'Laku tanpa iklan dan untungnya cukup. Pasang GMV Max ROAS dengan target yang tertulis. Tanpa target: GMV Max Auto.', s.coba,
       (p) => { const t = targetPengganti(p); return `${p.pcsA} terjual / 4 minggu · ${t ? `target ${formatRoas(t.target)}` : 'Auto'}`; });
   el.hidden = !isi;
   document.getElementById('saranIklanIsi').innerHTML = isi &&
-    isi + '<small class="langkah-ket">Cek stok dulu. Periode Tidak Terbatas. Boleh beberapa sekaligus. Iklan yang rugi besar sudah ada di langkah "Ganti iklan".</small>';
+    isi + '<small class="langkah-ket">Cek stok dulu. Periode Tidak Terbatas. Boleh beberapa sekaligus.</small>';
 }
 
 // ====== Pengaturan: diagnostik + unduh data ======

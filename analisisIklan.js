@@ -232,28 +232,28 @@ const bagi = (a, b) => (b ? a / b : null);
 function vonis(p) {
   const f = formatAngka;
   if (p.tokoLevel) {
-    return { status: 'toko', aksi: 'toko', tindakan: 'Iklan level toko — nilai lewat kartu mingguan.' };
+    return { status: 'toko', aksi: 'toko', tindakan: 'Iklan toko. Dinilai dari untung toko per minggu.' };
   }
   if (p.hpp === null) {
     return { status: 'belum-hpp', aksi: 'isi-hpp', tindakan: 'Isi HPP dulu.' };
   }
   if (p.berjalan && p.berjalan.hari < HARI_BELAJAR) {
     const sampai = isoKeTampil(tambahHari(p.berjalan.tanggalMulaiIso, HARI_BELAJAR));
-    return { status: 'tunggu', aksi: 'tunggu', tindakan: `Masih belajar — cek lagi ${sampai}.` };
+    return { status: 'tunggu', aksi: 'tunggu', tindakan: `Masih belajar. Cek lagi ${sampai}.` };
   }
   const m = p.penilaian && p.penilaian.siap ? p.penilaian : p.berjalan || p;
   if (p.tingkatCair === 0) {
-    return { status: 'rugi', aksi: 'jeda', tindakan: 'Jeda — belum ada pesanan yang menjadi penjualan pada data terukur.' };
+    return { status: 'rugi', aksi: 'jeda', tindakan: 'Jeda — belum ada pesanan iklan yang dibayar.' };
   }
-  if (p.marginPerRp !== null && p.marginPerRp <= 0 && p.hargaRata) return { status: 'tipis', aksi: 'jeda', tindakan: 'Jeda — pendapatan setelah potongan tidak menutup HPP.' };
+  if (p.marginPerRp !== null && p.marginPerRp <= 0 && p.hargaRata) return { status: 'tipis', aksi: 'jeda', tindakan: 'Jeda — setelah potongan Shopee, uang yang diterima di bawah harga modal.' };
   if (p.penilaian && !p.penilaian.siap) return { status: 'tunggu', aksi: 'tunggu', tindakan: p.penilaian.alasan === 'waktu'
-    ? `Tunggu penjualan terlambat tercatat${p.penilaian.siapTanggal ? ` — cek lagi ${isoKeTampil(p.penilaian.siapTanggal)}` : ''}.`
-    : 'Data harian belum lengkap — periksa sinkron.' };
-  if (p.berjalan && m.biaya === 0) return { status: 'tunggu', aksi: 'tunggu', tindakan: 'Belum ada biaya iklan — tunggu data.' };
+    ? `Tunggu penjualan yang telat tercatat${p.penilaian.siapTanggal ? `. Cek lagi ${isoKeTampil(p.penilaian.siapTanggal)}` : ''}.`
+    : 'Data harian belum lengkap. Tunggu data berikutnya.' };
+  if (p.berjalan && m.biaya === 0) return { status: 'tunggu', aksi: 'tunggu', tindakan: 'Belum ada biaya iklan. Tunggu data.' };
   if (!p.hargaRata) {
     return m.biaya > 0
       ? { status: 'rugi', aksi: 'rugi', tindakan: 'Belum ada penjualan dari iklan ini.' }
-      : { status: 'untung', aksi: 'untung', tindakan: 'Belum ada biaya & penjualan.' };
+      : { status: 'untung', aksi: 'untung', tindakan: 'Belum ada biaya dan penjualan.' };
   }
   if (p.marginPerRp <= 0) return { status: 'tipis', aksi: 'jeda', tindakan: 'Jeda — harga di bawah modal.' };
   const roasL = m.roasLangsung;
@@ -261,12 +261,12 @@ function vonis(p) {
   const teksRoas = `langsung ${f(roasL)}, min ${f(p.roasImpas)}`;
   const selesai = !p.berjalan;
   if (roasL >= p.roasImpas) {
-    return { status: 'untung', aksi: 'untung', tindakan: selesai ? `Untung (${teksRoas}) — boleh diulang.` : `Untung (${teksRoas}).` };
+    return { status: 'untung', aksi: 'untung', tindakan: selesai ? `Untung (${teksRoas}). Boleh diulang.` : `Untung (${teksRoas}).` };
   }
   if (m.roasShopee !== null && m.roasShopee >= p.roasImpas) {
-    return { status: 'ragu', aksi: 'abu', tindakan: selesai ? `Belum tentu untung (${teksRoas}).` : `Belum tentu untung (${teksRoas}) — untung hanya kalau dihitung dengan produk lain.` };
+    return { status: 'ragu', aksi: 'abu', tindakan: selesai ? `Belum tentu untung (${teksRoas}).` : `Belum tentu untung (${teksRoas}). Untung hanya kalau produk lain ikut dihitung.` };
   }
-  return { status: 'rugi', aksi: 'rugi', tindakan: selesai ? `Rugi (${teksRoas}) — jangan diulang begini.` : `Rugi (${teksRoas}).` };
+  return { status: 'rugi', aksi: 'rugi', tindakan: selesai ? `Rugi (${teksRoas}). Jangan diulang dengan setelan ini.` : `Rugi (${teksRoas}).` };
 }
 
 // 4.6 → "4,6" (gaya Indonesia), untuk kalimat tindakan.

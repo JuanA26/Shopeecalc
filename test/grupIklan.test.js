@@ -40,12 +40,12 @@ test('replacement leaves HPP, pause, reversal and shop rows alone, and is never 
   assert.equal(JSON.stringify(rows), before);
 
   const trial = [{ ...row('g', 'ganti'), pengganti: { idProduk: 'w' } }, row('t', 'naikkan'), row('u', 'naikkan')];
-  E.terapkanEvaluasiToko(trial, null, { dataSiapEvaluasi: true, riwayatSetelan: [] }, true);
+  E.terapkanEvaluasiToko(trial, { dataSiapEvaluasi: true, riwayatSetelan: [] }, true);
   assert.equal(trial[0].keputusan, 'ganti');
   assert.equal(trial[1].keputusan, 'naikkan'); assert.equal(trial[2].keputusan, 'naikkan'); // no one-at-a-time limit (30/09)
   // Missing data holds trials, but not a replacement.
   const held = [{ ...row('g', 'ganti'), pengganti: { idProduk: 'w' } }, row('t', 'naikkan')];
-  E.terapkanEvaluasiToko(held, null, { dataSiapEvaluasi: false, riwayatSetelan: [] }, true);
+  E.terapkanEvaluasiToko(held, { dataSiapEvaluasi: false, riwayatSetelan: [] }, true);
   assert.equal(held[0].keputusan, 'ganti'); assert.equal(held[1].alasan, 'data-toko');
 });
 
@@ -68,7 +68,7 @@ test('an old worse result (> 28 days) does not block Ganti: the trial judge woul
   const rows = [row('loser', 'naikkan', { p: { idProduk: 'loser', aksi: 'rugi', roasImpas: 5 } })];
   ctx.terapkanGanti(rows, { ganti: [rugi('loser', -400000)], ulang: [{ idProduk: 'w', nama: 'W', untungIklan: 1 }], coba: [] },
     (b) => E.hasilIklan(data, b.p.idProduk, '2026-09-30', 5));
-  E.terapkanEvaluasiToko(rows, null, data, true, '2026-09-30');
+  E.terapkanEvaluasiToko(rows, data, true, '2026-09-30');
   assert.equal(rows[0].keputusan, 'ganti'); // before the fix: 'naikkan', i.e. tuned instead of replaced
 });
 

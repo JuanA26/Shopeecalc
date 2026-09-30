@@ -109,10 +109,9 @@ phone: profit, then tasks, then shortcuts.
   different margins. **Lebih baik** keeps the setting and the steps continue; **lebih buruk** returns towards the old target or budget (at most 20%
   per step); **belum jelas** keeps the setting, and after a target raise that ad's target is not raised
   again. Missing data is never zero profit.
-- **Store safety check (rolling):** total store profit per day over the latest 7 mature days vs the 7 days
-  before, checked every day. Store profit swings about ±400 rb/day between ordinary weeks, more than one ad
-  can move it, so it never reverses anything; a drop of 700 rb/day or more holds new target/budget changes
-  while it shows. This is an observed comparison, not proof.
+- **Store profit does not hold changes.** It swings about ±400 rb/day between ordinary weeks with demand and
+  sale days, far more than one ad setting can move it. The weekly card still stops budget increases when ad
+  spend rose over 4 weeks and store profit did not.
 - Missing HPP for more than 5% of the week's payout (smaller gaps are estimated at the margin of the
   other products), missing daily records, stale/failed syncs, retries, or overlapping changes block new
   trials. The reason is shown once as a yellow banner (with an "Isi HPP" button), not on every ad. Several edits of one ad on the same day count as one change (first old value → last new value). Mixed target/budget changes with worse results require review. A target increase followed by

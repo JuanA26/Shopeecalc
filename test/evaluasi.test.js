@@ -179,7 +179,7 @@ test('dashboard shows numbered simple steps: HPP first, then extend period; no p
     vm.runInNewContext(extract('renderTugas') + ';renderTugas()', {
       document: { getElementById: id => nodes[id] || (nodes[id] = { removeAttribute() {} }) }, hariIniWib: () => '2026-09-30', formatTanggalPendek: s => s,
       untungTokoPerMinggu: () => null, untungTokoPerBulan: () => null, dataIklan: data, sumberIklan: () => sumber,
-      keputusanBerjalan: () => ({ baris: [b, hpp], dataBelumLengkap }), PERLU_TINDAKAN: new Set(['isi-hpp']), namaSingkat: s => s, escapeHtml: s => s,
+      keputusanBerjalan: () => ({ baris: [b, hpp], dataBelumLengkap }), PERLU_TINDAKAN: new Set(['isi-hpp']), namaSingkat: s => s, namaRapi: s => s, escapeHtml: s => s,
       tanggalSingkat: s => s, kalimatKeputusan: () => 'Tetap dulu.', EvaluasiIklan: E, labelKeputusan: () => ['', 'pill-abu'], alasanTugas: () => '', akunBacaSaja: false,
       formatRupiahRingkas: n => String(n), renderSaranIklan: () => {},
     });
@@ -192,6 +192,27 @@ test('dashboard shows numbered simple steps: HPP first, then extend period; no p
     assert.match(nodes.tugasLain.innerHTML, /jangan diubah/); assert.doesNotMatch(nodes.tugasLain.innerHTML, /Sample product/);
     assert.equal(nodes.tugasHasil.innerHTML, '');
   }
+});
+
+test('Dashboard week comparison leaves out busy days (> 1.8 × median payout) and compares per day', () => {
+  const ctx = { geserHari: E.geser };
+  vm.runInNewContext('const BATAS_HARI_RAMAI = 1.8;' + extract('bandingMingguBiasa') + ';this.f = bandingMingguBiasa', ctx);
+  // 1–28 Sep: 200 rb payout, 80 rb profit, 20 rb ads a day. Week A = 8–14 Sep, week B = 15–21 Sep.
+  const items = [], perHari = {};
+  for (let i = 1; i <= 28; i++) {
+    const d = `2026-09-${String(i).padStart(2, '0')}`;
+    items.push({ waktuPesanan: d, totalPenghasilan: 200000, hpp: 1, untung: 80000 }); perHari[d] = { biaya: 20000 };
+  }
+  const kampanye = [{ perHari }];
+  assert.equal(JSON.stringify(ctx.f(items, kampanye, '2026-09-08', '2026-09-15')), '{"selisih":0,"ramai":[]}');
+  // 9.9 sells 5× a normal day: the week before no longer looks 3,2 jt better.
+  Object.assign(items[8], { totalPenghasilan: 1000000, untung: 400000 });
+  const r = ctx.f(items, kampanye, '2026-09-08', '2026-09-15');
+  assert.equal(r.selisih, 0); assert.equal(r.ramai.join(), '2026-09-09');
+  // A real change on ordinary days still shows, per day; a day without orders counts as zero sales.
+  for (const it of items) if (it.waktuPesanan >= '2026-09-15') it.untung = 50000;
+  assert.equal(ctx.f(items, kampanye, '2026-09-08', '2026-09-15').selisih, -30000);
+  assert.equal(ctx.f(items, [{ kodeProduk: 'x' }], '2026-09-08', '2026-09-15'), null); // no daily ad spend: old weekly line
 });
 
 test('a small share of sales without HPP is estimated; a large share still holds all ads', () => {

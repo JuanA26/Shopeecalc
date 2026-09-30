@@ -96,7 +96,7 @@ same way. Read-only accounts only reload stored data. Hover (desktop) for the ex
 ### Dashboard
 On a wide screen: store profit and shortcut cards on the left, the weekly tasks on the right. On a
 phone: profit, then tasks, then shortcuts.
-- **Tugas Minggu Ini** (top): last complete week's store profit after ads (vs the week before), this
+- **Tugas Minggu Ini** (top): last complete week's store profit after ads (change vs the week before per ordinary day: days with payout > 1.8 × the 28-day median are left out and named), this
   month so far vs last month, then short numbered steps: (1) **Isi HPP** for products whose missing cost
   price holds the ad advice, with a price box + Simpan per product (and a button to the HPP tab); (2) **Ubah Periode jadi Tidak Terbatas** for
   ads ending soon; (3) one step per ad that needs a target/budget change, with the exact old → new

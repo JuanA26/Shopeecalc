@@ -2499,6 +2499,67 @@ function untungTokoPerBulan() {
   return bulan;
 }
 
+// Hari ramai (user, 30/09): penghasilan hari itu > 1,8 × median harian 28 hari terakhir (9.9, tanggal
+// 25, 15, 17 Agustus, ...). Satu hari promo bisa membuat minggu kelihatan naik/turun jutaan, jadi
+// perbandingan minggu di Dashboard memakai rata-rata per hari dari hari biasa saja.
+// Hasil: { selisih (Rp/hari, minggu B − minggu A), ramai: [iso] } atau null kalau biaya iklan harian tidak ada.
+const BATAS_HARI_RAMAI = 1.8;
+function bandingMingguBiasa(items, kampanye, mulaiA, mulaiB) {
+  if (!kampanye || !kampanye.some((k) => k.perHari)) return null;
+  const akhirB = geserHari(mulaiB, 6), dari = geserHari(akhirB, -27);
+  const hari = new Map();
+  const ambil = (d) => { let h = hari.get(d); if (!h) { h = { penghasilan: 0, diketahui: 0, untungDiketahui: 0, retur: 0, biaya: 0 }; hari.set(d, h); } return h; };
+  for (const it of items) {
+    const d = String(it.waktuPesanan || '').slice(0, 10);
+    if (d < dari || d > akhirB) continue;
+    const h = ambil(d);
+    if (it.dikembalikan) { h.retur += it.totalPenghasilan || 0; continue; }
+    h.penghasilan += it.totalPenghasilan || 0;
+    if (it.hpp !== null && it.untung !== null && it.untung !== undefined) { h.diketahui += it.totalPenghasilan || 0; h.untungDiketahui += it.untung; }
+  }
+  for (const k of kampanye) {
+    if (!k.perHari) continue;
+    for (const [d, v] of Object.entries(k.perHari)) if (d >= dari && d <= akhirB) ambil(d).biaya += v.biaya || 0;
+  }
+  const urut = [...hari.values()].map((h) => h.penghasilan).filter((n) => n > 0).sort((a, b) => a - b);
+  const tengah = urut.length ? (urut[(urut.length - 1) >> 1] + urut[urut.length >> 1]) / 2 : 0;
+  const ramai = (d) => tengah > 0 && hari.has(d) && hari.get(d).penghasilan > BATAS_HARI_RAMAI * tengah;
+  // Sama dengan kartu mingguan: produk tanpa HPP memakai margin produk lain di hari-hari itu.
+  const rata = (mulai) => {
+    const t = { penghasilan: 0, diketahui: 0, untungDiketahui: 0, retur: 0, biaya: 0 };
+    let n = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = geserHari(mulai, i);
+      if (ramai(d)) continue;
+      n += 1;
+      const h = hari.get(d);
+      if (h) for (const f of Object.keys(t)) t[f] += h[f];
+    }
+    if (!n) return null;
+    const margin = t.diketahui ? t.untungDiketahui / t.diketahui : 0;
+    return (t.untungDiketahui + (t.penghasilan - t.diketahui) * margin + t.retur - t.biaya) / n;
+  };
+  const a = rata(mulaiA), b = rata(mulaiB);
+  if (a === null || b === null) return null;
+  const semua = [];
+  for (let i = 0; i < 14; i++) if (ramai(geserHari(mulaiA, i))) semua.push(geserHari(mulaiA, i));
+  return { selisih: b - a, ramai: semua };
+}
+
+// Baris "naik/turun dari minggu sebelumnya" di bawah angka untung Dashboard.
+function barisSelisihMinggu(sebelum, akhir) {
+  if (!sebelum || geserHari(sebelum.mulai, 7) !== akhir.mulai) return '';
+  const banding = dataIklan && sumberIklan() ? bandingMingguBiasa(sumberIklan().items, dataIklan.kampanye, sebelum.mulai, akhir.mulai) : null;
+  if (!banding) {
+    const selisih = akhir.untungSetelahIklan - sebelum.untungSetelahIklan;
+    return `<div class="tugas-selisih ${selisih >= 0 ? 'untung-positif' : 'untung-negatif'}">${selisih >= 0 ? 'Naik' : 'Turun'} ${formatRupiahRingkas(Math.abs(selisih))} dari minggu sebelumnya</div>`;
+  }
+  const naik = banding.selisih >= 0, ada = banding.ramai.length > 0;
+  const arah = ada ? `Hari biasa: ${naik ? 'naik' : 'turun'}` : naik ? 'Naik' : 'Turun';
+  return `<div class="tugas-selisih ${naik ? 'untung-positif' : 'untung-negatif'}">${arah} ${formatRupiahRingkas(Math.abs(banding.selisih))}/hari dari minggu sebelumnya</div>` +
+    (ada ? `<small class="keterangan">Hari ramai tidak dihitung: ${banding.ramai.map(tanggalSingkat).join(', ')}.</small>` : '');
+}
+
 // Angka untung "menghitung naik" sekali (±0,7 detik) saat pertama tampil. Tidak dijalankan kalau
 // perangkat meminta "kurangi gerakan"; angka akhir selalu sama dengan formatRupiah(nilai).
 let sudahHitungNaik = false;
@@ -2528,7 +2589,6 @@ function renderTugas() {
   const perBulan = untungTokoPerBulan();
   if (lengkap.length) {
     const akhir = lengkap[lengkap.length - 1], sebelum = lengkap[lengkap.length - 2];
-    const selisih = sebelum && geserHari(sebelum.mulai, 7) === akhir.mulai ? akhir.untungSetelahIklan - sebelum.untungSetelahIklan : null;
     const hariIni = hariIniWib(), bulanIni = hariIni.slice(0, 7);
     const bulanLalu = geserHari(`${bulanIni}-01`, -1).slice(0, 7);
     const namaBulan = (k) => new Date(`${k}-01T00:00:00`).toLocaleDateString('id-ID', { month: 'long' });
@@ -2539,7 +2599,7 @@ function renderTugas() {
       : '';
     untungEl.innerHTML = `<div class="label-ringkasan">Untung toko ${labelMinggu(akhir.mulai)}–${labelMinggu(akhir.selesai)}, setelah iklan</div>
       <div class="angka-ringkasan${akhir.untungSetelahIklan < 0 ? ' angka-negatif' : ''}" id="angkaUntungTugas">${formatRupiah(akhir.untungSetelahIklan)}</div>
-      ${selisih !== null ? `<div class="tugas-selisih ${selisih >= 0 ? 'untung-positif' : 'untung-negatif'}">${selisih >= 0 ? 'Naik' : 'Turun'} ${formatRupiahRingkas(Math.abs(selisih))} dari minggu sebelumnya</div>` : ''}
+      ${barisSelisihMinggu(sebelum, akhir)}
       ${baris}<small class="keterangan">Perkiraan. Belum termasuk biaya operasional.</small>`;
     untungEl.removeAttribute('aria-busy');
     hitungNaik(document.getElementById('angkaUntungTugas'), akhir.untungSetelahIklan);
@@ -2563,7 +2623,7 @@ function renderTugas() {
   if (tanpaHpp.size) {
     const MAKS_ISI = 5;
     const daftar = [...tanpaHpp];
-    const baris = daftar.slice(0, MAKS_ISI).map(([id, nama]) => `<li class="isi-hpp-baris"><span>${escapeHtml(namaSingkat(nama, 40))}</span>` +
+    const baris = daftar.slice(0, MAKS_ISI).map(([id, nama]) => `<li class="isi-hpp-baris"><span>${escapeHtml(namaRapi(nama, 40))}</span>` +
       (akunBacaSaja ? '' : `<span class="isi-hpp-kotak"><span class="prefix">Rp</span><input type="number" inputmode="numeric" min="0" step="500" placeholder="harga modal" aria-label="Harga modal ${escapeHtml(nama)}" data-hpp-id="${escapeHtml(id)}" data-hpp-nama="${escapeHtml(nama)}"><button type="button" class="tombol tombol-utama" data-simpan-hpp>Simpan</button></span>`) +
       '</li>').join('');
     const lagi = daftar.length > MAKS_ISI ? `<li class="langkah-lagi">+ ${daftar.length - MAKS_ISI} produk lagi</li>` : '';
@@ -2578,7 +2638,7 @@ function renderTugas() {
   const perpanjang = kep.baris.filter((b) => b.berakhir && !['jeda', 'ganti'].includes(b.keputusan)).sort((a, b) => a.berakhir.localeCompare(b.berakhir));
   if (perpanjang.length) {
     langkah.push({ warna: 'oranye', judul: 'Ubah Periode iklan jadi Tidak Terbatas', isi:
-      '<ul class="langkah-daftar">' + perpanjang.map((b) => `<li><span>${escapeHtml(namaSingkat(b.p.namaProduk, 40))}</span><strong>sebelum ${tanggalSingkat(b.berakhir)}</strong></li>`).join('') + '</ul>' +
+      '<ul class="langkah-daftar">' + perpanjang.map((b) => `<li><span>${escapeHtml(namaRapi(b.p.namaProduk, 40))}</span><strong>sebelum ${tanggalSingkat(b.berakhir)}</strong></li>`).join('') + '</ul>' +
       '<small class="langkah-ket">Ubah iklan yang sama. Jangan buat iklan baru.</small>' });
   }
 
@@ -2590,7 +2650,7 @@ function renderTugas() {
     }
     const [, pill] = labelKeputusan(b);
     langkah.push({ ubah: true, warna: pill.replace('pill-', ''), judul: kalimatKeputusan(b), isi:
-      `<div class="langkah-produk">${escapeHtml(namaSingkat(b.p.namaProduk, 40))}</div>` +
+      `<div class="langkah-produk">${escapeHtml(namaRapi(b.p.namaProduk, 40))}</div>` +
       (alasanTugas(b) ? `<small class="langkah-ket">${escapeHtml(alasanTugas(b))}</small>` : '') });
   }
 
@@ -2609,7 +2669,7 @@ function renderTugas() {
   // Hasil "buruk" sudah menjadi langkah di atas.
   const teksHasil = { baik: 'hasil bagus', 'belum-jelas': 'hasil belum jelas' };
   const barisHasil = kep.baris.filter((b) => b.hasilIklan && b.hasilIklan.baru && teksHasil[b.hasilIklan.status] && !['kembalikan', 'tinjau'].includes(b.keputusan))
-    .map((b) => `<p class="tugas-lain">${escapeHtml(namaSingkat(b.p.namaProduk, 32))}: <strong>${teksHasil[b.hasilIklan.status]}${PERLU_TINDAKAN.has(b.keputusan) ? '' : ', biarkan'}</strong>.</p>`);
+    .map((b) => `<p class="tugas-lain">${escapeHtml(namaRapi(b.p.namaProduk, 32))}: <strong>${teksHasil[b.hasilIklan.status]}${PERLU_TINDAKAN.has(b.keputusan) ? '' : ', biarkan'}</strong>.</p>`);
   hasilEl.innerHTML = barisHasil.join('');
   renderSaranIklan();
 }
@@ -2642,9 +2702,9 @@ function ketPengganti(b) {
   const bukti = buktiPengganti(b.pengganti);
   return `${bukti[0].toUpperCase()}${bukti.slice(1)} Cek stok dulu. ${modePengganti(b.pengganti)}, Periode Tidak Terbatas, Modal Harian ${rupiahPendek(MODAL_IKLAN_BARU)}.`;
 }
-const namaPengganti = (b) => `<strong title="${escapeHtml(b.pengganti.nama)}">${escapeHtml(namaSingkat(b.pengganti.nama, 40))}</strong>`;
+const namaPengganti = (b) => `<strong title="${escapeHtml(b.pengganti.nama)}">${escapeHtml(namaRapi(b.pengganti.nama, 40))}</strong>`;
 function langkahGanti(b) {
-  return `<ol class="ganti-daftar"><li>Matikan: <strong title="${escapeHtml(b.p.namaProduk)}">${escapeHtml(namaSingkat(b.p.namaProduk, 40))}</strong>` +
+  return `<ol class="ganti-daftar"><li>Matikan: <strong title="${escapeHtml(b.p.namaProduk)}">${escapeHtml(namaRapi(b.p.namaProduk, 40))}</strong>` +
     `<small class="langkah-ket">${escapeHtml(alasanTugas(b))}</small></li>` +
     `<li>Pasang iklan baru: ${namaPengganti(b)}<small class="langkah-ket">${escapeHtml(ketPengganti(b))}</small></li></ol>`;
 }
@@ -2657,7 +2717,7 @@ function renderSaranIklan() {
   if (!s) { el.hidden = true; return; }
   const bagian = (judul, ket, daftar, nilai) => (daftar.length
     ? `<h3 class="saran-judul">${judul}</h3><small class="langkah-ket">${ket}</small><ul class="langkah-daftar">` +
-      daftar.map((p) => `<li><span title="${escapeHtml(namaSingkat(p.nama, 200))}">${escapeHtml(namaSingkat(p.nama, 32))}</span><strong>${nilai(p)}</strong></li>`).join('') + '</ul>'
+      daftar.map((p) => `<li><span title="${escapeHtml(namaRapi(p.nama, 200))}">${escapeHtml(namaRapi(p.nama, 32))}</span><strong>${nilai(p)}</strong></li>`).join('') + '</ul>'
     : '');
   const isi = bagian('Iklankan lagi', 'Dulu untung dari iklan. Pasang GMV Max ROAS dengan target yang tertulis.', s.ulang,
     (p) => { const t = targetPengganti(p); return `untung ${rupiahPendek(p.untungIklan)} · ${t ? `target ${formatRoas(t.target)}` : 'Auto'}`; }) +

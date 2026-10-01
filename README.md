@@ -184,7 +184,9 @@ Notices appear once at the top: missing data (yellow, with an "Isi HPP" button) 
 
 How each ad's change is chosen (the trial checks above take priority over this ladder):
 - Each ad first gets a zone from **direct ROAS** (sales of the advertised product only) and Shopee's ROAS
-  against the **ROAS minimum**, over the same seven mature days under the current settings.
+  against the **ROAS minimum**, over the same seven mature days under the current settings. A new zone is
+  used only after it held **3 days in a row** (one sale more or less shouldn't flip the advice); until then
+  the previous advice stays and Rincian says "Hasil terbaru: … (n dari 3 hari)".
 - **Untung** (direct ≥ minimum) → **Tambah modal** +20% if it spent ≥ 90% of its daily budget on average
   and weekly store profit isn't falling while ads rise; otherwise leave it.
 - **Belum tentu** (only Shopee's ROAS ≥ minimum) or **Rugi** (both below) → **Naikkan target** by 20%

@@ -2075,6 +2075,11 @@ function catatanKeputusanTeks(b) {
   if (b.keputusan === 'lanjut' && b.target !== null && b.batasShopee !== null && b.target > b.batasShopee + 0.05) {
     catatan.push(`Target ${f(b.target)} di atas batas (${f(b.batasShopee)}). Iklan bisa jarang tayang.`);
   }
+  const z = b.p.zona; // zona baru dipakai setelah bertahan HARI_ZONA_TAHAN hari (evaluasiIklan.js)
+  if (z && z.zona && z.mentah && z.mentah !== z.zona) {
+    const nama = { untung: 'untung', abu: 'belum tentu untung', rugi: 'rugi' };
+    catatan.push(`Hasil terbaru: ${nama[z.mentah]} (${z.hariBaru} dari ${EvaluasiIklan.HARI_ZONA_TAHAN} hari). Saran memakai ${nama[z.zona]} sampai itu bertahan.`);
+  }
   const h = b.hasilIklan;
   if (h && Number.isFinite(h.bedaLangsung) && Number.isFinite(h.bedaShopee)) {
     const beda = (n) => `${n > 0 ? '+' : ''}${formatRupiahRingkas(n)}`;
@@ -2775,7 +2780,7 @@ function keputusanUntukEkspor() {
       idProduk: b.p.idProduk, namaProduk: b.p.namaProduk, keputusan: b.keputusan, label: labelKeputusan(b)[0], kalimat: kalimatKeputusan(b),
       alasan: b.alasan || '', zona: b.p.aksi, target: b.target, targetBaru: b.targetBaru, modal: b.modal, modalBaru: b.modalBaru,
       batasShopee: b.batasShopee, roasLangsung: metrikBerjalan(b.p).roasLangsung ?? null, roasMinimum: b.p.roasImpas ?? null,
-      berakhir: b.berakhir || '', bisaDiubahLagi: b.bisaDiubahLagi || '',
+      berakhir: b.berakhir || '', bisaDiubahLagi: b.bisaDiubahLagi || '', zonaTerbaru: b.p.zona ? b.p.zona.mentah : null,
     }));
   } catch (err) {
     console.error('Saran iklan tidak ikut ekspor:', err); // file tetap dibuat, tanpa sheet keputusan

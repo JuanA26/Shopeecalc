@@ -290,3 +290,36 @@ test('same-day edits of one campaign count as one change (user, 2026-09-29)', ()
   const data = { dataSiapEvaluasi: true, kampanye: [], riwayatSetelan: gabungUbahSehari([u('2026-09-28', 50000, 76129), u('2026-09-28', 76129, 77097)]) };
   assert.equal(E.hasilIklan(data, 'p', '2026-10-13', 6).status, 'data'); // no campaign data in this fixture, but not 'campur'
 });
+
+test('a new zone counts only after it held three days (user, 2026-10-01)', () => {
+  assert.equal(E.tahanZona(['abu', 'abu', 'untung']).zona, 'abu');
+  assert.equal(E.tahanZona(['abu', 'untung', 'abu', 'untung']).zona, 'abu'); // back and forth: never 3 in a row
+  assert.equal(E.tahanZona(['abu', 'untung', 'untung', 'untung']).zona, 'untung');
+  const r = E.tahanZona(['rugi', 'rugi', 'abu', 'abu']);
+  assert.deepEqual([r.zona, r.mentah, r.hariBaru], ['rugi', 'abu', 2]);
+  assert.equal(E.tahanZona(['rugi', 'rugi', null, 'untung']).zona, 'untung'); // a gap (change, missing data) restarts
+  assert.equal(E.tahanZona([]).zona, null);
+
+  // Direct ROAS 8 per day, then 2 from 10/09 (broad stays 10); minimum 5. The 7-day window (today−14…today−8)
+  // first holds 4 weak days on 21/09, so the raw zone turns abu that day and the held zone two days later.
+  const perHari = {};
+  for (let d = '2026-07-01'; d <= '2026-09-30'; d = E.geser(d, 1)) perHari[d] = { biaya: 10000, omzet: 100000, omzetLangsung: d < '2026-09-10' ? 80000 : 20000 };
+  const kampanye = [{ kodeProduk: 'p', status: 'Berjalan', tanggalMulaiIso: '2026-07-01', perHari }];
+  const z = (hari) => E.zonaStabil(kampanye, 'p', null, hari, 5);
+  assert.deepEqual([z('2026-09-20').zona, z('2026-09-20').mentah], ['untung', 'untung']);
+  assert.deepEqual([z('2026-09-21').zona, z('2026-09-21').mentah, z('2026-09-21').hariBaru], ['untung', 'abu', 1]);
+  assert.deepEqual([z('2026-09-22').zona, z('2026-09-22').hariBaru], ['untung', 2]);
+  assert.equal(z('2026-09-23').zona, 'abu');
+  // A settings change restarts the history: 15 days later the first ready window counts at once.
+  assert.equal(E.zonaStabil(kampanye, 'p', { tanggal: '2026-09-06' }, '2026-09-21', 5).zona, 'abu');
+
+  // The verdict follows the held zone and says what the latest window shows.
+  const hasil = hitungAnalisisIklan([{ kodeProduk: 'p', namaIklan: 'p', status: 'Berjalan', tanggalMulaiIso: '2026-07-01', tanggalSelesaiIso: '2026-09-21',
+    biaya: 100000, omzet: 1000000, omzetLangsung: 800000, terjual: 10, terjualLangsung: 8, dilihat: 0, klik: 0, perHari }],
+  new Map([['p', { hpp: 51000 }]]), 0.78, { p: { harga: 100000, rasio: 0.78, pcs: 10 } },
+  { tanggalLaporanIso: '2026-09-21', tingkatCair: 0.75, setelanApi: { p: {} } }).produk[0];
+  assert.ok(Math.abs(hasil.roasImpas - 1 / (0.27 * 0.75)) < 1e-9); // minimum ≈ 4.9, as in the series above
+  assert.equal(hasil.zona.mentah, 'abu');
+  assert.equal(hasil.aksi, 'untung');
+  assert.match(hasil.tindakan, /Angka terbaru belum tentu untung; dipakai kalau bertahan 3 hari\./);
+});

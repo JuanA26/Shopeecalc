@@ -51,7 +51,7 @@
 // bukan gabungan 3 bulan: Shopee mengulang tahap belajar tiap kampanye, jadi kampanye lama
 // tidak meramalkan yang sekarang. Gabungan tetap ada untuk tabel "Semua produk".
 
-const { metrikTerbaru } = require('./public/evaluasiIklan');
+const { metrikTerbaru, zonaStabil, HARI_ZONA_TAHAN } = require('./public/evaluasiIklan');
 const { geserHari: tambahHari } = require('./util');
 const RASIO_PENCAIRAN_DEFAULT = 0.78;
 const TINGKAT_CAIR_DEFAULT = 0.85; // 85% pesanan iklan dianggap dibayar kalau belum ada angka toko
@@ -255,14 +255,19 @@ function vonis(p) {
   if (roasL === null) return { status: 'untung', aksi: 'untung', tindakan: 'Belum ada biaya iklan.' };
   const teksRoas = `langsung ${f(roasL)}, min ${f(p.roasImpas)}`;
   const selesai = !p.berjalan;
-  if (roasL >= p.roasImpas) {
-    return { status: 'untung', aksi: 'untung', tindakan: selesai ? `Untung (${teksRoas}). Boleh diulang.` : `Untung (${teksRoas}).` };
+  const mentah = roasL >= p.roasImpas ? 'untung' : m.roasShopee !== null && m.roasShopee >= p.roasImpas ? 'abu' : 'rugi';
+  // Running ads (API): a new zone counts only after it held HARI_ZONA_TAHAN days (p.zona, zonaStabil).
+  const zona = (p.zona && p.zona.zona) || mentah;
+  const tahan = zona !== mentah ? ` Angka terbaru ${NAMA_ZONA[mentah]}; dipakai kalau bertahan ${HARI_ZONA_TAHAN} hari.` : '';
+  if (zona === 'untung') {
+    return { status: 'untung', aksi: 'untung', tindakan: (selesai ? `Untung (${teksRoas}). Boleh diulang.` : `Untung (${teksRoas}).`) + tahan };
   }
-  if (m.roasShopee !== null && m.roasShopee >= p.roasImpas) {
-    return { status: 'ragu', aksi: 'abu', tindakan: selesai ? `Belum tentu untung (${teksRoas}).` : `Belum tentu untung (${teksRoas}). Untung hanya kalau produk lain ikut dihitung.` };
+  if (zona === 'abu') {
+    return { status: 'ragu', aksi: 'abu', tindakan: (selesai ? `Belum tentu untung (${teksRoas}).` : `Belum tentu untung (${teksRoas}). Untung hanya kalau produk lain ikut dihitung.`) + tahan };
   }
-  return { status: 'rugi', aksi: 'rugi', tindakan: selesai ? `Rugi (${teksRoas}). Jangan diulang dengan setelan ini.` : `Rugi (${teksRoas}).` };
+  return { status: 'rugi', aksi: 'rugi', tindakan: (selesai ? `Rugi (${teksRoas}). Jangan diulang dengan setelan ini.` : `Rugi (${teksRoas}).`) + tahan };
 }
+const NAMA_ZONA = { untung: 'untung', abu: 'belum tentu untung', rugi: 'rugi' };
 
 // 4.6 → "4,6" (gaya Indonesia), untuk kalimat tindakan.
 function formatAngka(n) {
@@ -466,7 +471,10 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
 
     if (p.berjalan && opsi.setelanApi) {
       p.penilaian = metrikTerbaru(kampanye, p.idProduk, (opsi.setelanApi[p.idProduk] || {}).perubahan, tanggalLaporanIso);
-      if (p.penilaian.siap) p.penilaian.untungLangsung = p.marginPerRp === null ? null : p.penilaian.omzetLangsung * cair * p.marginPerRp - p.penilaian.biaya;
+      if (p.penilaian.siap) {
+        p.penilaian.untungLangsung = p.marginPerRp === null ? null : p.penilaian.omzetLangsung * cair * p.marginPerRp - p.penilaian.biaya;
+        if (p.roasImpas > 0) p.zona = zonaStabil(kampanye, p.idProduk, (opsi.setelanApi[p.idProduk] || {}).perubahan, tanggalLaporanIso, p.roasImpas);
+      }
     }
     const v = vonis(p);
     p.status = v.status;

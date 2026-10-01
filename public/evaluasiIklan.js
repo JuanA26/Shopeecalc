@@ -30,6 +30,34 @@
     return m;
   }
 
+  // Zone of one mature 7-day window (same order as analisisIklan.vonis): direct ROAS ≥ minimum → untung;
+  // only Shopee's broad ROAS ≥ minimum → abu; else rugi. null = no ready window or no spend.
+  const zonaJendela = (m, roasMin) => (!m || !m.siap || !(m.biaya > 0) || !(roasMin > 0) ? null
+    : m.omzetLangsung / m.biaya >= roasMin ? 'untung' : m.omzet / m.biaya >= roasMin ? 'abu' : 'rugi');
+
+  // A zone change counts only after the new zone held HARI_ZONA_TAHAN days in a row (user, 2026-10-01): one
+  // sale more or less moved the 7-day zone of low-volume ads back and forth (replay 07/08–01/10: 40 changes,
+  // 18 undone within a week; with the hold 9 and 2, accuracy unchanged; reports/verdict-stability-2026-10-01.md).
+  // seri = raw zones oldest → newest; null (no ready window) restarts the history.
+  const HARI_ZONA_TAHAN = 3;
+  function tahanZona(seri) {
+    let stabil = null, calon = null, n = 0;
+    for (const z of seri) {
+      if (!z) { stabil = calon = null; n = 0; continue; }
+      if (stabil === null || z === stabil) { stabil = z; calon = null; n = 0; continue; }
+      if (z === calon) n += 1; else { calon = z; n = 1; }
+      if (n >= HARI_ZONA_TAHAN) { stabil = z; calon = null; n = 0; }
+    }
+    return { zona: stabil, mentah: seri.length ? seri[seri.length - 1] : null, hariBaru: calon ? n : 0 };
+  }
+
+  // Raw zones of the windows judged on each of the last `lihat` days up to hariIni, then the hold.
+  function zonaStabil(kampanye, idProduk, perubahan, hariIni, roasMin, lihat = 28) {
+    const seri = [];
+    for (let i = lihat; i >= 0; i--) seri.push(zonaJendela(metrikTerbaru(kampanye, idProduk, perubahan, geser(hariIni, -i)), roasMin));
+    return tahanZona(seri);
+  }
+
   // Orders without HPP may be at most this share of the week's payout; they are estimated with the
   // margin of orders that do have HPP (same method as the weekly profit card).
   const BATAS_TANPA_HPP = 0.05;
@@ -193,7 +221,7 @@
     return baris;
   }
 
-  const api = { geser, metrikTerbaru, rincianUntungToko, BATAS_TANPA_HPP, BEDA_LANGSUNG, BEDA_SHOPEE, BATAS_HARI_RAMAI, hariRamai,
+  const api = { geser, metrikTerbaru, zonaJendela, HARI_ZONA_TAHAN, tahanZona, zonaStabil, rincianUntungToko, BATAS_TANPA_HPP, BEDA_LANGSUNG, BEDA_SHOPEE, BATAS_HARI_RAMAI, hariRamai,
     untungIklanHarian, hasilIklan, pernahDikembalikan, terapkanEvaluasiToko };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.EvaluasiIklan = api;

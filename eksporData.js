@@ -181,7 +181,7 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
   // ---- Keputusan aplikasi saat ini (dikirim halaman, karena dihitung di browser) ----
   const sheetKeputusan = (Array.isArray(keputusan) ? keputusan : []).slice(0, 300).map((k) => [
     k.idProduk, k.namaProduk, k.keputusan, k.label, k.kalimat, k.alasan, k.zona, k.target, k.targetBaru, k.modal, k.modalBaru,
-    k.batasShopee, k.roasLangsung, k.roasMinimum, k.berakhir, k.bisaDiubahLagi,
+    k.batasShopee, k.roasLangsung, k.roasMinimum, k.berakhir, k.bisaDiubahLagi, k.zonaTerbaru,
   ].map((v) => (typeof v === 'string' ? v.slice(0, 500) : typeof v === 'number' && Number.isFinite(v) ? v : v === null || v === undefined ? null : String(v).slice(0, 500))));
 
   // ---- Status & README ----
@@ -213,12 +213,12 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
     ['Iklan_Toko_Harian', 'Total iklan seluruh toko per hari. selisih = iklan di luar kampanye produk (iklan toko).'],
     ['Riwayat_Setelan', 'Setiap perubahan Target ROAS / Modal Harian yang terlihat saat sinkron. Sebelum = 7 hari sebelum tanggal perubahan, sesudah = 7 hari setelahnya (hari perubahan dilewati). untung_toko_per_hari = untung perkiraan semua produk − biaya iklan toko (rata-rata 7 hari; kosong kalau ada hari tanpa data). matang = sudah lewat 15 hari (atribusi lengkap). perubahan_lain_berdekatan > 0 berarti hasil bercampur (aplikasi menghitung beberapa perubahan satu iklan di hari yang sama sebagai satu perubahan; sheet ini tetap mencatat semuanya). Ini observasi, bukan bukti sebab-akibat.'],
     ['Keputusan_Sekarang', 'Saran aplikasi untuk tiap iklan yang sedang berjalan saat file diunduh (sama dengan halaman Analisis Iklan). Kosong kalau data iklan belum termuat di halaman.'],
-    ['Aturan aplikasi', 'Tujuan: untung toko per minggu setelah iklan. Target ROAS naik ≤ 20% per langkah, batas = rekomendasi tertinggi Shopee × 1,25. Satu perubahan per iklan; beberapa iklan boleh diubah bersamaan. Hasil dinilai setelah 15 hari dari untung langsung iklan itu sendiri (7 hari sebelum vs 7 hari sesudah): perubahan ≥ Rp 20 rb/hari = baik, ≤ −Rp 20 rb/hari = buruk, selain itu belum jelas. Versi Shopee hanya pembanding karena bisa memuat produk lain. Buruk → kembalikan; belum jelas setelah target naik → target tidak dinaikkan lagi. Ganti hanya jika kampanye yang sedang berjalan punya ≥ 10 hari matang dengan biaya, rugi langsung ≥ Rp 100 rb, dan ROAS langsung < 0,6 × minimum; hasil buruk dari perubahan setelan terakhir diperiksa dulu. Tanpa pengganti, Modal Harian dikurangi 50%. Untung toko tidak menahan perubahan (naik-turunnya mengikuti pembeli, bukan setelan iklan); hanya aturan 4 minggu yang menahan tambah modal. Untung iklan belum menghitung kredit Proteksi ROAS Saldo 1:1.'],
+    ['Aturan aplikasi', 'Tujuan: untung toko per minggu setelah iklan. Zona iklan (untung / belum tentu / rugi, dari 7 hari matang) baru berganti kalau zona baru bertahan 3 hari berturut-turut; zona_terbaru di Keputusan_Sekarang = angka hari ini. Target ROAS naik ≤ 20% per langkah, batas = rekomendasi tertinggi Shopee × 1,25. Satu perubahan per iklan; beberapa iklan boleh diubah bersamaan. Hasil dinilai setelah 15 hari dari untung langsung iklan itu sendiri (7 hari sebelum vs 7 hari sesudah): perubahan ≥ Rp 20 rb/hari = baik, ≤ −Rp 20 rb/hari = buruk, selain itu belum jelas. Versi Shopee hanya pembanding karena bisa memuat produk lain. Buruk → kembalikan; belum jelas setelah target naik → target tidak dinaikkan lagi. Ganti hanya jika kampanye yang sedang berjalan punya ≥ 10 hari matang dengan biaya, rugi langsung ≥ Rp 100 rb, dan ROAS langsung < 0,6 × minimum; hasil buruk dari perubahan setelan terakhir diperiksa dulu. Tanpa pengganti, Modal Harian dikurangi 50%. Untung toko tidak menahan perubahan (naik-turunnya mengikuti pembeli, bukan setelan iklan); hanya aturan 4 minggu yang menahan tambah modal. Untung iklan belum menghitung kredit Proteksi ROAS Saldo 1:1.'],
     ['Saran pertanyaan untuk Claude', 'Mis.: "Analisis tren untung toko per minggu", "Apakah perubahan target di Riwayat_Setelan menaikkan untung toko?", "Produk mana yang untung setelah biaya iklan?", "Cek data yang janggal atau tidak lengkap".'],
   ];
 
   const kolomKep = ['id_produk', 'nama_produk', 'keputusan', 'label', 'saran', 'alasan_kode', 'zona', 'target_sekarang', 'target_saran', 'modal_sekarang',
-    'modal_saran', 'batas_target_shopee', 'roas_langsung_penilaian', 'roas_minimum', 'iklan_berakhir', 'bisa_diubah_lagi'];
+    'modal_saran', 'batas_target_shopee', 'roas_langsung_penilaian', 'roas_minimum', 'iklan_berakhir', 'bisa_diubah_lagi', 'zona_terbaru'];
 
   return [
     { nama: 'README', kolom: ['bagian', 'penjelasan'], baris: readme },

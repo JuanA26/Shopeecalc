@@ -73,7 +73,9 @@ Sales data needs a one-time shop authorization at `/auth/shopee/authorize`.
 
 ### Look and feel
 Built for older users: 16 px base text, high-contrast grey, buttons at least 44 px tall. On phones the
-menu sits at the bottom (4 buttons, icon + label) and every table becomes stacked cards (no sideways scrolling). Short fade-in animations and a one-time profit count-up are
+menu sits at the bottom (4 buttons, icon + label) and every table becomes stacked cards (no sideways scrolling).
+On a computer, when the top menu doesn't fit next to the account buttons, arrows appear at the cut-off
+edge; the menu also slides with the mouse wheel or by dragging, and the open page's tab is kept in view. Short fade-in animations and a one-time profit count-up are
 skipped when the device asks for reduced motion.
 
 ### Data status (top bar, every page)

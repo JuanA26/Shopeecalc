@@ -174,8 +174,21 @@ a.tombol { text-decoration: none; }
 .logo-kotak { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; background: var(--oranye); color: #fff; border-radius: 9px; }
 .logo-kotak .ikon { width: 17px; height: 17px; }
 
+.nav-bungkus { position: relative; display: flex; align-self: stretch; flex: 1; min-width: 0; }
 .nav-atas { display: flex; align-self: stretch; gap: 4px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .nav-atas::-webkit-scrollbar { display: none; }
+.nav-atas.diseret { cursor: grabbing; }
+.nav-atas.diseret .nav-item { pointer-events: none; }
+/* Menu terlalu panjang untuk layar: panah + pudar di sisi yang masih ada menunya (app.js aturPanahNav). */
+.nav-geser {
+  display: none; position: absolute; top: 0; bottom: 0; z-index: 2; width: 52px; padding: 0; align-items: center;
+  border: none; cursor: pointer; color: var(--teks-judul);
+}
+.nav-geser-kiri { left: 0; justify-content: flex-start; background: linear-gradient(to right, #fff 55%, rgba(255, 255, 255, 0)); }
+.nav-geser-kanan { right: 0; justify-content: flex-end; background: linear-gradient(to left, #fff 55%, rgba(255, 255, 255, 0)); }
+.nav-geser .ikon { width: 30px; height: 30px; padding: 6px; border-radius: 50%; border: 1px solid var(--border); background: #fff; box-shadow: var(--bayangan); }
+.nav-geser:hover .ikon { border-color: var(--border-kuat); background: var(--abu-terang); }
+.nav-bungkus.bisa-kiri .nav-geser-kiri, .nav-bungkus.bisa-kanan .nav-geser-kanan { display: flex; }
 .nav-item {
   display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding: 0 14px; margin-bottom: -1px;
   background: none; border: none; border-bottom: 3px solid transparent;
@@ -233,12 +246,14 @@ a.tombol { text-decoration: none; }
 /* Tablet (641–1180 px): menu di baris sendiri di bawah logo/akun. */
 @media (min-width: 641px) and (max-width: 1180px) {
   .header-isi { height: auto; flex-wrap: wrap; padding: 10px 24px 0; row-gap: 4px; }
-  .nav-atas { order: 3; flex-basis: 100%; margin-left: -14px; min-height: 48px; }
+  .nav-bungkus { order: 3; flex-basis: 100%; margin-left: -14px; min-height: 48px; }
 }
 /* HP: menu jadi bar bawah (4 tombol, ikon di atas tulisan). */
 @media (max-width: 640px) {
   .header-isi { height: 58px; padding: 0 14px; gap: 10px; }
   .header-app .nama-toko { display: none; }
+  .nav-bungkus { display: contents; }
+  .nav-geser { display: none !important; }
   .nav-atas {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: grid; grid-template-columns: repeat(4, 1fr);
     gap: 4px; padding: 6px 8px calc(8px + env(safe-area-inset-bottom)); overflow: visible;

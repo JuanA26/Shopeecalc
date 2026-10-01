@@ -158,6 +158,7 @@ tombolLogout.addEventListener('click', async () => {
 function bukaHalaman(idHalaman) {
   document.querySelectorAll('.nav-item[data-page]').forEach((b) => b.classList.toggle('aktif', b.dataset.page === idHalaman));
   document.querySelectorAll('.halaman').forEach((s) => s.classList.toggle('aktif', s.id === idHalaman));
+  tampilkanMenuAktif();
   // Grafik tren diukur dari lebar kartunya — gambar ulang begitu halamannya kelihatan.
   if (idHalaman === 'halamanKalkulator' && dataHasilUpload) renderTren();
   if (idHalaman === 'halamanIklan') gambarGrafikMingguan();
@@ -167,6 +168,53 @@ function bukaHalaman(idHalaman) {
 document.querySelectorAll('.nav-item[data-page]').forEach((btn) => {
   btn.addEventListener('click', () => bukaHalaman(btn.dataset.page));
 });
+
+// Menu atas bisa digeser kalau tidak muat (layar laptop dengan nama akun + Pengaturan): panah kiri/kanan
+// muncul hanya di sisi yang masih ada menunya; roda mouse dan seret juga menggeser. Di HP (bar bawah)
+// tidak dipakai: menunya selalu muat.
+const navBungkus = document.getElementById('navBungkus');
+const navAtas = document.getElementById('navAtas');
+function aturPanahNav() {
+  const sisa = navAtas.scrollWidth - navAtas.clientWidth;
+  navBungkus.classList.toggle('bisa-kiri', sisa > 1 && navAtas.scrollLeft > 1);
+  navBungkus.classList.toggle('bisa-kanan', sisa > 1 && navAtas.scrollLeft < sisa - 1);
+}
+// Menu yang aktif digeser masuk ke layar (tanpa menggulir halaman ke atas/bawah).
+function tampilkanMenuAktif() {
+  const aktif = navAtas.querySelector('.nav-item.aktif');
+  if (!aktif || navAtas.scrollWidth <= navAtas.clientWidth) return;
+  const ruang = 56; // lebar panah
+  const kiri = aktif.offsetLeft - navAtas.offsetLeft, kanan = kiri + aktif.offsetWidth;
+  if (kiri < navAtas.scrollLeft + ruang) navAtas.scrollTo({ left: Math.max(0, kiri - ruang), behavior: 'smooth' });
+  else if (kanan > navAtas.scrollLeft + navAtas.clientWidth - ruang) navAtas.scrollTo({ left: kanan - navAtas.clientWidth + ruang, behavior: 'smooth' });
+}
+navAtas.addEventListener('scroll', aturPanahNav, { passive: true });
+if (window.ResizeObserver) new ResizeObserver(aturPanahNav).observe(navAtas); else window.addEventListener('resize', aturPanahNav);
+navBungkus.querySelectorAll('[data-geser-nav]').forEach((btn) => {
+  btn.addEventListener('click', () => navAtas.scrollBy({ left: Number(btn.dataset.geserNav) * Math.max(160, navAtas.clientWidth * 0.6), behavior: 'smooth' }));
+});
+navAtas.addEventListener('wheel', (e) => {
+  if (navAtas.scrollWidth <= navAtas.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+  e.preventDefault();
+  navAtas.scrollLeft += e.deltaY;
+}, { passive: false });
+// Seret dengan mouse; kalau benar-benar digeser (> 5 px), klik setelahnya tidak membuka halaman.
+let seretNav = null;
+navAtas.addEventListener('pointerdown', (e) => {
+  if (e.pointerType !== 'mouse' || e.button !== 0 || navAtas.scrollWidth <= navAtas.clientWidth) return;
+  seretNav = { x: e.clientX, kiri: navAtas.scrollLeft, geser: false };
+});
+window.addEventListener('pointermove', (e) => {
+  if (!seretNav) return;
+  const dx = e.clientX - seretNav.x;
+  if (!seretNav.geser && Math.abs(dx) > 5) { seretNav.geser = true; navAtas.classList.add('diseret'); }
+  if (seretNav.geser) navAtas.scrollLeft = seretNav.kiri - dx;
+});
+window.addEventListener('pointerup', () => {
+  if (seretNav && seretNav.geser) setTimeout(() => navAtas.classList.remove('diseret'), 0);
+  seretNav = null;
+});
+aturPanahNav();
 
 // Tombol "Buka Kalkulator" dsb. di dalam widget Dashboard pindah halaman juga
 document.querySelectorAll('[data-buka-halaman]').forEach((btn) => {

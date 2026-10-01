@@ -33,6 +33,15 @@ test('big losers are replaced (past winners first, then new candidates); without
   assert.equal(d.keputusan, 'tunggu'); // still learning: never replaced
 });
 
+test('an ad whose current zone is untung is never replaced, however big its campaign loss (user, 01/10)', () => {
+  // Lost early, profitable now: tumbuh / lanjut stay; the replacement goes to the next loser.
+  const rows = [row('pulih', 'tumbuh', { p: { idProduk: 'pulih', aksi: 'untung' } }), row('tenang', 'lanjut', { p: { idProduk: 'tenang', aksi: 'untung' } }), row('rugi', 'naikkan')];
+  ctx.terapkanGanti(rows, { ganti: [rugi('pulih', -600000), rugi('tenang', -500000), rugi('rugi', -200000)], ulang: [{ idProduk: 'w', nama: 'W', untungIklan: 1 }], coba: [] });
+  assert.equal(rows[0].keputusan, 'tumbuh'); assert.equal(rows[0].rugiBesar, undefined);
+  assert.equal(rows[1].keputusan, 'lanjut');
+  assert.equal(rows[2].keputusan, 'ganti'); assert.equal(rows[2].pengganti.idProduk, 'w');
+});
+
 test('replacement leaves HPP, pause, reversal and shop rows alone, and is never held', () => {
   const rows = ['isi-hpp', 'jeda', 'kembalikan', 'toko'].map((k, i) => row(`x${i}`, k));
   const before = JSON.stringify(rows);

@@ -15,6 +15,7 @@ const { sinkronkan, bacaItemPesanan, rasioPencairanToko, tingkatCairTerukur, mod
 const { sinkronIklan, kampanyeDariDb } = require('./sinkronIklan');
 const { sinkronStok, daftarStok, ringkasStok, hitungTerjual, BATAS_STOK_TIDAK_WAJAR } = require('./sinkronStok');
 const { susunEkspor } = require('./eksporData');
+const { perkiraanMingguTerakhir, gagalSetelahTujuhHari, cekHargaMultiPcs } = require('./cekData');
 const { buatXlsx } = require('./xlsx');
 const SesiSqlite = require('./sesiSqlite');
 const { hariIniWib, geserHari, tanggalValid, escapeHtml } = require('./util');
@@ -625,6 +626,9 @@ function ringkasDiagnostik(token) {
       dari: angka('SELECT MIN(tanggal) FROM iklan_toko_harian WHERE shop_id = ?', shop), sampai: angka('SELECT MAX(tanggal) FROM iklan_toko_harian WHERE shop_id = ?', shop),
       perubahanTercatat: angka('SELECT COUNT(*) FROM iklan_riwayat_setelan WHERE shop_id = ?', shop) },
     tingkatCairTerukur: terukur ? terukur.toko : null,
+    perkiraanMinggu: perkiraanMingguTerakhir(db, token.shop_id, hariIniWib()),
+    gagalSetelah7Hari: gagalSetelahTujuhHari(db, token.shop_id, hariIniWib()),
+    hargaMultiPcs: cekHargaMultiPcs(db, token.shop_id),
     // Biaya iklan per pesanan (pay-per-sale): harusnya 0 karena toko tidak memakainya. Kalau ada,
     // untung toko tetap benar (sudah dipotong di escrow_amount), tapi hitungan iklan belum.
     payPerSale: db.prepare(`SELECT COUNT(pay_per_sale) dicek, COALESCE(SUM(pay_per_sale <> 0), 0) pesanan,
@@ -649,7 +653,10 @@ app.post('/api/ekspor', requireLogin, (req, res) => {
       'sinkron.ulang_menunggu': d.sinkron.ulangTertunda, 'sinkron.ulang_macet': d.sinkron.ulangMacet, 'sinkron.iklan_status': d.sinkron.iklanStatus,
       'sinkron.iklan_pesan': d.sinkron.iklanPesan, 'sinkron.iklan_terakhir_selesai': d.sinkron.iklanTerakhirSelesai,
       'sinkron.stok_status': d.sinkron.stokStatus, 'sinkron.stok_pesan': d.sinkron.stokPesan, 'sinkron.stok_terakhir_selesai': d.sinkron.stokTerakhirSelesai,
-      tingkat_bayar_pesanan_iklan_terukur: d.tingkatCairTerukur };
+      tingkat_bayar_pesanan_iklan_terukur: d.tingkatCairTerukur,
+      'cek.perkiraan_minggu_terakhir': d.perkiraanMinggu.bagian,
+      'cek.gagal_setelah_7_hari_maks': d.gagalSetelah7Hari.bagian,
+      'cek.harga_multi_pcs': `${d.hargaMultiPcs.cocok}/${d.hargaMultiPcs.dicek} cocok, ${d.hargaMultiPcs.perPcs} per pcs, ${d.hargaMultiPcs.lain} lain; 1 pcs ${d.hargaMultiPcs.satuCocok}/${d.hargaMultiPcs.satuDicek} cocok` };
     const hariIni = hariIniWib();
     const sheets = susunEkspor(db, token.shop_id, {
       margin: (items) => hitungMargin(items, {}), bacaItemPesanan, rasioPerkiraan: rasioPencairanToko(db, token.shop_id) || RASIO_PENCAIRAN_DEFAULT,

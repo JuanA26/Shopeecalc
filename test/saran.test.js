@@ -77,6 +77,13 @@ test('Ganti judges only mature spend from the running campaign, in both directio
   assert.equal(s.ganti.length, 1);
   assert.equal(s.ganti[0].untungIklan, -750000);
   assert.equal(s.ganti[0].hari, 15);
+  // Day today−7 is not mature yet (same rule as the ad zones): on 27/09 only 11–19/09 count (9 days) → no Ganti.
+  s = saranIklan(items, [{ ...run('Berjalan', '09', 0, 0, 0), perHari: Object.fromEntries(['11', '12', '13', '14', '15', '16', '17', '18', '19', '20']
+    .map((d) => [`2026-09-${d}`, { biaya: 50000, omzetLangsung: 0 }])) }], '2026-09-27', 0.8);
+  assert.deepEqual(s.ganti, []);
+  s = saranIklan(items, [{ ...run('Berjalan', '09', 0, 0, 0), perHari: Object.fromEntries(['11', '12', '13', '14', '15', '16', '17', '18', '19', '20']
+    .map((d) => [`2026-09-${d}`, { biaya: 50000, omzetLangsung: 0 }])) }], '2026-09-28', 0.8);
+  assert.equal(s.ganti.length, 1); assert.equal(s.ganti[0].hari, 10);
   // Even a large past loss cannot supply the current campaign's ten spending days.
   s = saranIklan(items, [run('Berakhir', '08', 10, 50000, 0), run('Berjalan', '09', 9, 50000, 0)], '2026-09-27', 0.8);
   assert.deepEqual(s.ganti, []);

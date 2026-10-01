@@ -24,6 +24,8 @@
   // Everything is measured up to today−7, so recent orders and ad attribution have settled.
   function saranIklan(items, kampanye, hariIni, ekonomiProduk = {}) {
     const sampai = geser(hariIni, -7), dariA = geser(sampai, -27), dariB = geser(sampai, -55);
+    // Ganti uses the same mature days as the ad zones (up to today−8: seven full days of attribution).
+    const sampaiGanti = geser(hariIni, -8);
     const produk = new Map();
     const ambil = (id, nama) => {
       let p = produk.get(id);
@@ -50,7 +52,7 @@
         p.biaya += v.biaya || 0; p.omzetLangsung += v.omzetLangsung || 0;
         c.biaya += v.biaya || 0; c.omzetLangsung += v.omzetLangsung || 0;
         if (v.biaya > 0) p.hari += 1;
-        if (k.status === 'Berjalan') {
+        if (k.status === 'Berjalan' && d <= sampaiGanti) {
           p.biayaBerjalan += v.biaya || 0; p.omzetBerjalan += v.omzetLangsung || 0;
           if (v.biaya > 0) p.hariBerjalan += 1;
         }

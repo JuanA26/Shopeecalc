@@ -101,7 +101,7 @@ Top row: last week's store profit as the big number, then three tiles that open 
 budget, ads needing work ("4 dari 8") and sales profit for the Kalkulator period. Below: the weekly tasks.
 On a phone: profit, the tiles in a 2 × 2 grid, then the tasks.
 - **Tugas Minggu Ini** (top): last complete week's store profit after ads (change vs the week before per ordinary day: days with payout > 1.8 × the 28-day median are left out and named), this
-  month so far vs last month, then short numbered steps: (1) **Isi HPP** for products whose missing cost
+  month up to yesterday vs the same days of last month (e.g. "1–4 Okt · 1–4 Sep"; hidden on the 1st), then short numbered steps: (1) **Isi HPP** for products whose missing cost
   price holds the ad advice, with a price box + Simpan per product (and a button to the HPP tab); (2) **Ubah Periode jadi Tidak Terbatas** for
   ads ending soon; (3) one step per ad that needs a target/budget change, with the exact old → new
   value. All other ads get one line ("jangan diubah"). New trials are limited to one ad at a time.
@@ -129,11 +129,12 @@ On a phone: profit, the tiles in a 2 × 2 grid, then the tasks.
   spend, past direct ROAS ≥ 1.2 × break-even with a profit, still ≥ 4 pcs in the last 4 weeks;
   **Coba iklankan** = (almost) never advertised, ≥ 8 pcs in 4 weeks, margin ≥ 20%, returns ≤ 5%.
 - **Ganti iklan** (a numbered step, shown as two lines: *Matikan* the losing ad, *Pasang baru* the
-  replacement with its settings as small boxes): the currently running campaign with ≥ 10 mature days of spend, a direct loss ≥ 100 rb and
-  direct ROAS < 0.6 × break-even is replaced rather than tuned. It shows which ad to turn off and which
+  replacement with its settings as small boxes): the currently running campaign with ≥ 10 mature days of spend
+  (up to today−8), a direct loss ≥ 100 rb and direct ROAS < 0.6 × break-even is replaced rather than tuned,
+  unless the ad's current zone is untung (an ad that lost early and recovered is kept). It shows which ad to turn off and which
   product to advertise instead (Iklankan lagi first, then Coba iklankan; Tidak Terbatas, 50 rb/day).
   A past winner restarts in **GMV Max ROAS at the target of its most profitable ROAS-mode campaign**
-  (capped at the Shopee limit when known; otherwise the page asks the seller to check that limit); a never-advertised product starts in **ROAS mode at Shopee's middle recommended target** (not below its break-even, capped at the limit; user 30/09, Shopee's FAQ treats such items as regular products), or on **Auto** when Shopee gives no recommendation, reviewed after 7–14 days. A clearly worse result from
+  (capped at the Shopee limit when known; otherwise the page asks the seller to check that limit); a never-advertised product starts in **ROAS mode at Shopee's middle recommended target** (never below its break-even ROAS, capped at the limit; a sanity floor only, not a profit guarantee: Shopee's target counts other products too, so its ROAS runs well above the product's own; user 30/09, Shopee's FAQ treats such items as regular products), or on **Auto** when Shopee gives no recommendation, reviewed after 7–14 days. A clearly worse result from
   the latest setting change (≤ 28 days old) is reviewed for reversal before replacement. In this shop Auto ads reached a median
   direct ROAS of 2.1 vs 4.6 in ROAS mode, and past winners made their profit in ROAS mode. Why: 20% target steps up to the limit raise the target by about 30% at most, while these
   ads need 1.7× or more; 90% of this shop's ROAS-mode campaigns already beat their target on Shopee's
@@ -197,7 +198,9 @@ How each ad's change is chosen (the trial checks above take priority over this l
 - **Untung** (direct ≥ minimum) → **Tambah modal** +20% if it spent ≥ 90% of its daily budget on average
   and weekly store profit isn't falling while ads rise. If it spends **less than 90%** (the target holds it
   back), runs in ROAS mode and its direct ROAS is ≥ 1.2 × the minimum → **Turunkan target** −15% to grow,
-  never below Shopee's lowest recommendation or the break-even; otherwise leave it.
+  never below Shopee's lowest recommendation or the break-even ROAS (a sanity floor; Shopee's
+  recommendation is what limits it in practice, and the result check stops further lowering if the ad's
+  own profit doesn't rise); otherwise leave it.
 - **Belum tentu** (only Shopee's ROAS ≥ minimum) → **Biarkan**: the ad may pay through other products, and
   a higher target would cut its reach. **Rugi** (both below) → **Naikkan target** by 20%
   (Shopee's guidance: at most 20% per change). Auto ads: switch to ROAS mode at Shopee ROAS + 20%.

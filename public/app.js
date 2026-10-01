@@ -2047,13 +2047,15 @@ function saranIklanSekarang() {
 // Shopee (× 1,25) paling banyak menaikkan target ±30%, dan Shopee ROAS 90% iklan toko ini sudah di
 // atas targetnya. Pengganti: "iklankan lagi" dulu, lalu "coba iklankan", satu per iklan.
 // Tanpa pengganti → kurangi Modal Harian 50%. Iklan yang masih belajar (< 7 hari) tidak diganti.
+// Iklan yang zonanya sekarang untung juga tidak (user, 01/10): Ganti menilai seluruh kampanye, jadi iklan
+// yang dulu rugi lalu pulih masih bisa terlihat "rugi besar".
 function terapkanGanti(baris, saran, hasilTerakhir) {
   if (!saran || !saran.ganti.length) return;
   const pengganti = [...saran.ulang.map((p) => ({ ...p, jenis: 'ulang' })), ...saran.coba.map((p) => ({ ...p, jenis: 'coba' }))];
   const bisaDiganti = new Set(['naikkan', 'turunkan', 'tumbuh', 'kurangi', 'lanjut', 'tunggu']);
   for (const rugi of saran.ganti) { // paling rugi dulu
     const b = baris.find((x) => x.p.idProduk === rugi.idProduk);
-    if (!b || !bisaDiganti.has(b.keputusan) || b.p.aksi === 'tunggu') continue;
+    if (!b || !bisaDiganti.has(b.keputusan) || ['tunggu', 'untung'].includes(b.p.aksi)) continue;
     // A clearly worse result from this ad's latest settings change takes priority: the trial gate
     // below can then offer Kembalikan/Tinjau instead of skipping the result for a replacement.
     // Only a recent result (≤ 28 days): the gate always offers Tinjau for those, while an older one
@@ -2675,14 +2677,17 @@ perbaruiIndikatorUrutHeader('#tabelIklan', sortKolomIklan, sortArahIklan);
 
 // Untung toko per bulan (tanggal pesanan) setelah biaya iklan harian. Sama dengan kartu mingguan:
 // pesanan belum cair memakai perkiraan, produk tanpa HPP memakai margin produk lain bulan itu.
-function untungTokoPerBulan() {
+// sampaiTanggal (opsional, 1–31): hanya tanggal 1 s/d itu di tiap bulan, supaya bulan berjalan dibanding
+// hari yang sama bulan lalu (user, 01/10), bukan dengan bulan lalu yang penuh.
+function untungTokoPerBulan(sampaiTanggal = 31) {
   const sumber = sumberIklan();
   if (!sumber) return null;
   const bulan = new Map();
   const ambil = (k) => { let t = bulan.get(k); if (!t) { t = { bulan: k, penghasilan: 0, penghasilanDiketahui: 0, untungDiketahui: 0, saldoRetur: 0, biayaIklan: 0, adaIncome: false }; bulan.set(k, t); } return t; };
+  const masuk = (iso) => Number(iso.slice(8, 10)) <= sampaiTanggal;
   for (const it of sumber.items) {
     const k = String(it.waktuPesanan || '').slice(0, 7);
-    if (!/^\d{4}-\d{2}$/.test(k)) continue;
+    if (!/^\d{4}-\d{2}$/.test(k) || !masuk(String(it.waktuPesanan))) continue;
     const t = ambil(k);
     t.adaIncome = true;
     if (it.dikembalikan) { t.saldoRetur += it.totalPenghasilan || 0; continue; }
@@ -2694,7 +2699,7 @@ function untungTokoPerBulan() {
     for (const k of dataIklan.kampanye) {
       if (!k.perHari) continue;
       adaBiayaHarian = true;
-      for (const [iso, v] of Object.entries(k.perHari)) ambil(iso.slice(0, 7)).biayaIklan += v.biaya || 0;
+      for (const [iso, v] of Object.entries(k.perHari)) if (masuk(iso)) ambil(iso.slice(0, 7)).biayaIklan += v.biaya || 0;
     }
   }
   for (const t of bulan.values()) {
@@ -2791,19 +2796,21 @@ function renderTugas() {
   const hasilEl = document.getElementById('tugasHasil');
   document.getElementById('tugasTanggal').textContent = formatTanggalPendek(hariIniWib());
 
-  // 1. Untung toko: minggu lengkap terakhir + bulan ini vs bulan lalu.
+  // 1. Untung toko: minggu lengkap terakhir + bulan ini vs hari yang sama bulan lalu (sampai kemarin).
   const mingguan = untungTokoPerMinggu();
   const lengkap = mingguan ? mingguan.minggu.filter((t) => t.lengkap && t.iklanLengkap && t.untungSetelahIklan !== null) : [];
-  const perBulan = untungTokoPerBulan();
+  const hariIni = hariIniWib(), sampaiTgl = Number(hariIni.slice(8, 10)) - 1; // 0 pada tanggal 1: baris bulan disembunyikan
+  const perBulan = sampaiTgl >= 1 ? untungTokoPerBulan(sampaiTgl) : null;
   if (lengkap.length) {
     const akhir = lengkap[lengkap.length - 1], sebelum = lengkap[lengkap.length - 2];
-    const hariIni = hariIniWib(), bulanIni = hariIni.slice(0, 7);
-    const bulanLalu = geserHari(`${bulanIni}-01`, -1).slice(0, 7);
-    const namaBulan = (k) => new Date(`${k}-01T00:00:00`).toLocaleDateString('id-ID', { month: 'long' });
+    const bulanIni = hariIni.slice(0, 7);
+    const akhirBulanLalu = geserHari(`${bulanIni}-01`, -1), bulanLalu = akhirBulanLalu.slice(0, 7);
+    const namaBulan = (k) => new Date(`${k}-01T00:00:00`).toLocaleDateString('id-ID', { month: 'short' });
+    const rentang = (k, n) => `${n > 1 ? '1–' : ''}${n} ${namaBulan(k)}`;
     const bIni = perBulan && perBulan.get(bulanIni), bLalu = perBulan && perBulan.get(bulanLalu);
     const baris = bIni && bIni.untungSetelahIklan !== null
-      ? `<div class="tugas-bulan">${namaBulan(bulanIni)} sampai hari ini: <strong>${formatRupiahRingkas(bIni.untungSetelahIklan)}</strong>` +
-        (bLalu && bLalu.untungSetelahIklan !== null ? ` · ${namaBulan(bulanLalu)}: ${formatRupiahRingkas(bLalu.untungSetelahIklan)}` : '') + '</div>'
+      ? `<div class="tugas-bulan">${rentang(bulanIni, sampaiTgl)}: <strong>${formatRupiahRingkas(bIni.untungSetelahIklan)}</strong>` +
+        (bLalu && bLalu.untungSetelahIklan !== null ? ` · ${rentang(bulanLalu, Math.min(sampaiTgl, Number(akhirBulanLalu.slice(8, 10))))}: ${formatRupiahRingkas(bLalu.untungSetelahIklan)}` : '') + '</div>'
       : '';
     untungEl.innerHTML = `<div class="label-ringkasan">Untung toko ${labelMinggu(akhir.mulai)}–${labelMinggu(akhir.selesai)}, setelah iklan</div>
       <div class="angka-ringkasan${akhir.untungSetelahIklan < 0 ? ' angka-negatif' : ''}" id="angkaUntungTugas">${formatRupiah(akhir.untungSetelahIklan)}</div>
@@ -3113,6 +3120,19 @@ async function muatDiagnostik() {
         ? ok(false, `${d.payPerSale.pesanan.toLocaleString('id-ID')} pesanan kena biaya ini sejak ${tanggalSingkat(d.payPerSale.sejak)} · ${formatRupiahRingkas(d.payPerSale.total)}. Untung toko sudah benar. Hitungan di Analisis Iklan belum memperhitungkannya.`)
         : ok(true, d.payPerSale.dicek ? `Tidak ada (${d.payPerSale.dicek.toLocaleString('id-ID')} pesanan dicek)` : 'Belum ada data dari Shopee')],
       ['Pesanan iklan dibayar', d.tingkatCairTerukur !== null ? `${Math.round(d.tingkatCairTerukur * 100)}% (terukur)` : '-'],
+      // Untung minggu di Dashboard: bagian yang masih perkiraan, dan seberapa sering pesanan gagal setelah 7 hari.
+      ['Untung minggu terakhir', d.perkiraanMinggu.bagian !== null
+        ? `${tanggalSingkat(d.perkiraanMinggu.dari)} – ${tanggalSingkat(d.perkiraanMinggu.sampai)}: ${Math.round(d.perkiraanMinggu.bagian * 100)}% penghasilan masih perkiraan (belum cair)`
+        : '-'],
+      ['Pesanan gagal setelah 7 hari', d.gagalSetelah7Hari.bagian !== null
+        ? ok(d.gagalSetelah7Hari.bagian <= 0.05, `paling banyak ${(d.gagalSetelah7Hari.bagian * 100).toLocaleString('id-ID', { maximumFractionDigits: 1 })}% pcs (pesanan ${tanggalSingkat(d.gagalSetelah7Hari.dari)} – ${tanggalSingkat(d.gagalSetelah7Hari.sampai)}: batal belakangan atau retur)`)
+        : '-'],
+      ['Harga pesanan multi-pcs', d.hargaMultiPcs.dicek
+        ? ok(!d.hargaMultiPcs.perPcs, `${d.hargaMultiPcs.cocok} dari ${d.hargaMultiPcs.dicek} baris cocok` +
+            (d.hargaMultiPcs.perPcs ? ` · ${d.hargaMultiPcs.perPcs} memakai harga 1 pcs (hitungan harga perlu diperbaiki)` : '') +
+            (d.hargaMultiPcs.lain ? ` · ${d.hargaMultiPcs.lain} berbeda` : '') +
+            ` · pembanding 1 pcs: ${d.hargaMultiPcs.satuCocok} dari ${d.hargaMultiPcs.satuDicek} cocok`)
+        : 'Belum ada pesanan multi-pcs yang sudah cair'],
       ['Versi aplikasi', escapeHtml(d.versi)],
     ];
     if (s.pesan || s.iklanPesan) baris.push(['Pesan terakhir', escapeHtml([s.pesan, s.iklanPesan].filter(Boolean).join(' · '))]);

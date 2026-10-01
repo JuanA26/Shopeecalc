@@ -1,6 +1,7 @@
 /* "Saran iklan": which products to advertise, from 90 days of sales and ad data (user, 2026-09-27).
    Pure calculation shared by the browser and the regression tests. Suggestions only; a human decides. */
 (function (root) {
+  const { untungLangsung } = typeof module !== 'undefined' && module.exports ? require('./ekonomiProduk') : root.EkonomiProduk;
   const geser = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 
   // Thresholds from the 2026-09-27 analysis of the shop's export (Jul–Sep 2026).
@@ -19,14 +20,14 @@
     maks: 5,
   };
 
-  // items: sales rows (/api/pesanan), kampanye: ad campaigns with perHari, tingkatCair: paid share of ad orders.
+  // ekonomiProduk: canonical product economics from the same API response as the ad verdicts.
   // Everything is measured up to today−7, so recent orders and ad attribution have settled.
-  function saranIklan(items, kampanye, hariIni, tingkatCair) {
+  function saranIklan(items, kampanye, hariIni, ekonomiProduk = {}) {
     const sampai = geser(hariIni, -7), dariA = geser(sampai, -27), dariB = geser(sampai, -55);
     const produk = new Map();
     const ambil = (id, nama) => {
       let p = produk.get(id);
-      if (!p) produk.set(id, p = { idProduk: id, nama: nama || id, pcsA: 0, pcs: 0, retur: 0, harga: 0, hargaHpp: 0, untung: 0,
+      if (!p) produk.set(id, p = { idProduk: id, nama: nama || id, pcsA: 0, pcs: 0, retur: 0,
         biaya: 0, omzetLangsung: 0, hari: 0, berjalan: false, biayaBerjalan: 0, omzetBerjalan: 0, hariBerjalan: 0, kampanye: [] });
       if (nama && p.nama === id) p.nama = nama;
       return p;
@@ -38,8 +39,6 @@
       p.pcs += pcs;
       if (it.dikembalikan) { p.retur += pcs; continue; }
       if (d >= dariA) p.pcsA += pcs;
-      p.harga += it.hargaProduk || 0;
-      if (Number.isFinite(it.hpp) && Number.isFinite(it.untung)) { p.hargaHpp += it.hargaProduk || 0; p.untung += it.untung; }
     }
     for (const k of kampanye || []) {
       if (k.tokoLevel || !k.kodeProduk) continue;
@@ -60,14 +59,15 @@
     }
     const ulang = [], coba = [], ganti = [];
     for (const p of produk.values()) {
-      p.margin = p.hargaHpp > 0 ? p.untung / p.hargaHpp : null;
-      if (!(p.margin > 0) || !(tingkatCair > 0)) continue;
-      p.roasMinimum = 1 / (p.margin * tingkatCair);
+      p.ekonomi = ekonomiProduk[p.idProduk];
+      if (!p.ekonomi || !(p.ekonomi.roasImpas > 0)) continue;
+      p.margin = p.ekonomi.marginPerRp;
+      p.roasMinimum = p.ekonomi.roasImpas;
       p.roasLangsung = p.biaya > 0 ? p.omzetLangsung / p.biaya : null;
-      p.untungIklan = p.omzetLangsung / p.roasMinimum - p.biaya; // direct profit after ad spend
+      p.untungIklan = untungLangsung(p.ekonomi, p.omzetLangsung, p.biaya);
       p.bagianRetur = p.pcs ? p.retur / p.pcs : 0;
       if (p.berjalan) {
-        const untungBerjalan = p.omzetBerjalan / p.roasMinimum - p.biayaBerjalan;
+        const untungBerjalan = untungLangsung(p.ekonomi, p.omzetBerjalan, p.biayaBerjalan);
         const roasBerjalan = p.biayaBerjalan > 0 ? p.omzetBerjalan / p.biayaBerjalan : null;
         if (p.hariBerjalan >= SARAN.gantiHariMin && untungBerjalan <= -SARAN.gantiRugiMin && roasBerjalan < SARAN.gantiRoasKali * p.roasMinimum) {
           ganti.push({ ...p, biaya: p.biayaBerjalan, omzetLangsung: p.omzetBerjalan, hari: p.hariBerjalan,
@@ -79,7 +79,7 @@
           ulang.push(p);
         }
       } else if (p.biaya < SARAN.cobaBiayaMax && p.pcsA >= SARAN.cobaPcsMin && p.margin >= SARAN.cobaMarginMin && p.bagianRetur <= SARAN.cobaReturMax) {
-        p.untungPerMinggu = p.pcsA * (p.harga / Math.max(1, p.pcs - p.retur)) * p.margin / 4;
+        p.untungPerMinggu = p.pcsA * p.ekonomi.hargaRata * p.margin / 4;
         coba.push(p);
       }
     }
@@ -95,7 +95,7 @@
   function targetTerbaik(p) {
     let terbaik = null, untungTerbaik = 0;
     for (const c of p.kampanye) {
-      const untung = c.omzetLangsung / p.roasMinimum - c.biaya;
+      const untung = untungLangsung(p.ekonomi, c.omzetLangsung, c.biaya);
       if (c.targetRoas > 0 && untung > untungTerbaik) { terbaik = c.targetRoas; untungTerbaik = untung; }
     }
     return terbaik;

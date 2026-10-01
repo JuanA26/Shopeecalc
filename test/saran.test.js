@@ -1,6 +1,15 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { saranIklan } = require('../public/saranIklan');
+const { saranIklan: hitungSaran } = require('../public/saranIklan');
+const { hitungEkonomiProduk } = require('../public/ekonomiProduk');
+
+// Candidate-window sales and the paid-order history used for economics are separate inputs.
+function saranIklan(items, kampanye, hariIni, tingkatCair) {
+  const ekonomi = Object.fromEntries(items.map(it => [it.idProduk, hitungEkonomiProduk({
+    hpp: it.hpp, income: { harga: 100000, rasio: 1, pcs: 3 }, tingkatCair,
+  })]));
+  return hitungSaran(items, kampanye, hariIni, ekonomi);
+}
 
 // Today 2026-09-27 → measured up to 20/09; last 4 weeks = 24/08–20/09, the 4 before = 27/07–23/08.
 // Every product: price 100 rb, margin 25% (untung 25 rb per pcs) → at 80% paid, ROAS minimum 5.

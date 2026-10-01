@@ -53,8 +53,8 @@
 
 const { metrikTerbaru, zonaStabil, HARI_ZONA_TAHAN } = require('./public/evaluasiIklan');
 const { geserHari: tambahHari } = require('./util');
-const RASIO_PENCAIRAN_DEFAULT = 0.78;
-const TINGKAT_CAIR_DEFAULT = 0.85; // 85% pesanan iklan dianggap dibayar kalau belum ada angka toko
+const { hitungEkonomiProduk, tingkatCairProduk, untungLangsung,
+  RASIO_PENCAIRAN_DEFAULT, TINGKAT_CAIR_DEFAULT } = require('./public/ekonomiProduk');
 const PENYANGGA_TARGET = 2;         // poin di atas ROAS minimum
 const HARI_BELAJAR = 7;             // tahap belajar GMV Max: jangan diubah/dinilai sebelum 7 hari (FAQ Shopee)
 const EKOR_ATRIBUSI_HARI = 7;       // pesanan sampai 7 hari setelah klik masih dihitung iklan
@@ -319,10 +319,7 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
       ? opsi.tingkatCair
       : TINGKAT_CAIR_DEFAULT;
   const cairPerProduk = opsi.tingkatCairPerProduk || {};
-  const cairProduk = (id) => {
-    const n = cairPerProduk[id];
-    return Number.isFinite(n) && n >= 0 && n <= 1 ? n : tingkatCair;
-  };
+  const cairProduk = (id) => tingkatCairProduk(cairPerProduk[id], tingkatCair);
   const tanggalLaporanIso = opsi.tanggalLaporanIso || '';
   const tanggalRilisTerakhir = opsi.tanggalRilisTerakhir || '';
   const tanggalDataMulai = opsi.tanggalDataMulai || '';
@@ -392,6 +389,16 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
     }
   }
 
+  // Include products with no ad history: Coba iklankan must use the same economics.
+  const ekonomiProduk = Object.create(null);
+  for (const id of new Set([...perProduk.keys(), ...incomeMap.keys(), ...hppMap.keys()])) {
+    const p = perProduk.get(id);
+    const infoHpp = p && p.tokoLevel ? null : hppMap.get(id);
+    ekonomiProduk[id] = hitungEkonomiProduk({ hpp: infoHpp && infoHpp.hpp, income: incomeMap.get(id), iklan: p,
+      rasioPencairan, tingkatCair: opsi.tingkatCair, tingkatCairPerProduk: cairPerProduk[id],
+      sumberTingkatCair: opsi.sumberTingkatCair });
+  }
+
   const produk = [];
   const ringkasan = {
     rasioPencairan: rasio,
@@ -423,30 +430,13 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
     const infoHpp = p.tokoLevel ? null : hppMap.get(p.idProduk);
     const hpp = infoHpp && Number.isFinite(infoHpp.hpp) ? infoHpp.hpp : null;
     p.namaProduk = p.tokoLevel ? 'Iklan Toko (GMV Max) — ' + p.namaIklan : (infoHpp && infoHpp.namaProduk) || p.namaIklan;
-    p.hpp = hpp;
+    const ekonomi = ekonomiProduk[p.idProduk];
+    Object.assign(p, ekonomi);
     p.roasShopee = bagi(p.omzet, p.biaya);
     p.roasLangsung = bagi(p.omzetLangsung, p.biaya);
     // Harga per pcs & rasio pencairan: dari file Income kalau produk ini ada di sana
     // (≥ 3 pcs), kalau tidak dari penjualan langsung iklan, terakhir dari omzet luas.
-    const inc = incomeMap.get(p.idProduk);
-    const adaIncome = inc && Number.isFinite(inc.harga) && inc.harga > 0 && (inc.pcs || 0) >= 3;
-    if (adaIncome) {
-      p.hargaRata = inc.harga;
-      p.sumberHarga = 'income';
-    } else if (p.terjualLangsung > 0) {
-      p.hargaRata = p.omzetLangsung / p.terjualLangsung;
-      p.sumberHarga = 'langsung';
-    } else if (p.terjual > 0) {
-      p.hargaRata = p.omzet / p.terjual;
-      p.sumberHarga = 'luas';
-    } else {
-      p.hargaRata = 0;
-      p.sumberHarga = null;
-    }
-    const cair = cairProduk(p.idProduk);
-    p.tingkatCair = cair;
-    const rasioProduk = adaIncome && Number.isFinite(inc.rasio) && inc.rasio > 0 && inc.rasio <= 1 ? inc.rasio : rasio;
-    p.rasioPencairan = rasioProduk;
+    const cair = ekonomi.tingkatCair;
 
     const hitungUntung = (t, m) => {
       t.roasShopee = bagi(t.omzet, t.biaya);
@@ -456,8 +446,6 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
       t.untungLuas = t.omzet * cair * m - t.biaya;
     };
     if (hpp !== null && p.hargaRata > 0) {
-      p.marginPerRp = (p.hargaRata * rasioProduk - hpp) / p.hargaRata;
-      p.roasImpas = p.marginPerRp > 0 && cair > 0 ? 1 / (p.marginPerRp * cair) : null;
       p.targetDisarankan = p.roasImpas !== null ? p.roasImpas + PENYANGGA_TARGET : null;
       hitungUntung(p, p.marginPerRp);
       if (p.berjalan) hitungUntung(p.berjalan, p.marginPerRp);
@@ -472,7 +460,7 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
     if (p.berjalan && opsi.setelanApi) {
       p.penilaian = metrikTerbaru(kampanye, p.idProduk, (opsi.setelanApi[p.idProduk] || {}).perubahan, tanggalLaporanIso);
       if (p.penilaian.siap) {
-        p.penilaian.untungLangsung = p.marginPerRp === null ? null : p.penilaian.omzetLangsung * cair * p.marginPerRp - p.penilaian.biaya;
+        p.penilaian.untungLangsung = untungLangsung(ekonomi, p.penilaian.omzetLangsung, p.penilaian.biaya);
         if (p.roasImpas > 0) p.zona = zonaStabil(kampanye, p.idProduk, (opsi.setelanApi[p.idProduk] || {}).perubahan, tanggalLaporanIso, p.roasImpas);
       }
     }
@@ -525,7 +513,7 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
     };
   });
 
-  return { produk, kampanye: kampanyeDinilai, ringkasan };
+  return { produk, kampanye: kampanyeDinilai, ringkasan, ekonomiProduk };
 }
 
 module.exports = {

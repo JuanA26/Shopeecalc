@@ -217,6 +217,10 @@ The ads CSV from Seller Centre can still be uploaded under "Cadangan" if the aut
   need separate cost accounting.
 
 **Analisis Iklan**
+- Verdicts, Ganti and Saran use one product-economics calculation (`public/ekonomiProduk.js`), including
+  products without ad history. They share price, payout ratio, HPP, product paid rate and break-even;
+  their evaluation periods and selection thresholds still differ. Rincian names the paid-rate source.
+  Missing economics never become a candidate. Historical campaign payout caps remain in campaign details.
 - **Margin per Rp of sales** = (price × payout ratio − HPP) ÷ price, from the product's own paid-out
   orders.
 - **Paid-order rate:** Shopee counts ad sales when an order is *placed*, including orders later

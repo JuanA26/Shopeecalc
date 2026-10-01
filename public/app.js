@@ -1726,6 +1726,8 @@ function panelRincianIklan(p, kampanyePerProduk, b = null) {
   const dibayar = p.kampanyeTerukur && p.dibayarMaksTerukur < p.terjualLangsungTerukur
     ? `≤ ${p.dibayarMaksTerukur} dari ${p.terjualLangsungTerukur}`
     : `≈ ${cairPersen}%`;
+  const sumberCair = { produk: 'data produk', toko: 'rata-rata toko', terukur: 'rata-rata toko',
+    pengaturan: 'isian Pengaturan', default: 'perkiraan awal' }[p.sumberTingkatCair];
   const rendah = p.roasImpas !== null && m.roasLangsung !== null && m.roasLangsung < p.roasImpas;
   const item = (label, nilai) => `<div><dt>${label}</dt><dd>${nilai}</dd></div>`;
   const rek = b && b.rekomendasi && b.rekomendasi.rendah && b.rekomendasi.tinggi
@@ -1741,10 +1743,11 @@ function panelRincianIklan(p, kampanyePerProduk, b = null) {
     item('ROAS Shopee', formatRoas(m.roasShopee)) + rek +
     item('Harga / HPP', `${rupiahPendek(p.hargaRata)} / ${p.hpp === null ? 'belum diisi' : rupiahPendek(p.hpp)}`) +
     item('Margin', p.marginPerRp === null ? '-' : formatPersen(p.marginPerRp * 100)) +
-    item('Pesanan dibayar', dibayar) + hasil7 +
+    item('Pesanan dibayar', dibayar + (sumberCair ? ` <small>${sumberCair}</small>` : '')) + hasil7 +
     '</dl>';
 
   const catatan = b ? catatanKeputusanTeks(b).filter((t) => !t.startsWith('Berakhir')) : [p.tindakan].filter(Boolean);
+  if (p.aksi !== 'toko') catatan.push('ROAS minimum untuk menilai hasil produk ini. Target di Shopee memakai hitungan berbeda.');
   const kampanye = (kampanyePerProduk.get(p.idProduk) || [])
     .slice()
     .sort((x, y) => (y.tanggalMulaiIso || '').localeCompare(x.tanggalMulaiIso || ''));
@@ -1856,7 +1859,7 @@ function pemakaianModal(idProduk, modal) {
 function saranIklanSekarang() {
   const sumber = sumberIklan();
   if (!dariApi() || !sumber || typeof SaranIklan === 'undefined') return null;
-  return SaranIklan.saranIklan(sumber.items, dataIklan.kampanye, hariIniWib(), dataIklan.ringkasan.tingkatCair ?? 0.85);
+  return SaranIklan.saranIklan(sumber.items, dataIklan.kampanye, hariIniWib(), dataIklan.ekonomiProduk);
 }
 
 // Iklan yang rugi besar ("boleh diganti" di Saran iklan) diganti, bukan dinaikkan targetnya

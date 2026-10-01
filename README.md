@@ -78,17 +78,18 @@ skipped when the device asks for reduced motion.
 
 ### Data status (top bar, every page)
 A small button shows how fresh the data is ("Diperbarui 5 mnt lalu"; yellow after 1 hour, red if the last
-fetch failed). Pressing it fetches orders and ads from Shopee now (read-only): it shows "Memperbarui 40%"
+fetch failed). Pressing it fetches orders, ads and stock from Shopee now (read-only): it shows "Memperbarui 40%"
 with a progress line under the top bar, then "✓ Selesai" for a few seconds. Scheduled syncs show up the
 same way. Read-only accounts only reload stored data. Hover (desktop) for the exact time or error.
 
 ### Pengaturan (gear button next to Keluar)
-- **Diagnostik:** sync and ads-sync status, orders waiting to be re-fetched, stored order range (not yet
+- **Diagnostik:** sync, ads-sync and stock-sync status, orders waiting to be re-fetched, stored order range (not yet
   paid out / cancelled), products sold in 30 days without HPP, running ads, recorded setting changes,
   pay-per-sale ad fees (Shopee's `pay_per_sale`; should be none, warns if any), app version, and **Log server** (last 60 server log lines).
 - **Unduh data (Excel):** one .xlsx workbook for analysis (e.g. by Claude): README, Status, current ad
   decisions, setting-change history with 7 days before/after (campaign ROAS and store profit per day),
-  profit per month/week/day, products, HPP, campaigns, daily ad figures and every order item. It contains
+  profit per month/week/day, products, current stock per product (modal, pcs sold in 30 days, days of
+  stock left), HPP, campaigns, daily ad figures and every order item. It contains
   no passwords, Shopee tokens or buyer data. Built without extra dependencies (`xlsx.js`, `eksporData.js`).
 - **Hitungan iklan:** the data period and payout ratio used for the ads maths, the paid-order rate
   override, and a short guide to how the ad advice is chosen.
@@ -138,6 +139,11 @@ On a phone: profit, the tiles in a 2 × 2 grid, then the tasks.
   one-trial-at-a-time slot; a recently changed ad still waits for its result.
 - Estimated ad contribution excludes any conditional **Proteksi ROAS Saldo 1:1** credit; the app does not
   read eligibility or received credits. This is disclosed in the owner's ad details.
+- **Modal di stok** (card under the tasks): money tied up in stock now = Shopee stock × HPP, with a
+  Semua / Aktif / Tersembunyi filter (Tersembunyi = archived, blocked or under review), pcs and product
+  count, and a collapsed table of the 10 products with the most modal. Left out of the total but named in
+  a yellow "Perlu dicek" box: products without HPP, and products with ≥ 500 pcs in one variant (likely a
+  placeholder like 999; check in Seller Centre). Stock is synced every 30 minutes with the other data.
 
 ### Kalkulator Margin
 - **Lihat Data Penjualan:**
@@ -220,6 +226,9 @@ The ads CSV from Seller Centre can still be uploaded under "Cadangan" if the aut
   Shopee's Income report). Otherwise ≈ price × the shop's payout ratio of the last 60 days.
 - **Untung** = payout − HPP × pcs for items with HPP, plus returned-item payout balances.
 - **Margin** = Untung ÷ payout for those same rows, including return balances.
+- **Modal di stok** = Σ (seller stock + Shopee-warehouse stock over all variants) × HPP. Stock reserved
+  for a promotion is already inside that count; ordered items have already left it (Shopee FAQ on
+  `stock_info_v2`). Variant stock is re-read when the product changed, sold, or was read ≥ 24 h ago.
 - Returned items have no HPP expense under the assumption that stock is reusable. Their payout balance
   still affects profit, including negative return/shipping deductions. Refund-only and damaged stock
   need separate cost accounting.
@@ -253,7 +262,8 @@ recovery against a mock Shopee). Trial tests cover recent vs old performance, st
 cross-product sales, missing/zero days, overlapping changes, parallel per-ad changes and expiry reminders.
 `keamanan.test.js` starts the real server and checks headers, the cross-site block, the login limit,
 that sessions survive a restart, the public health check, the log and read-only accounts.
-`shopeeApi.test.js` checks the rate-limit retry and the read-only endpoint guard. `ekspor.test.js` checks the Excel export. No Shopee credentials are needed.
+`shopeeApi.test.js` checks the rate-limit retry and the read-only endpoint guard. `ekspor.test.js` checks the Excel export. `stok.test.js` checks the stock sync (variants, paging, re-read
+rules, one failed product) and the Modal di stok totals. No Shopee credentials are needed.
 The calculator excludes business overhead unless it is already part of HPP/payout deductions.
 
 ## 6. Project structure
@@ -264,8 +274,9 @@ webapp/
   shopeeApi.js      Shopee API v2 client: HMAC signing, OAuth, read-only endpoint allowlist
   sinkronShopee.js  Order + payout sync into SQLite; measured paid-order rate
   sinkronIklan.js   Ads sync (campaigns, daily performance, shop totals, recommended ROAS)
+  sinkronStok.js    Stock sync (product list, variants) + Modal di stok totals
   analisisIklan.js  Ads maths and per-ad decision; parser for the Seller Centre ads CSV
-  db.js             SQLite schema (users, HPP, settings, Shopee token, orders, payouts, ads)
+  db.js             SQLite schema (users, HPP, settings, Shopee token, orders, payouts, ads, stock)
   eksporData.js     Pengaturan export: builds the analysis workbook sheets
   xlsx.js           Minimal dependency-free .xlsx writer
   util.js           Shared helpers (WIB dates, batching, Shopee error check, HTML escaping)
@@ -279,7 +290,7 @@ webapp/
   Dockerfile        For other container hosts
 ```
 
-**Stored on the server:** HPP list, accounts, the Shopee token, and synced orders, payouts and ad metrics.
+**Stored on the server:** HPP list, accounts, the Shopee token, and synced orders, payouts, ad metrics and stock.
 Buyer usernames are **not** stored. Nothing is ever written to Shopee: every API path must be on the
 read-only allowlist in `shopeeApi.js`.
 

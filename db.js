@@ -233,6 +233,23 @@ db.exec(`
     modal_baru REAL
   );
   CREATE INDEX IF NOT EXISTS idx_iklan_riwayat ON iklan_riwayat_setelan (shop_id, tanggal);
+
+  -- Stok terkini per produk (sinkronStok.js) untuk kartu "Modal di stok". stok = Σ semua varian;
+  -- stok_maks_varian = varian terbanyak (penanda angka asal seperti 999). status = item_status
+  -- Shopee (NORMAL = tampil di toko). diambil_ts = kapan stok varian terakhir dibaca (unix detik).
+  CREATE TABLE IF NOT EXISTS stok_produk (
+    shop_id TEXT NOT NULL,
+    id_produk TEXT NOT NULL,
+    nama_produk TEXT,
+    status TEXT,
+    update_time INTEGER,
+    ada_varian INTEGER NOT NULL DEFAULT 0,
+    stok INTEGER NOT NULL DEFAULT 0,
+    stok_maks_varian INTEGER NOT NULL DEFAULT 0,
+    jumlah_varian INTEGER NOT NULL DEFAULT 0,
+    diambil_ts INTEGER,
+    PRIMARY KEY (shop_id, id_produk)
+  );
 `);
 
 // Kolom yang ditambahkan setelah tabel sinkron_shopee sudah ada di produksi.
@@ -240,6 +257,10 @@ try { db.exec('ALTER TABLE sinkron_shopee ADD COLUMN order_ts INTEGER'); } catch
 try { db.exec('ALTER TABLE sinkron_shopee ADD COLUMN order_berubah INTEGER'); } catch (_) { /* sudah ada */ }
 // Status sinkron iklan (terpisah dari pesanan: iklan gagal tidak membuat sinkron pesanan gagal).
 for (const kolom of ['iklan_sampai TEXT', 'iklan_status TEXT', 'iklan_pesan TEXT', 'iklan_selesai TEXT']) {
+  try { db.exec(`ALTER TABLE sinkron_shopee ADD COLUMN ${kolom}`); } catch (_) { /* sudah ada */ }
+}
+// Status sinkron stok (sinkronStok.js), juga terpisah; stok_ts = mulai sinkron stok terakhir yang berhasil.
+for (const kolom of ['stok_status TEXT', 'stok_pesan TEXT', 'stok_selesai TEXT', 'stok_ts INTEGER']) {
   try { db.exec(`ALTER TABLE sinkron_shopee ADD COLUMN ${kolom}`); } catch (_) { /* sudah ada */ }
 }
 // Biaya iklan per pesanan (order_income.pay_per_sale, Shopee mulai 29/09/2026), sudah termasuk di

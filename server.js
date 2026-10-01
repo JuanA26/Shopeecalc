@@ -13,6 +13,7 @@ const { parseCsvLine, parseShopeeAdsCsv, hitungAnalisisIklan, RASIO_PENCAIRAN_DE
 const shopeeApi = require('./shopeeApi');
 const { sinkronkan, bacaItemPesanan, rasioPencairanToko, tingkatCairTerukur, modeEscrow, isiAntreanUlang, STATUS_BUKAN_PENJUALAN } = require('./sinkronShopee');
 const { sinkronIklan, kampanyeDariDb } = require('./sinkronIklan');
+const { sinkronStok, ringkasStok, BATAS_STOK_TIDAK_WAJAR } = require('./sinkronStok');
 const { susunEkspor } = require('./eksporData');
 const { buatXlsx } = require('./xlsx');
 const SesiSqlite = require('./sesiSqlite');
@@ -472,6 +473,20 @@ function jalankanSinkron(opsi = {}) {
       console.error('[SINKRON IKLAN] Gagal:', err.message);
       tulisStatus({ iklan_status: 'gagal', iklan_pesan: err.message, iklan_selesai: new Date().toISOString() });
     }
+    await lanjutStok();
+  };
+  // Stok (kartu "Modal di stok") paling akhir, juga dengan status sendiri.
+  const lanjutStok = async () => {
+    progresSinkron = { tahap: 'stok', selesai: null, total: null };
+    const mulai = Math.floor(Date.now() / 1000);
+    try {
+      const h = await sinkronStok({ db, panggil, shopId, sekarang: mulai });
+      tulisStatus({ stok_status: 'sukses', stok_pesan: null, stok_selesai: new Date().toISOString(), stok_ts: mulai });
+      console.log(`[SINKRON STOK] Selesai: ${h.produk} produk, stok varian dibaca ulang untuk ${h.varianDibaca}.`);
+    } catch (err) {
+      console.error('[SINKRON STOK] Gagal:', err.message);
+      tulisStatus({ stok_status: 'gagal', stok_pesan: err.message, stok_selesai: new Date().toISOString() });
+    }
   };
 
   sinkronBerjalan = sinkronkan({ db, panggil, shopId, hariMundur: opsi.hariMundur, onProgres: (p) => { progresSinkron = p; } })
@@ -528,6 +543,7 @@ function statusSinkron() {
     ulangMacet: antrean.macet,
     modeEscrow: modeEscrow(),
     iklan: { status: s.iklan_status || null, pesan: s.iklan_pesan || null, terakhirSelesai: s.iklan_selesai || null, sampai: s.iklan_sampai || null },
+    stok: { status: s.stok_status || null, pesan: s.stok_pesan || null, terakhirSelesai: s.stok_selesai || null },
     jumlahPesanan: agg.jumlah,
     tanggalTerlama: agg.terlama,
     tanggalTerbaru: agg.terbaru,
@@ -535,6 +551,17 @@ function statusSinkron() {
 }
 
 app.get('/api/sinkron/status', requireLogin, (req, res) => res.json(statusSinkron()));
+
+// Modal di stok (kartu Dashboard): stok terkini × HPP, per kelompok semua/aktif/tersembunyi.
+app.get('/api/stok', requireLogin, (req, res) => {
+  const token = barisTokenAktif();
+  if (!token) return res.status(400).json({ error: 'Toko belum terhubung ke Shopee.' });
+  const baris = db.prepare('SELECT id_produk, nama_produk, status, stok, stok_maks_varian FROM stok_produk WHERE shop_id = ?').all(String(token.shop_id));
+  const s = statusSinkron().stok;
+  if (!baris.length) return res.json({ kosong: true, status: s });
+  const petaHpp = new Map(db.prepare('SELECT id_produk, hpp FROM product_hpp').all().map((r) => [r.id_produk, r.hpp]));
+  res.json({ status: s, batasTidakWajar: BATAS_STOK_TIDAK_WAJAR, kelompok: ringkasStok(baris, petaHpp) });
+});
 
 // Cek kesehatan PUBLIK (tanpa login) untuk debugging dari luar: versi, status sinkron + pesan
 // errornya, antrean ambil-ulang, jumlah peringatan/error 24 jam. SENGAJA tanpa angka penjualan,
@@ -547,6 +574,7 @@ app.get('/api/kesehatan', (req, res) => {
     ok: true, versi: VERSI, waktuServer: new Date().toISOString(), terhubungShopee: !!token, sinkronBerjalan: !!sinkronBerjalan,
     pesanan: { status: s.status || null, terakhirSelesai: s.terakhir_selesai || null, pesan: s.pesan || null },
     iklan: { status: s.iklan_status || null, terakhirSelesai: s.iklan_selesai || null, pesan: s.iklan_pesan || null },
+    stok: { status: s.stok_status || null, terakhirSelesai: s.stok_selesai || null, pesan: s.stok_pesan || null },
     antreanUlang: token ? isiAntreanUlang(db, token.shop_id) : null,
     // Hanya ya/tidak (tanpa angka): ada pesanan yang kena biaya iklan per pesanan (pay-per-sale)?
     adaBiayaPerPesanan: token ? !!db.prepare('SELECT 1 FROM api_pesanan WHERE shop_id = ? AND pay_per_sale <> 0 LIMIT 1').get(String(token.shop_id)) : null,
@@ -579,7 +607,8 @@ function ringkasDiagnostik(token) {
   return {
     versi: VERSI,
     sinkron: { status: s.status, pesan: s.pesan, terakhirSelesai: s.terakhirSelesai, ulangTertunda: s.ulangTertunda, ulangMacet: s.ulangMacet,
-      iklanStatus: s.iklan.status, iklanPesan: s.iklan.pesan, iklanTerakhirSelesai: s.iklan.terakhirSelesai },
+      iklanStatus: s.iklan.status, iklanPesan: s.iklan.pesan, iklanTerakhirSelesai: s.iklan.terakhirSelesai,
+      stokStatus: s.stok.status, stokPesan: s.stok.pesan, stokTerakhirSelesai: s.stok.terakhirSelesai },
     pesanan: { jumlah: s.jumlahPesanan, dari: s.tanggalTerlama, sampai: s.tanggalTerbaru,
       // Belum cair = pesanan sah yang dananya belum dilepas; batal/belum dibayar dihitung terpisah.
       belumCair: angka(`SELECT COUNT(*) FROM api_order o WHERE o.shop_id = ? AND o.status NOT IN (${BUKAN_PENJUALAN_SQL})
@@ -615,6 +644,7 @@ app.post('/api/ekspor', requireLogin, (req, res) => {
     const sinkron = { 'sinkron.status': d.sinkron.status, 'sinkron.pesan': d.sinkron.pesan, 'sinkron.terakhir_selesai': d.sinkron.terakhirSelesai,
       'sinkron.ulang_menunggu': d.sinkron.ulangTertunda, 'sinkron.ulang_macet': d.sinkron.ulangMacet, 'sinkron.iklan_status': d.sinkron.iklanStatus,
       'sinkron.iklan_pesan': d.sinkron.iklanPesan, 'sinkron.iklan_terakhir_selesai': d.sinkron.iklanTerakhirSelesai,
+      'sinkron.stok_status': d.sinkron.stokStatus, 'sinkron.stok_pesan': d.sinkron.stokPesan, 'sinkron.stok_terakhir_selesai': d.sinkron.stokTerakhirSelesai,
       tingkat_bayar_pesanan_iklan_terukur: d.tingkatCairTerukur };
     const hariIni = hariIniWib();
     const sheets = susunEkspor(db, token.shop_id, {

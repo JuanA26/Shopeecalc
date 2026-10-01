@@ -121,6 +121,18 @@
           </details>
           <p class="keterangan tugas-cara">Semua perubahan iklan dilakukan di Seller Centre → Iklan Shopee.</p>
         </div>
+        <!-- Modal di stok: stok Shopee × HPP (app.js renderStok, server /api/stok) -->
+        <div class="kartu kartu-stok" id="kartuStok">
+          <div class="grafik-kepala">
+            <h2>Modal di stok</h2>
+            <div class="segmen" role="group" aria-label="Produk yang dihitung" id="segmenStok" hidden>
+              <button type="button" class="pill-filter aktif" data-stok="semua" aria-pressed="true">Semua</button>
+              <button type="button" class="pill-filter" data-stok="aktif" aria-pressed="false">Aktif</button>
+              <button type="button" class="pill-filter" data-stok="tersembunyi" aria-pressed="false">Tersembunyi</button>
+            </div>
+          </div>
+          <div id="stokIsi" aria-live="polite"><span class="kerangka besar"></span><span class="kerangka pendek"></span></div>
+        </div>
       </section>
 
       <!-- ---------- KALKULATOR MARGIN (Unggah & Lihat Data + Harga Modal (HPP) sebagai sub-tab) ---------- -->

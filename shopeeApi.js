@@ -79,6 +79,12 @@ const ENDPOINT_BACA_SAJA = new Set([
   // cuma get_return_detail yang dibuka: dipakai sinkronShopee.js untuk tahu barang MANA di
   // satu pesanan yang diretur (escrow detail hanya memberi daftar nomor returnya).
   '/api/v2/returns/get_return_detail',
+  // Modul Product — hanya stok yang DIBACA untuk kartu "Modal di stok" (sinkronStok.js; dicek di
+  // open.shopee.com 2026-10-01, bisa dipanggil app "Seller In House System"). update_stock,
+  // update_item, unlist_item, dll. sengaja TIDAK dibuka.
+  '/api/v2/product/get_item_list',
+  '/api/v2/product/get_item_base_info',
+  '/api/v2/product/get_model_list',
   // Modul Ads — hanya laporan & setelan yang DIBACA (dicek di open.shopee.com 2026-09-25, semua
   // bisa dipanggil app "Seller In House System"). Endpoint create_/edit_ kampanye (termasuk
   // create/edit_gms_product_campaign) sengaja TIDAK dibuka: aplikasi hanya memberi saran, orang

@@ -70,10 +70,11 @@ test('security headers, cross-site block, login limit, and login survives a rest
   const k = await sehat.json();
   assert.equal(k.ok, true);
   // adaBiayaPerPesanan is only true/false/null (no amounts).
-  assert.deepEqual(Object.keys(k).sort(), ['adaBiayaPerPesanan', 'antreanUlang', 'iklan', 'log24Jam', 'ok', 'pesanan', 'sinkronBerjalan', 'terhubungShopee', 'versi', 'waktuServer']);
+  assert.deepEqual(Object.keys(k).sort(), ['adaBiayaPerPesanan', 'antreanUlang', 'iklan', 'log24Jam', 'ok', 'pesanan', 'sinkronBerjalan', 'stok', 'terhubungShopee', 'versi', 'waktuServer']);
   assert.ok([true, false, null].includes(k.adaBiayaPerPesanan));
   // The server log needs a login and contains the start-up lines.
   assert.equal((await fetch(`${BASE}/api/log`)).status, 401);
+  assert.equal((await fetch(`${BASE}/api/stok`)).status, 401);
   const log = await (await fetch(`${BASE}/api/log`, { headers: { Cookie: sid } })).json();
   assert.ok(log.some((l) => l.pesan.includes('[SETUP]')));
 

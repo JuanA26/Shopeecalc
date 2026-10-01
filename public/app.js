@@ -4,7 +4,7 @@
 //   Kalkulator Margin: tren harian, tabel pesanan · Tab HPP · Impor CSV HPP
 //   Analisis Iklan: muat data iklan, untung toko per minggu, tabel semua produk,
 //     keputusanBerjalan() = saran per iklan (aturan: notes/calculations.md)
-//   Tugas Minggu Ini (Dashboard) · Pengaturan (diagnostik + unduh Excel) · Mulai
+//   Tugas Minggu Ini + Modal di stok (Dashboard) · Pengaturan (diagnostik + unduh Excel) · Mulai
 // Perhitungan murni yang juga dipakai server/tes ada di evaluasiIklan.js.
 // Cari bagian dengan "// ======".
 
@@ -129,6 +129,7 @@ function tampilkanAplikasi(username, bacaSaja = false) {
   muatDaftarHpp();
   muatSetelanIklan();
   muatPengaturan();
+  muatStok();
   mulaiDataOtomatis();
 }
 
@@ -348,7 +349,7 @@ function renderStatusData() {
     progresTadiBerjalan = true;
     const p = s.sedangBerjalan ? s.progres : null;
     const idx = !p || p.tahap === 'pesanan' ? 0 : 1;
-    const nama = !p ? 'Menghubungi Shopee' : idx === 0 ? 'Mengambil pesanan' : p.tahap === 'iklan' ? 'Mengambil data iklan' : 'Mengambil dana cair';
+    const nama = !p ? 'Menghubungi Shopee' : idx === 0 ? 'Mengambil pesanan' : p.tahap === 'iklan' ? 'Mengambil data iklan' : p.tahap === 'stok' ? 'Mengambil stok' : 'Mengambil dana cair';
     const tentu = !!p && p.total !== null && p.total !== undefined;
     const persen = tentu ? Math.round(((idx + (p.total ? p.selesai / p.total : 1)) / 2) * 100) : null;
     bar.classList.remove('tersembunyi', 'selesai', 'gagal');
@@ -459,6 +460,7 @@ function sinkronSekarang() {
 tombolStatusData.addEventListener('click', () => sinkronSekarang());
 
 async function muatDataPenjualanIklan() {
+  muatStok(); // dipanggil setelah tiap sinkron, jadi stok ikut segar
   const sampai = hariIniWib();
   const dari = geserHari(sampai, -89);
   try {
@@ -2899,6 +2901,90 @@ function renderSaranIklan() {
     isi + '<small class="langkah-ket">Cek stok dulu. Periode Tidak Terbatas. Boleh beberapa sekaligus.</small>';
 }
 
+// ====== Modal di stok (Dashboard) ======
+// Stok Shopee × HPP, dihitung di server (sinkronStok.js ringkasStok). Produk tanpa HPP dan
+// produk dengan stok tidak wajar (angka asal seperti 999) tidak ikut di total, tapi disebut.
+let dataStok = null;
+let kelompokStok = 'semua';
+const KET_KELOMPOK_STOK = {
+  semua: '',
+  aktif: 'Produk yang tampil di toko.',
+  tersembunyi: 'Produk yang tidak tampil di toko: diarsipkan, diblokir, atau sedang ditinjau Shopee.',
+};
+const STATUS_PRODUK_TAMPIL = { UNLIST: 'diarsipkan', BANNED: 'diblokir Shopee', REVIEWING: 'sedang ditinjau' };
+
+async function muatStok() {
+  try { dataStok = await apiFetch('/api/stok'); } catch (err) { dataStok = { error: err.message }; }
+  renderStok();
+}
+
+function renderStok() {
+  const el = document.getElementById('stokIsi');
+  const segmen = document.getElementById('segmenStok');
+  if (!el || !dataStok) return;
+  const st = dataStok.status || {};
+  const gagal = st.status === 'gagal';
+  if (dataStok.error || dataStok.kosong) {
+    segmen.hidden = true;
+    el.innerHTML = `<p class="keterangan">${escapeHtml(dataStok.error
+      || (gagal ? 'Stok belum bisa diambil dari Shopee. Dicoba lagi otomatis setiap 30 menit.'
+        : 'Stok belum diambil dari Shopee. Biasanya muncul dalam 30 menit.'))}</p>`;
+    return;
+  }
+  segmen.hidden = false;
+  const k = dataStok.kelompok[kelompokStok];
+  const pcs = (n) => `${Number(n || 0).toLocaleString('id-ID')} pcs`;
+  const ket = KET_KELOMPOK_STOK[kelompokStok];
+  let html = ket ? `<p class="keterangan stok-ket-kelompok">${ket}</p>` : '';
+  if (!k.produk && !k.tanpaHpp.produk && !k.tidakWajar.length) {
+    el.innerHTML = html + '<p class="keterangan">Tidak ada stok di produk ini.</p>';
+    return;
+  }
+  html += `<p class="angka-ringkasan stok-angka">${formatRupiah(k.modal)}</p>` +
+    `<p class="keterangan stok-sub">${pcs(k.pcs)} dari ${k.produk.toLocaleString('id-ID')} produk, dihitung dengan harga modal (HPP).</p>`;
+
+  const cek = [];
+  if (k.tanpaHpp.produk) {
+    cek.push(`<p>${k.tanpaHpp.produk.toLocaleString('id-ID')} produk (${pcs(k.tanpaHpp.pcs)}) belum ada HPP, jadi tidak ikut dihitung. Isi di Kalkulator Margin, tab HPP.</p>`);
+  }
+  if (k.tidakWajar.length) {
+    const daftar = k.tidakWajar.slice(0, 5).map((p) =>
+      `<li><span title="${escapeHtml(p.nama)}">${escapeHtml(namaRapi(p.nama, 40))}</span>: ${pcs(p.stokMaksVarian)} di satu varian</li>`).join('');
+    const sisa = k.tidakWajar.length - 5;
+    cek.push(`<p>${k.tidakWajar.length} produk stoknya tidak wajar (${dataStok.batasTidakWajar} pcs atau lebih di satu varian), jadi tidak ikut dihitung. Cek angkanya di Seller Centre.</p>` +
+      `<ul class="daftar-catatan">${daftar}${sisa > 0 ? `<li>dan ${sisa} produk lainnya</li>` : ''}</ul>`);
+  }
+  if (cek.length) html += `<div class="banner-data stok-cek"><strong>Perlu dicek</strong>${cek.join('')}</div>`;
+
+  if (k.teratas.length) {
+    const baris = k.teratas.map((p) => {
+      const status = STATUS_PRODUK_TAMPIL[p.status];
+      return `<tr><td class="stok-nama"><span title="${escapeHtml(p.nama)}">${escapeHtml(namaRapi(p.nama, 52))}</span>` +
+        `<small>${pcs(p.stok)} × ${formatRupiah(p.hpp)}${status ? ` · ${status}` : ''}</small></td>` +
+        `<td title="${formatRupiah(p.modal)}">${formatRupiahRingkas(p.modal)}</td></tr>`;
+    }).join('');
+    html += `<details class="details-dalam lihat-angka stok-teratas"><summary>Lihat ${k.teratas.length} produk dengan modal terbesar</summary>` +
+      `<table class="angka tabel-stok"><thead><tr><th scope="col">Produk</th><th scope="col">Modal</th></tr></thead><tbody>${baris}</tbody></table></details>`;
+  }
+  html += `<p class="keterangan stok-waktu">${gagal
+    ? 'Stok terakhir gagal diperbarui. Angka ini dari pembaruan sebelumnya.'
+    : `Stok dari Shopee, diperbarui ${waktuWib(st.terakhirSelesai)} WIB.`}</p>`;
+  const terbuka = el.querySelector('.stok-teratas[open]');
+  el.innerHTML = html;
+  if (terbuka) { const d = el.querySelector('.stok-teratas'); if (d) d.open = true; }
+}
+
+document.querySelectorAll('.pill-filter[data-stok]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    kelompokStok = btn.dataset.stok;
+    document.querySelectorAll('.pill-filter[data-stok]').forEach((b) => {
+      b.classList.toggle('aktif', b === btn);
+      b.setAttribute('aria-pressed', String(b === btn));
+    });
+    renderStok();
+  });
+});
+
 // ====== Pengaturan: diagnostik + unduh data ======
 async function muatDiagnostik() {
   const el = document.getElementById('isiDiagnostik');
@@ -2909,6 +2995,7 @@ async function muatDiagnostik() {
     const baris = [
       ['Sinkron pesanan', ok(s.status === 'sukses', `${escapeHtml(s.status || '-')} · ${waktuWib(s.terakhirSelesai)}`)],
       ['Sinkron iklan', ok(s.iklanStatus === 'sukses', `${escapeHtml(s.iklanStatus || '-')} · ${waktuWib(s.iklanTerakhirSelesai)}`)],
+      ['Sinkron stok', ok(s.stokStatus === 'sukses', `${escapeHtml(s.stokStatus || '-')} · ${waktuWib(s.stokTerakhirSelesai)}${s.stokStatus === 'gagal' && s.stokPesan ? ` · ${escapeHtml(s.stokPesan)}` : ''}`)],
       ['Pesanan diambil ulang', ok(!s.ulangTertunda && !s.ulangMacet, `${s.ulangTertunda || 0} menunggu · ${s.ulangMacet || 0} macet`)],
       ['Pesanan tersimpan', `${(d.pesanan.jumlah || 0).toLocaleString('id-ID')} (${tanggalSingkat(d.pesanan.dari)} – ${tanggalSingkat(d.pesanan.sampai)}) · ${(d.pesanan.belumCair || 0).toLocaleString('id-ID')} belum cair · ${(d.pesanan.batal || 0).toLocaleString('id-ID')} batal/belum dibayar`],
       ['Produk tanpa HPP', ok(!d.tanpaHpp30.produk, d.tanpaHpp30.produk

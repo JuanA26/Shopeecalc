@@ -64,6 +64,11 @@ test('export workbook: store profit per week, change before/after, and a valid x
   db.prepare("INSERT INTO iklan_kampanye (campaign_id, shop_id, id_produk, nama_iklan, status, budget_harian, target_roas, mulai, selesai) VALUES ('C1', ?, 'A', 'Iklan A', 'ongoing', 60000, 10.8, '2026-09-01', '')").run(shop);
   db.prepare("INSERT INTO iklan_riwayat_setelan (shop_id, campaign_id, id_produk, tanggal, target_lama, target_baru, modal_lama, modal_baru) VALUES (?, 'C1', 'A', ?, 9, 10.8, 60000, 60000)").run(shop, ubah);
 
+  const stok = db.prepare('INSERT INTO stok_produk (shop_id, id_produk, nama_produk, status, stok, stok_maks_varian, jumlah_varian, diambil_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  stok.run(shop, 'A', 'Blus A', 'NORMAL', 40, 15, 3, 1790000000);
+  stok.run(shop, 'B', 'Celana B', 'UNLIST', 5, 5, 1, 1790000000);
+  stok.run(shop, 'C', 'Rok C', 'NORMAL', 1000, 999, 2, 1790000000);
+  stok.run(shop, 'D', 'Kaos D', 'NORMAL', 0, 0, 2, 1790000000);
   const sheets = susunEkspor(db, shop, { margin, bacaItemPesanan, rasioPerkiraan: 0.78, hariIni,
     keputusan: [{ idProduk: 'A', namaProduk: 'Blus A', keputusan: 'tunggu', target: 10.8, token: 'ignored' }], versi: 'test', sinkron: { 'sinkron.status': 'sukses' } });
   const s = Object.fromEntries(sheets.map((x) => [x.nama, x]));
@@ -85,6 +90,22 @@ test('export workbook: store profit per week, change before/after, and a valid x
   assert.equal(m[kol('Mingguan', 'untung_setelah_iklan')], null, 'week starts before ad data: not complete');
   const w = s.Mingguan.baris.find((b) => b[0] === '2026-09-07');
   assert.equal(w[kol('Mingguan', 'untung_setelah_iklan')], 4 * 30000 + 3 * 40000 - 7 * 10000); // 7–10 Sep before, 11–13 after
+
+  // Stock sheet: same rules as the Dashboard card; A sold 20 pcs in the last 30 days (1–20 Sep).
+  const stokA = s.Stok.baris[0];
+  assert.equal(stokA[0], 'A');
+  assert.equal(stokA[kol('Stok', 'modal')], 2000000);
+  assert.equal(stokA[kol('Stok', 'terjual_30_hari')], 20);
+  assert.equal(stokA[kol('Stok', 'stok_cukup_hari')], 60);
+  assert.equal(stokA[kol('Stok', 'stok_dibaca')], '2026-09-21 21:13');
+  const dihitung = Object.fromEntries(s.Stok.baris.map((b) => [b[0], b[kol('Stok', 'dihitung')]]));
+  assert.deepEqual(dihitung, { A: 'ya', B: 'tidak: belum ada HPP', C: 'tidak: stok tidak wajar', D: 'stok habis' });
+  assert.equal(s.Stok.baris.find((b) => b[0] === 'B')[kol('Stok', 'tampil_di_toko')], 'tidak');
+  const status = Object.fromEntries(s.Status.baris);
+  assert.equal(status.stok_modal_semua, 2000000);
+  assert.equal(status.stok_modal_tersembunyi, 0);
+  assert.equal(status.stok_produk_tanpa_hpp, 1);
+  assert.equal(status.stok_produk_tidak_wajar, 1);
 
   // Current decisions are copied, unknown fields dropped.
   assert.equal(s.Keputusan_Sekarang.baris[0][0], 'A');

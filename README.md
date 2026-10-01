@@ -94,8 +94,9 @@ same way. Read-only accounts only reload stored data. Hover (desktop) for the ex
   override, and a short guide to how the ad advice is chosen.
 
 ### Dashboard
-On a wide screen: store profit and shortcut cards on the left, the weekly tasks on the right. On a
-phone: profit, then tasks, then shortcuts.
+Top row: last week's store profit as the big number, then three tiles that open their page: daily ad
+budget, ads needing work ("4 dari 8") and sales profit for the Kalkulator period. Below: the weekly tasks.
+On a phone: profit, the tiles in a 2 × 2 grid, then the tasks.
 - **Tugas Minggu Ini** (top): last complete week's store profit after ads (change vs the week before per ordinary day: days with payout > 1.8 × the 28-day median are left out and named), this
   month so far vs last month, then short numbered steps: (1) **Isi HPP** for products whose missing cost
   price holds the ad advice, with a price box + Simpan per product (and a button to the HPP tab); (2) **Ubah Periode jadi Tidak Terbatas** for
@@ -124,7 +125,8 @@ phone: profit, then tasks, then shortcuts.
   with the product's own margin and break-even ROAS: **Iklankan lagi** = not advertised now, ≥ 150 rb past
   spend, past direct ROAS ≥ 1.2 × break-even with a profit, still ≥ 4 pcs in the last 4 weeks;
   **Coba iklankan** = (almost) never advertised, ≥ 8 pcs in 4 weeks, margin ≥ 20%, returns ≤ 5%.
-- **Ganti iklan** (a numbered step): the currently running campaign with ≥ 10 mature days of spend, a direct loss ≥ 100 rb and
+- **Ganti iklan** (a numbered step, shown as two lines: *Matikan* the losing ad, *Pasang baru* the
+  replacement with its settings as small boxes): the currently running campaign with ≥ 10 mature days of spend, a direct loss ≥ 100 rb and
   direct ROAS < 0.6 × break-even is replaced rather than tuned. It shows which ad to turn off and which
   product to advertise instead (Iklankan lagi first, then Coba iklankan; Tidak Terbatas, 50 rb/day).
   A past winner restarts in **GMV Max ROAS at the target of its most profitable ROAS-mode campaign**
@@ -136,13 +138,15 @@ phone: profit, then tasks, then shortcuts.
   one-trial-at-a-time slot; a recently changed ad still waits for its result.
 - Estimated ad contribution excludes any conditional **Proteksi ROAS Saldo 1:1** credit; the app does not
   read eligibility or received credits. This is disclosed in the owner's ad details.
-- Two cards below: Kalkulator Margin (profit for the period chosen there) and Analisis Iklan.
 
 ### Kalkulator Margin
 - **Lihat Data Penjualan:**
   - Choose Hari ini / 7 hari / 30 hari / Bulan ini / Bulan lalu or your own dates. Periods are **by order
     date** on the WIB calendar.
   - You get tiles (Omzet, Pendapatan, Untung, margin), a daily trend chart, and a table of every sold item.
+  - The trend chart shows one measure at a time (Omzet / Untung / Pesanan / Pcs) with a 7-day average line,
+    the period total, average per day and best day. Hover or tap a day for all its numbers; "Lihat angkanya"
+    lists them as a table.
   - Orders whose funds aren't released yet show **"Belum cair"** with an **≈** estimate. The exact figure
     replaces it automatically. Cancelled and unpaid orders are left out.
 - **Atur Harga Modal (HPP):** set the cost price per Product ID (shared by all users). Bulk CSV
@@ -199,8 +203,9 @@ How each ad's change is chosen (the trial checks above take priority over this l
   above the limit → lowered by at most 20% per step towards the limit.
 
 Below the table:
-- **Untung toko per minggu:** store profit after ads vs ad spend for the last 8 weeks, with the budget
-  check (last 4 complete weeks vs the 4 before) and the daily budget if every change is applied.
+- **Untung toko per minggu:** store profit after ads (green, red when a loss) vs ad spend (blue) for the
+  last 8 weeks, with the budget check (last 4 complete weeks vs the 4 before) and the daily budget if every
+  change is applied. Tap a week for its numbers; "Lihat angkanya" lists them as a table.
 - **Iklan yang sudah selesai** (collapsed): products advertised in the last 90 days that are not running
   now, with direct ROAS, profit and zone, so losing ads aren't repeated.
 - The paid-rate override and the reading guide are in Pengaturan → Hitungan iklan.

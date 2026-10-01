@@ -35,7 +35,7 @@
     <div class="header-isi">
       <h1>
         <span class="logo-kotak"><svg class="ikon" viewBox="0 0 24 24"><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24L4 3a1 1 0 0 0-1 1l.24 5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.82Z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg></span>
-        <span class="nama-toko">HAPPY SHOP</span>
+        <span class="nama-toko">Happy Shop</span>
       </h1>
       <nav class="nav-atas">
         <button class="nav-item aktif" data-page="halamanDashboard">
@@ -82,10 +82,31 @@
       <section id="halamanDashboard" class="halaman aktif">
         <div class="judul-halaman">
           <h1>Dashboard</h1>
-          <p class="keterangan">Ringkasan cepat toko HAPPY SHOP.</p>
+          <p class="keterangan">Ringkasan toko Happy Shop.</p>
         </div>
-        <div class="dash-grid">
-        <div class="kartu kartu-untung" id="tugasUntung" aria-busy="true"><span class="kerangka pendek"></span><span class="kerangka besar"></span><span class="kerangka"></span><span class="tersembunyi">Memuat data...</span></div>
+        <!-- Untung toko (angka utama) + 3 angka pintasan; seluruh kartu pintasan = tombol ke halamannya -->
+        <div class="dash-ringkas">
+          <div class="kartu kartu-untung" id="tugasUntung" aria-busy="true"><span class="kerangka pendek"></span><span class="kerangka besar"></span><span class="kerangka"></span><span class="tersembunyi">Memuat data...</span></div>
+          <button type="button" class="kartu kpi" data-buka-halaman="halamanIklan">
+            <span class="kpi-label">Biaya iklan</span>
+            <span class="kpi-angka" id="widgetIklanBiaya">-</span>
+            <span class="kpi-ket" id="widgetIklanKosong">Memuat data iklan...</span>
+            <span class="kpi-ket tersembunyi" id="widgetIklanIsi">per hari, semua iklan</span>
+          </button>
+          <button type="button" class="kartu kpi" data-buka-halaman="halamanIklan">
+            <span class="kpi-label">Iklan perlu dikerjakan</span>
+            <span class="kpi-angka" id="widgetIklanRugi">-</span>
+            <span class="kpi-ket">Langkahnya ada di bawah</span>
+            <span class="kpi-buka">Analisis Iklan <svg class="ikon" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span>
+          </button>
+          <button type="button" class="kartu kpi" data-buka-halaman="halamanKalkulator">
+            <span class="kpi-label">Untung penjualan</span>
+            <span class="kpi-angka" id="widgetUntung">-</span>
+            <span class="kpi-ket" id="widgetKalkulatorKosong">Belum ada data penjualan.</span>
+            <span class="kpi-ket tersembunyi" id="widgetKalkulatorIsi">Margin <span id="widgetMargin">-</span> · <span id="widgetPeriode"></span></span>
+            <span class="kpi-buka">Kalkulator <svg class="ikon" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span>
+          </button>
+        </div>
         <div class="kartu kartu-tugas" id="kartuTugas">
           <div class="tugas-kepala">
             <h2>Tugas Minggu Ini</h2>
@@ -99,59 +120,6 @@
             <div id="saranIklanIsi"></div>
           </details>
           <p class="keterangan tugas-cara">Semua perubahan iklan dilakukan di Seller Centre → Iklan Shopee.</p>
-        </div>
-        <div class="grid-widget">
-          <div class="widget-kartu widget-aktif">
-            <div class="widget-kartu-atas">
-              <span class="widget-ikon">
-                <svg class="ikon" viewBox="0 0 24 24"><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24L4 3a1 1 0 0 0-1 1l.24 5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.82Z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></svg>
-              </span>
-              <h3>Kalkulator Margin</h3>
-            </div>
-            <div id="widgetKalkulatorKosong">
-              <p class="keterangan">Belum ada data. Data penjualan diambil otomatis dari Shopee.</p>
-            </div>
-            <p id="widgetPeriode" class="widget-periode tersembunyi"></p>
-            <div id="widgetKalkulatorIsi" class="tersembunyi widget-statistik-baris">
-              <div>
-                <div class="label-ringkasan">Total Untung</div>
-                <div class="angka-ringkasan" id="widgetUntung">Rp 0</div>
-              </div>
-              <div>
-                <div class="label-ringkasan">Margin Rata-rata</div>
-                <div class="angka-ringkasan" id="widgetMargin">-</div>
-              </div>
-            </div>
-            <button type="button" class="tombol tombol-utama tombol-lebar" data-buka-halaman="halamanKalkulator">Buka Kalkulator</button>
-          </div>
-
-          <div class="widget-kartu widget-aktif">
-            <div class="widget-kartu-atas">
-              <span class="widget-ikon">
-                <svg class="ikon" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m7 15 4-5 4 3 5-7"/></svg>
-              </span>
-              <h3>Analisis Iklan</h3>
-            </div>
-            <div id="widgetIklanKosong">
-              <p class="keterangan">Lihat iklan mana yang untung dan mana yang rugi.</p>
-            </div>
-            <div id="widgetIklanIsi" class="tersembunyi widget-statistik-baris">
-              <div>
-                <div class="label-ringkasan">Biaya Iklan</div>
-                <div class="angka-ringkasan" id="widgetIklanBiaya">Rp 0</div>
-              </div>
-              <div>
-                <div class="label-ringkasan">Untung Toko Minggu Lalu</div>
-                <div class="angka-ringkasan" id="widgetIklanUntung">-</div>
-              </div>
-              <div>
-                <div class="label-ringkasan">Perlu Tindakan</div>
-                <div class="angka-ringkasan" id="widgetIklanRugi">0</div>
-              </div>
-            </div>
-            <button type="button" class="tombol tombol-utama tombol-lebar" data-buka-halaman="halamanIklan">Buka Analisis Iklan</button>
-          </div>
-        </div>
         </div>
       </section>
 
@@ -223,23 +191,25 @@
       <p id="catatanPerkiraan" class="catatan-perkiraan tersembunyi"></p>
 
       <div class="kartu" id="kartuTren">
-        <div class="baris-filter">
-          <div class="baris-filter-judul">
-            <h2>
-              <svg class="ikon" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 16V11"/><path d="M11 16V7"/><path d="M15 16v-3"/><path d="M19 16V9"/></svg>
-              Tren Penjualan Harian
-            </h2>
-          </div>
-          <div class="pill-filter-row pill-filter-row-rapat" role="group" aria-label="Ukuran yang ditampilkan">
+        <div class="grafik-kepala">
+          <h2>Tren penjualan harian</h2>
+          <div class="segmen" role="group" aria-label="Ukuran yang ditampilkan">
             <button type="button" class="pill-filter aktif" data-metrik="omzet">Omzet</button>
             <button type="button" class="pill-filter" data-metrik="untung">Untung</button>
             <button type="button" class="pill-filter" data-metrik="pesanan">Pesanan</button>
             <button type="button" class="pill-filter" data-metrik="pcs">Pcs</button>
           </div>
         </div>
-        <div class="legenda-tren" id="legendaTren"></div>
-        <div class="area-grafik" id="areaGrafikTren"></div>
-        <div class="tooltip-grafik tersembunyi" id="tooltipTren" role="status"></div>
+        <div class="grafik-stat" id="statTren"></div>
+        <div class="legenda" id="legendaTren"></div>
+        <div class="plot">
+          <div id="areaGrafikTren"></div>
+          <div class="tip tersembunyi" id="tooltipTren" role="status"></div>
+        </div>
+        <details class="details-dalam lihat-angka">
+          <summary>Lihat angkanya</summary>
+          <div class="gulir"><table class="angka" id="tabelAngkaTren"></table></div>
+        </details>
       </div>
 
       <div class="kartu">
@@ -383,6 +353,10 @@
             <h2>Untung toko per minggu</h2>
             <p class="aturan-mingguan" id="aturanMingguan"></p>
             <div class="grafik-mingguan" id="grafikMingguan"></div>
+            <details class="details-dalam lihat-angka tersembunyi" id="angkaMingguan">
+              <summary>Lihat angkanya</summary>
+              <div class="gulir"><table class="angka" id="tabelAngkaMingguan"></table></div>
+            </details>
           </div>
 
           <!-- Hanya untuk data dari file CSV (cadangan): isi Modal Harian dan Target ROAS sendiri. -->

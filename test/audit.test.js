@@ -89,7 +89,9 @@ test('ad-only weeks retain spending without inventing profit, and gaps prevent c
   assert.equal(result.minggu[0].biayaIklan, 100000);
   assert.equal(result.minggu[0].untungSetelahIklan, null);
   assert.equal(result.minggu[0].lengkap, false);
-  const svg = vm.runInNewContext(`(${sourceFunction('public/app.js','grafikMingguanSvg')})(weeks)`, { ...context, weeks: result.minggu });
+  const helpers = ['skalaBulat', 'angkaGrafik', 'jalurBatang', 'rentangMinggu'].map(n => sourceFunction('public/app.js', n)).join('\n');
+  const svg = vm.runInNewContext(`${dates}${helpers}(${sourceFunction('public/app.js','grafikMingguanSvg')})(weeks)`,
+    { ...context, weeks: result.minggu, tanggalSingkat: iso => iso });
   assert.match(svg, /batang-iklan/); assert.match(svg, />\?<\/text>/); assert.doesNotMatch(svg, /NaN|batang-rugi/);
   const weeks = ['2026-07-06','2026-07-13','2026-07-27','2026-08-03'].map(mulai => ({ mulai, lengkap:true, iklanLengkap:true, biayaIklan:100, untungSetelahIklan:100 }));
   const rule = vm.runInNewContext(`${dates}${sourceFunction('public/app.js','aturanMingguan')};aturanMingguan({minggu:weeks})`, { weeks });

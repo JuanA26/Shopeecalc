@@ -159,6 +159,7 @@ function bukaHalaman(idHalaman) {
   document.querySelectorAll('.halaman').forEach((s) => s.classList.toggle('aktif', s.id === idHalaman));
   // Grafik tren diukur dari lebar kartunya — gambar ulang begitu halamannya kelihatan.
   if (idHalaman === 'halamanKalkulator' && dataHasilUpload) renderTren();
+  if (idHalaman === 'halamanIklan') gambarGrafikMingguan();
   if (idHalaman === 'halamanPengaturan') muatDiagnostik();
 }
 
@@ -619,111 +620,176 @@ function skalaBulat(min, maks, jumlahTik = 4) {
 
 const namaHari = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' });
 
+// Angka sumbu/label grafik: "18,7 jt", "500 rb", "−1,6 jt" (tanpa "Rp"; judul grafik sudah menyebut Rp).
+function angkaGrafik(v) {
+  const a = Math.abs(v), s = v < 0 ? '−' : '';
+  if (a >= 1e6) return s + (a / 1e6).toFixed(1).replace('.', ',').replace(/,0$/, '') + ' jt';
+  if (a >= 1e3) return s + Math.round(a / 1e3) + ' rb';
+  return s + Math.round(a);
+}
+const angkaPenuh = (v) => (v < 0 ? '−' : '') + Math.round(Math.abs(v)).toLocaleString('id-ID');
+const svgEl = (tag, attrs = {}, teks) => {
+  const n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  if (teks !== undefined) n.textContent = teks;
+  return n;
+};
+// Kolom dengan ujung membulat 4px di sisi data (atas untuk positif, bawah untuk negatif), rata di garis nol.
+function jalurBatang(x0, lebar, y0, y1) {
+  if (Math.abs(y1 - y0) < 0.5) return '';
+  const x1 = x0 + lebar, r = Math.min(4, lebar / 2, Math.abs(y1 - y0)), arah = y1 < y0 ? 1 : -1;
+  return `M${x0},${y0} V${y1 + arah * r} Q${x0},${y1} ${x0 + r},${y1} H${x1 - r} Q${x1},${y1} ${x1},${y1 + arah * r} V${y0} Z`;
+}
+// Isi tooltip grafik (teks lewat textContent): [label, nilai, warna kunci?, 'garis'?].
+function isiTooltipGrafik(tip, judul, baris) {
+  tip.replaceChildren();
+  const s = document.createElement('strong'); s.textContent = judul; tip.appendChild(s);
+  for (const [label, nilai, warna, bentuk] of baris) {
+    const r = document.createElement('div'); r.className = 'r';
+    const a = document.createElement('span');
+    if (warna) { const k = document.createElement('i'); k.className = 'kunci' + (bentuk === 'garis' ? ' garis' : ''); k.style.background = warna; a.appendChild(k); }
+    a.appendChild(document.createTextNode(label));
+    const b = document.createElement('b'); b.textContent = nilai;
+    r.append(a, b); tip.appendChild(r);
+  }
+}
+// Desktop: di samping kolom yang ditunjuk. HP (< 520 px): panel di bawah grafik, supaya jari dan
+// tooltip tidak menutupi batangnya.
+function letakkanTooltipGrafik(tip, plot, px, lebarKolom) {
+  tip.classList.remove('tersembunyi');
+  const sempit = plot.clientWidth < 520;
+  tip.classList.toggle('statis', sempit);
+  if (sempit) { tip.style.left = tip.style.top = ''; return; }
+  const w = tip.offsetWidth, W = plot.clientWidth;
+  const kanan = px + lebarKolom / 2 + 12;
+  tip.style.left = `${kanan + w <= W ? kanan : Math.max(0, px - lebarKolom / 2 - 12 - w)}px`;
+  tip.style.top = '0px';
+}
+// "Lihat angkanya": tabel angka di bawah tiap grafik (sel lewat textContent).
+function isiTabelAngka(tabel, kepala, baris, catatan = '') {
+  tabel.replaceChildren();
+  if (catatan) tabel.createCaption().textContent = catatan;
+  const th = tabel.createTHead().insertRow();
+  kepala.forEach((k) => { const c = document.createElement('th'); c.textContent = k; th.appendChild(c); });
+  const tb = tabel.createTBody();
+  baris.forEach((b) => { const r = tb.insertRow(); b.forEach((v) => { r.insertCell().textContent = v; }); });
+}
+const warnaCss = (nama) => getComputedStyle(document.documentElement).getPropertyValue(nama).trim();
+
 function renderTren() {
   const kartu = document.getElementById('kartuTren');
   const area = document.getElementById('areaGrafikTren');
+  const tip = document.getElementById('tooltipTren');
   const daftar = dataHasilUpload ? dataTrenHarian() : [];
-  document.getElementById('tooltipTren').classList.add('tersembunyi');
+  tip.classList.add('tersembunyi');
   // Satu hari (mis. "Hari ini") tidak butuh grafik — angka ringkasan di atas sudah menjawabnya.
   kartu.classList.toggle('tersembunyi', daftar.length < 2);
   if (daftar.length < 2) return;
 
   const m = metrikTren;
   const info = METRIK_TREN[m];
-  const fmt = (v) => (info.rupiah ? formatRupiahRingkas(v) : Math.round(v).toLocaleString('id-ID'));
+  const fmt = (v) => (info.rupiah ? angkaGrafik(v) : Math.round(v).toLocaleString('id-ID'));
+  const fmtPenuh = (v) => (info.rupiah ? formatRupiah(v) : Math.round(v).toLocaleString('id-ID'));
   const adaRata = daftar.length >= 10;
   const adaPerkiraan = m === 'untung' && daftar.some((h) => h.perkiraan);
-
-  const lebar = Math.max(300, area.clientWidth || 600);
-  const tinggi = 240;
-  const kiri = info.rupiah ? 62 : 40, kanan = 8, atas = 10, bawah = 26;
   const nilai = daftar.map((h) => h[m]);
-  const { bawah: yMin, atas: yMaks, tik } = skalaBulat(Math.min(0, ...nilai), Math.max(0, ...nilai));
-  const y = (v) => atas + (tinggi - atas - bawah) * (1 - (v - yMin) / (yMaks - yMin));
-  const langkahX = (lebar - kiri - kanan) / daftar.length;
-  const lebarBatang = Math.max(2, Math.min(28, langkahX - 2)); // selalu ada celah ≥ 2px antar kolom
-  const x = (i) => kiri + langkahX * i + langkahX / 2;
-  const radius = Math.min(4, lebarBatang / 2);
 
-  // Kolom dengan ujung membulat 4px di sisi data (atas untuk positif, bawah untuk negatif).
-  const batang = (i, v) => {
-    const x0 = x(i) - lebarBatang / 2, x1 = x0 + lebarBatang, y0 = y(0), y1 = y(v);
-    if (Math.abs(y1 - y0) < 0.5) return '';
-    const r = Math.min(radius, Math.abs(y1 - y0));
-    const arah = y1 < y0 ? 1 : -1; // 1 = ke atas
-    return `M${x0},${y0} V${y1 + arah * r} Q${x0},${y1} ${x0 + r},${y1} H${x1 - r} Q${x1},${y1} ${x1},${y1 + arah * r} V${y0} Z`;
-  };
-
-  const garisGrid = tik.map((v) => `
-    <line x1="${kiri}" x2="${lebar - kanan}" y1="${y(v)}" y2="${y(v)}" class="${v === 0 ? 'grafik-nol' : 'grafik-grid'}"/>
-    <text x="${kiri - 6}" y="${y(v) + 4}" class="grafik-label" text-anchor="end">${escapeHtml(fmt(v))}</text>`).join('');
-
-  const setiap = Math.ceil(daftar.length / Math.max(2, Math.floor((lebar - kiri) / 44)));
-  // Label dihitung mundur dari hari terakhir supaya hari terbaru selalu berlabel.
-  const labelX = daftar.map((h, i) => {
-    if ((daftar.length - 1 - i) % setiap !== 0) return '';
-    const [, bl, tg] = h.tanggal.split('-');
-    return `<text x="${x(i)}" y="${tinggi - 8}" class="grafik-label" text-anchor="middle">${Number(tg)}/${Number(bl)}</text>`;
-  }).join('');
-
-  const kolom = daftar.map((h, i) => {
-    const kelas = h[m] < 0 ? 'grafik-batang negatif' : m === 'untung' && h.perkiraan ? 'grafik-batang perkiraan' : 'grafik-batang';
-    return `<path d="${batang(i, h[m])}" class="${kelas}" data-i="${i}"/>`;
-  }).join('');
-
-  let garisRata = '';
-  if (adaRata) {
-    const titik = daftar.map((h, i) => (h.rata[m] === null ? null : `${x(i)},${y(h.rata[m])}`)).filter(Boolean);
-    garisRata = `<polyline points="${titik.join(' ')}" class="grafik-rata"/>`;
+  // Tiga angka di atas grafik: total, rata-rata per hari, hari terbaik.
+  const total = nilai.reduce((t, v) => t + v, 0);
+  const iMaks = nilai.indexOf(Math.max(...nilai));
+  const stat = document.getElementById('statTren');
+  stat.replaceChildren();
+  for (const [label, isi] of [[`Total ${info.label.toLowerCase()}`, fmtPenuh(total)], ['Rata-rata per hari', fmtPenuh(total / daftar.length)],
+    ['Hari terbaik', `${tanggalSingkat(daftar[iMaks].tanggal)} · ${fmt(nilai[iMaks])}`]]) {
+    const d = document.createElement('div'), s = document.createElement('span'), b = document.createElement('b');
+    s.textContent = label; b.textContent = isi; d.append(s, b); stat.appendChild(d);
   }
 
-  // Area sentuh selebar satu hari penuh (lebih besar dari kolomnya) untuk hover/ketuk.
-  const sentuh = daftar.map((h, i) =>
-    `<rect x="${kiri + langkahX * i}" y="${atas}" width="${langkahX}" height="${tinggi - atas - bawah}" class="grafik-sentuh" data-i="${i}"/>`).join('');
+  const lebar = Math.max(280, area.clientWidth || 600);
+  const sempit = lebar < 520;
+  const tinggi = sempit ? 210 : 250;
+  const kiri = info.rupiah ? 46 : 34, kanan = 6, atas = 24, bawah = 26;
+  const { bawah: yMin, atas: yMaks, tik } = skalaBulat(Math.min(0, ...nilai), Math.max(0, ...nilai), sempit ? 3 : 4);
+  const y = (v) => atas + (tinggi - atas - bawah) * (1 - (v - yMin) / (yMaks - yMin));
+  const langkahX = (lebar - kiri - kanan) / daftar.length;
+  const lebarBatang = Math.max(2, Math.min(24, langkahX * 0.62)); // selalu ada celah antar kolom
+  const x = (i) => kiri + langkahX * i + langkahX / 2;
 
-  area.innerHTML = `<svg viewBox="0 0 ${lebar} ${tinggi}" width="${lebar}" height="${tinggi}" role="img"
-      aria-label="${escapeHtml(info.label)} per hari, ${escapeHtml(daftar[0].tanggal)} sampai ${escapeHtml(daftar[daftar.length - 1].tanggal)}">
-      ${garisGrid}${kolom}${garisRata}${labelX}${sentuh}</svg>`;
+  const svg = svgEl('svg', { viewBox: `0 0 ${lebar} ${tinggi}`, width: lebar, height: tinggi, role: 'img',
+    'aria-label': `${info.label} per hari, ${daftar[0].tanggal} sampai ${daftar[daftar.length - 1].tanggal}` });
+  for (const v of tik) {
+    svg.appendChild(svgEl('line', { x1: kiri, x2: lebar - kanan, y1: y(v), y2: y(v), class: v === 0 ? 'nol' : 'grid' }));
+    svg.appendChild(svgEl('text', { x: kiri - 8, y: y(v) + 4, 'text-anchor': 'end' }, v === 0 ? '0' : fmt(v)));
+  }
+  const silang = svgEl('line', { x1: 0, x2: 0, y1: atas - 6, y2: tinggi - bawah, class: 'silang', visibility: 'hidden' });
+  svg.appendChild(silang);
+  const kolom = daftar.map((h, i) => {
+    const kelas = h[m] < 0 ? 'kolom negatif' : m === 'untung' && h.perkiraan ? 'kolom perkiraan' : 'kolom';
+    const p = svgEl('path', { d: jalurBatang(x(i) - lebarBatang / 2, lebarBatang, y(0), y(h[m])), class: kelas });
+    svg.appendChild(p);
+    return p;
+  });
+  if (adaRata) {
+    const titik = daftar.map((h, i) => (h.rata[m] === null ? null : [x(i), y(h.rata[m])])).filter(Boolean);
+    svg.appendChild(svgEl('polyline', { points: titik.map((t) => t.join(',')).join(' '), class: 'garis-rata' }));
+    const [ex, ey] = titik[titik.length - 1];
+    svg.appendChild(svgEl('circle', { cx: ex, cy: ey, r: 4, class: 'titik-akhir' }));
+  }
+  // Satu label angka saja: hari terbaik (sisanya lewat sumbu, tooltip, dan tabel).
+  if (nilai[iMaks] > 0) {
+    const lx = Math.min(Math.max(x(iMaks), kiri + 20), lebar - kanan - 20);
+    svg.appendChild(svgEl('text', { x: lx, y: y(nilai[iMaks]) - 8, 'text-anchor': 'middle', class: 'nilai' }, fmt(nilai[iMaks])));
+  }
+  // Tanggal tiap 7 hari, dihitung mundur dari hari terakhir supaya hari terbaru selalu berlabel.
+  daftar.forEach((h, i) => {
+    if ((daftar.length - 1 - i) % 7 !== 0) return;
+    svg.appendChild(svgEl('text', { x: x(i), y: tinggi - 6, 'text-anchor': 'middle' }, tanggalSingkat(h.tanggal)));
+  });
 
-  document.getElementById('legendaTren').innerHTML =
-    `<span><span class="swatch-batang"></span>${escapeHtml(info.label)} per hari</span>` +
-    (adaRata ? '<span><span class="swatch-garis"></span>Rata-rata 7 hari</span>' : '') +
-    (adaPerkiraan ? '<span><span class="swatch-batang perkiraan"></span>Ada perkiraan (dana belum cair)</span>' : '') +
-    (m === 'untung' && daftar.some((h) => h.belumHpp) ? '<span class="teks-redup">Produk tanpa HPP tidak dihitung</span>' : '');
-
-  const tooltip = document.getElementById('tooltipTren');
-  const svg = area.querySelector('svg');
+  const plot = area.parentElement;
   const tampilkan = (i) => {
     const h = daftar[i];
-    svg.querySelectorAll('.grafik-batang').forEach((b) => b.classList.toggle('redup', b.dataset.i !== String(i)));
+    kolom.forEach((k, j) => k.classList.toggle('aktif', j === i));
+    silang.setAttribute('x1', x(i)); silang.setAttribute('x2', x(i)); silang.setAttribute('visibility', 'visible');
     const approx = h.perkiraan ? '≈ ' : '';
-    tooltip.innerHTML = `<strong>${escapeHtml(namaHari(h.tanggal))}</strong>
-      <div><span>Omzet</span><span>${formatRupiah(h.omzet)}</span></div>
-      <div><span>Untung</span><span>${approx}${formatRupiah(h.untung)}</span></div>
-      <div><span>Pesanan</span><span>${h.pesanan}</span></div>
-      <div><span>Pcs</span><span>${h.pcs}</span></div>
-      ${h.rata[m] !== null && adaRata ? `<div class="teks-redup"><span>Rata-rata 7 hari</span><span>${escapeHtml(fmt(h.rata[m]))}</span></div>` : ''}
-      ${h.belumHpp ? `<div class="teks-redup">${h.belumHpp} baris belum ada HPP</div>` : ''}`;
-    tooltip.classList.remove('tersembunyi');
-    const kotak = area.getBoundingClientRect();
-    const skala = kotak.width / lebar;
-    const px = x(i) * skala;
-    const lebarTip = tooltip.offsetWidth;
-    // Di samping kolom yang ditunjuk (kanan, atau kiri kalau mepet), di bagian atas plot.
-    const kananKolom = px + (lebarBatang * skala) / 2 + 10;
-    const kiriTip = kananKolom + lebarTip <= kotak.width ? kananKolom : Math.max(0, px - (lebarBatang * skala) / 2 - 10 - lebarTip);
-    tooltip.style.left = `${area.offsetLeft + kiriTip}px`;
-    tooltip.style.top = `${area.offsetTop + 4}px`;
+    const baris = [['Omzet', formatRupiah(h.omzet)], ['Untung', approx + formatRupiah(h.untung)], ['Pesanan', String(h.pesanan)], ['Pcs', String(h.pcs)]]
+      .map((r) => (r[0] === info.label ? [...r, warnaCss('--grafik-batang')] : r));
+    if (adaRata && h.rata[m] !== null) baris.push(['Rata-rata 7 hari', fmtPenuh(h.rata[m]), warnaCss('--grafik-rata'), 'garis']);
+    if (h.belumHpp) baris.push([`${h.belumHpp} baris belum ada HPP`, '']);
+    isiTooltipGrafik(tip, namaHari(h.tanggal), baris);
+    letakkanTooltipGrafik(tip, plot, x(i), lebarBatang);
   };
   const sembunyikan = () => {
-    tooltip.classList.add('tersembunyi');
-    svg.querySelectorAll('.grafik-batang').forEach((b) => b.classList.remove('redup'));
+    tip.classList.add('tersembunyi');
+    silang.setAttribute('visibility', 'hidden');
+    kolom.forEach((k) => k.classList.remove('aktif'));
   };
-  svg.querySelectorAll('.grafik-sentuh').forEach((r) => {
-    r.addEventListener('pointerenter', () => tampilkan(Number(r.dataset.i)));
-    r.addEventListener('click', () => tampilkan(Number(r.dataset.i)));
+  // Area sentuh selebar satu hari penuh (lebih besar dari kolomnya) untuk hover/ketuk/fokus.
+  daftar.forEach((h, i) => {
+    const r = svgEl('rect', { x: kiri + langkahX * i, y: atas - 6, width: langkahX, height: tinggi - atas - bawah + 6, class: 'sentuh' });
+    r.addEventListener('pointerenter', () => tampilkan(i));
+    r.addEventListener('click', () => tampilkan(i));
+    svg.appendChild(r);
   });
-  svg.addEventListener('pointerleave', sembunyikan);
+  svg.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') sembunyikan(); });
+  area.replaceChildren(svg);
+
+  const legenda = document.getElementById('legendaTren');
+  legenda.replaceChildren();
+  const kunci = (warna, teks, kelas = '') => {
+    const s = document.createElement('span'), i = document.createElement('i');
+    i.style.background = warnaCss(warna); i.className = kelas; s.append(i, document.createTextNode(teks)); legenda.appendChild(s);
+  };
+  kunci('--grafik-batang', `${info.label} per hari`);
+  if (adaRata) kunci('--grafik-rata', 'Rata-rata 7 hari', 'garis');
+  if (adaPerkiraan) kunci('--grafik-batang', 'Ada perkiraan (dana belum cair)', 'pudar');
+  if (m === 'untung' && daftar.some((h) => h.belumHpp)) {
+    const s = document.createElement('span'); s.className = 'teks-redup'; s.textContent = 'Produk tanpa HPP tidak dihitung'; legenda.appendChild(s);
+  }
+
+  const sat = info.rupiah ? ' (Rp)' : '';
+  isiTabelAngka(document.getElementById('tabelAngkaTren'), ['Tanggal', info.label + sat, 'Rata-rata 7 hari' + sat],
+    daftar.map((h) => [tanggalSingkat(h.tanggal), angkaPenuh(h[m]), h.rata[m] === null ? '–' : angkaPenuh(h.rata[m])]));
 }
 
 document.querySelectorAll('.pill-filter[data-metrik]').forEach((btn) => {
@@ -733,10 +799,14 @@ document.querySelectorAll('.pill-filter[data-metrik]').forEach((btn) => {
     renderTren();
   });
 });
+// Grafik diukur dari lebar kartunya: gambar ulang saat lebar layar berubah (HP diputar, jendela diubah).
 let jedaResizeTren = null;
 window.addEventListener('resize', () => {
   clearTimeout(jedaResizeTren);
-  jedaResizeTren = setTimeout(() => { if (dataHasilUpload) renderTren(); }, 150);
+  jedaResizeTren = setTimeout(() => {
+    if (dataHasilUpload) renderTren();
+    gambarGrafikMingguan();
+  }, 150);
 });
 
 // Nilai satu baris untuk kolom tertentu, dipakai buat urutkan tabel Data.
@@ -1560,31 +1630,85 @@ function aturanMingguan(data, banding) {
   return { kelas: '', teks: 'Pertahankan. Cek lagi minggu depan.', detail };
 }
 
-function grafikMingguanSvg(minggu) {
-  const n = minggu.length;
-  // Minggu rugi: label angkanya di bawah batang, jadi beri ruang supaya tidak menimpa tanggal.
-  const adaRugi = minggu.some((t) => t.untungSetelahIklan < 0);
-  const W = 720, H = adaRugi ? 184 : 170, padKiri = 8, padBawah = adaRugi ? 40 : 26, padAtas = 14;
-  const lebarSlot = (W - padKiri * 2) / n;
-  const maks = Math.max(1, ...minggu.map((t) => Math.max(Math.abs(t.untungSetelahIklan), t.biayaIklan, t.untungKotor)));
-  const tinggiArea = H - padAtas - padBawah;
-  const nol = padAtas + tinggiArea * (maks / (maks + Math.max(0, -Math.min(0, ...minggu.map((t) => t.untungSetelahIklan)))));
-  const skala = (v) => (nol - padAtas) * (v / maks);
-  let isi = `<line class="sumbu" x1="${padKiri}" x2="${W - padKiri}" y1="${nol}" y2="${nol}"/>`;
+// "7–13 Sep", atau "31 Agu – 6 Sep" kalau bulannya beda.
+function rentangMinggu(mulai, akhir) {
+  return mulai.slice(5, 7) === akhir.slice(5, 7) ? `${Number(mulai.slice(8))}–${tanggalSingkat(akhir)}` : `${tanggalSingkat(mulai)} – ${tanggalSingkat(akhir)}`;
+}
+
+// Grafik untung toko per minggu: per minggu satu batang untung setelah iklan (hijau, merah kalau rugi)
+// dan satu batang biaya iklan (biru). Label angka hanya di batang untung. Minggu belum lengkap pucat.
+// Area sentuh selebar satu minggu (data-i) untuk tooltip, lihat gambarGrafikMingguan().
+function grafikMingguanSvg(minggu, W = 720) {
+  const n = minggu.length, sempit = W < 520;
+  const H = sempit ? 240 : 264, kiri = 46, kanan = 6, atas = 24, bawah = 50;
+  const semua = minggu.flatMap((t) => [t.untungSetelahIklan, t.biayaIklan]).filter((v) => v !== null && Number.isFinite(v));
+  const { bawah: yMin, atas: yMaks, tik } = skalaBulat(Math.min(0, ...semua), Math.max(0, ...semua), sempit ? 3 : 4);
+  const y = (v) => atas + (H - atas - bawah) * (1 - (v - yMin) / (yMaks - yMin));
+  const slot = (W - kiri - kanan) / n, lebar = Math.min(24, slot * 0.26), celah = 4;
+  const cx = (i) => kiri + slot * i + slot / 2;
+  let isi = `<rect class="pita" x="0" y="${atas - 8}" width="${slot}" height="${H - atas - bawah + 8}" rx="8" visibility="hidden"/>`;
+  for (const v of tik) {
+    isi += `<line class="${v === 0 ? 'nol' : 'grid'}" x1="${kiri}" x2="${W - kanan}" y1="${y(v)}" y2="${y(v)}"/>` +
+      `<text x="${kiri - 8}" y="${y(v) + 4}" text-anchor="end">${v === 0 ? '0' : escapeHtml(angkaGrafik(v))}</text>`;
+  }
   minggu.forEach((t, i) => {
-    const x = padKiri + i * lebarSlot;
-    const lebar = Math.min(26, lebarSlot * 0.32);
-    const xU = x + lebarSlot / 2 - lebar - 2, xI = x + lebarSlot / 2 + 2;
-    const hU = skala(Math.abs(t.untungSetelahIklan)), hI = skala(t.biayaIklan);
-    const kelasBelum = t.lengkap && t.iklanLengkap ? '' : ' batang-belum';
-    const yU = t.untungSetelahIklan >= 0 ? nol - hU : nol;
-    if (t.untungSetelahIklan !== null) isi += `<rect class="${t.untungSetelahIklan >= 0 ? 'batang-untung' : 'batang-rugi'}${kelasBelum}" x="${xU}" y="${yU}" width="${lebar}" height="${Math.max(hU, 1)}" rx="2"/>`;
-    isi += `<rect class="batang-iklan${kelasBelum}" x="${xI}" y="${nol - hI}" width="${lebar}" height="${Math.max(hI, 1)}" rx="2"/>`;
-    isi += `<text class="nilai" x="${x + lebarSlot / 2}" y="${(t.untungSetelahIklan >= 0 ? yU : nol + hU) + (t.untungSetelahIklan >= 0 ? -4 : 12)}" text-anchor="middle">${t.untungSetelahIklan === null ? '?' : escapeHtml(formatRupiahRingkas(t.untungSetelahIklan).replace('Rp ', ''))}</text>`;
-    isi += `<text x="${x + lebarSlot / 2}" y="${H - 8}" text-anchor="middle">${labelMinggu(t.mulai)}</text>`;
+    const u = t.untungSetelahIklan, belum = t.lengkap && t.iklanLengkap ? '' : ' batang-belum';
+    const xU = cx(i) - celah / 2 - lebar, xI = cx(i) + celah / 2;
+    if (u !== null) isi += `<path class="${u >= 0 ? 'batang-untung' : 'batang-rugi'}${belum}" d="${jalurBatang(xU, lebar, y(0), y(u))}"/>`;
+    isi += `<path class="batang-iklan${belum}" d="${jalurBatang(xI, lebar, y(0), y(t.biayaIklan || 0))}"/>`;
+    const ly = u !== null && u < 0 ? y(u) + 15 : Math.min(y(Math.max(u || 0, 0)), y(t.biayaIklan || 0)) - 8;
+    isi += `<text class="nilai" x="${xU + lebar / 2}" y="${ly}" text-anchor="middle">${u === null ? '?' : escapeHtml(angkaGrafik(u))}</text>`;
+    const label = sempit ? tanggalSingkat(t.mulai) : rentangMinggu(t.mulai, geserHari(t.mulai, 6));
+    isi += `<text class="tgl" x="${cx(i)}" y="${H - 20}" text-anchor="middle">${escapeHtml(label)}</text>`;
+    if (belum) isi += `<text class="kecil" x="${cx(i)}" y="${H - 5}" text-anchor="middle">belum lengkap</text>`;
+    isi += `<rect class="sentuh" data-i="${i}" x="${kiri + slot * i}" y="0" width="${slot}" height="${H}"/>`;
   });
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Untung toko per minggu">${isi}</svg>
-    <div class="legenda-grafik"><span>Untung setelah iklan</span><span class="leg-iklan">Biaya iklan</span></div>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Untung toko per minggu">${isi}</svg>`;
+}
+
+// Gambar grafik mingguan selebar kartunya (dipanggil lagi saat halaman tampil atau layar berubah).
+let mingguGrafik = null;
+function gambarGrafikMingguan() {
+  const grafik = document.getElementById('grafikMingguan');
+  const minggu = mingguGrafik;
+  if (!grafik || !minggu || !minggu.length || !grafik.clientWidth) return;
+  const W = Math.max(280, grafik.clientWidth);
+  const kunci = (warna, teks, kelas = '') => `<span><i class="${kelas}" style="background:var(${warna})"></i>${teks}</span>`;
+  const adaRugi = minggu.some((t) => t.untungSetelahIklan !== null && t.untungSetelahIklan < 0);
+  const adaBelum = minggu.some((t) => !(t.lengkap && t.iklanLengkap));
+  grafik.innerHTML = '<div class="legenda">' + kunci('--grafik-untung', 'Untung setelah iklan') +
+      (adaRugi ? kunci('--grafik-rugi', 'Rugi setelah iklan') : '') + kunci('--grafik-iklan', 'Biaya iklan') +
+      (adaBelum ? kunci('--border-kuat', 'Minggu belum lengkap') : '') + '</div>' +
+    `<div class="plot">${grafikMingguanSvg(minggu, W)}<div class="tip tersembunyi" role="status"></div></div>` +
+    '<p class="catatan-grafik">Satu minggu = Senin sampai Minggu, menurut tanggal pesanan. Ketuk satu minggu untuk melihat angkanya.</p>';
+
+  const plot = grafik.querySelector('.plot'), svg = plot.querySelector('svg'), tip = plot.querySelector('.tip');
+  const pita = svg.querySelector('.pita');
+  const rp = (v) => (v === null || v === undefined ? '-' : formatRupiah(v));
+  svg.querySelectorAll('.sentuh').forEach((r) => {
+    const tampilkan = () => {
+      const t = minggu[Number(r.dataset.i)], u = t.untungSetelahIklan;
+      pita.setAttribute('x', r.getAttribute('x')); pita.setAttribute('visibility', 'visible');
+      isiTooltipGrafik(tip, `Minggu ${rentangMinggu(t.mulai, geserHari(t.mulai, 6))}${t.lengkap && t.iklanLengkap ? '' : ' (belum lengkap)'}`, [
+        ['Untung sebelum iklan', rp(t.untungKotor)],
+        ['Biaya iklan', rp(t.biayaIklan), warnaCss('--grafik-iklan')],
+        ['Untung setelah iklan', rp(u), warnaCss(u !== null && u < 0 ? '--grafik-rugi' : '--grafik-untung')],
+      ]);
+      letakkanTooltipGrafik(tip, plot, Number(r.getAttribute('x')) + Number(r.getAttribute('width')) / 2, Number(r.getAttribute('width')) * 0.6);
+    };
+    r.addEventListener('pointerenter', tampilkan);
+    r.addEventListener('click', tampilkan);
+  });
+  svg.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') { tip.classList.add('tersembunyi'); pita.setAttribute('visibility', 'hidden'); } });
+
+  const tabel = document.getElementById('tabelAngkaMingguan');
+  if (tabel) {
+    const angka = (v) => (v === null || v === undefined ? '?' : angkaPenuh(v));
+    isiTabelAngka(tabel, ['Minggu mulai', 'Untung sebelum iklan (Rp)', 'Biaya iklan (Rp)', 'Untung setelah iklan (Rp)'],
+      minggu.map((t) => [`${tanggalSingkat(t.mulai)}${t.lengkap && t.iklanLengkap ? '' : '*'}`, angka(t.untungKotor), angka(t.biayaIklan), angka(t.untungSetelahIklan)]),
+      adaBelum ? '* Minggu belum lengkap.' : '');
+    document.getElementById('angkaMingguan').classList.remove('tersembunyi');
+  }
 }
 
 function renderMingguan() {
@@ -1596,6 +1720,8 @@ function renderMingguan() {
     aturanEl.className = 'aturan-mingguan';
     aturanEl.innerHTML = 'Untung toko per minggu muncul setelah data penjualan masuk.';
     grafik.innerHTML = '';
+    mingguGrafik = null;
+    document.getElementById('angkaMingguan').classList.add('tersembunyi');
     return null;
   }
   // Grafik: sampai 8 minggu terakhir. Aturan satu kalimat di atasnya (dipakai juga untuk keputusan modal).
@@ -1603,8 +1729,8 @@ function renderMingguan() {
   aturanTerakhir = aturan;
   aturanEl.className = `aturan-mingguan ${aturan.kelas}`;
   aturanEl.innerHTML = `<span>${escapeHtml(aturan.teks)}</span>` + (aturan.detail ? `<small>${escapeHtml(aturan.detail)}</small>` : '');
-  grafik.innerHTML = grafikMingguanSvg(data.minggu.slice(-8)) +
-    '<p class="catatan-grafik">Satu batang = Senin–Minggu, menurut tanggal pesanan. Batang pucat = minggu belum lengkap.</p>';
+  mingguGrafik = data.minggu.slice(-8);
+  gambarGrafikMingguan();
   return { data, lengkapTerakhir: [...data.minggu].reverse().find((t) => t.lengkap) };
 }
 
@@ -1631,17 +1757,15 @@ function renderRingkasanIklan(r) {
 
   // Widget "Analisis Iklan" di Dashboard: biaya iklan sekarang, untung toko minggu lalu, perlu diubah.
   const kep = keputusanBerjalan();
-  const wUntung = document.getElementById('widgetIklanUntung');
-  const mingguan = untungTokoPerMinggu();
-  const lengkap = mingguan ? mingguan.minggu.filter((t) => t.lengkap) : [];
-  const akhir = lengkap[lengkap.length - 1];
-  wUntung.textContent = akhir ? formatRupiah(akhir.untungSetelahIklan) : '-';
-  wUntung.classList.toggle('angka-negatif', !!akhir && akhir.untungSetelahIklan < 0);
   const perluTindakan = kep.baris.filter((b) => PERLU_TINDAKAN.has(b.keputusan)).length;
-  document.getElementById('widgetIklanBiaya').textContent = kep.modalSekarang > 0 ? `${formatRupiahRingkas(kep.modalSekarang)}/hari` : formatRupiah(r.totalBiaya);
-  document.getElementById('widgetIklanRugi').textContent = `${perluTindakan} dari ${kep.baris.length} iklan`;
+  document.getElementById('widgetIklanBiaya').textContent = kep.modalSekarang > 0 ? formatRupiahRingkas(kep.modalSekarang) : formatRupiah(r.totalBiaya);
+  const ketBiaya = document.getElementById('widgetIklanIsi');
+  ketBiaya.textContent = kep.modalSekarang > 0 ? `per hari, ${kep.baris.length} iklan` : 'total periode data iklan';
+  const elPerlu = document.getElementById('widgetIklanRugi');
+  elPerlu.textContent = `${perluTindakan} dari ${kep.baris.length}`;
+  elPerlu.classList.toggle('perlu', perluTindakan > 0);
   document.getElementById('widgetIklanKosong').classList.add('tersembunyi');
-  document.getElementById('widgetIklanIsi').classList.remove('tersembunyi');
+  ketBiaya.classList.remove('tersembunyi');
 }
 
 // Nilai yang belum bisa dihitung (null) selalu di bawah, apa pun arah urutnya.
@@ -2732,15 +2856,28 @@ function modePengganti(pg) {
   if (!t) return 'GMV Max Auto (cek setelah 7–14 hari)';
   return `GMV Max ROAS, Target ${formatRoas(t.target)}${t.pasti ? '' : ' (cek batas Shopee)'}`;
 }
-function ketPengganti(b) {
-  const bukti = buktiPengganti(b.pengganti);
-  return `${bukti[0].toUpperCase()}${bukti.slice(1)} Cek stok dulu. ${modePengganti(b.pengganti)}, Periode Tidak Terbatas, Modal Harian ${rupiahPendek(MODAL_IKLAN_BARU)}.`;
+// Setelan iklan pengganti sebagai kotak kecil (yang diketik di Seller Centre).
+function setelanPengganti(pg) {
+  const t = targetPengganti(pg);
+  const kotak = t
+    ? [['GMV Max', 'ROAS'], ['Target', `${formatRoas(t.target)}${t.pasti ? '' : ' (cek batas Shopee)'}`]]
+    : [['GMV Max', 'Auto'], ['Cek', 'setelah 7–14 hari']];
+  kotak.push(['Modal Harian', rupiahPendek(MODAL_IKLAN_BARU)], ['Periode', 'Tidak Terbatas']);
+  return '<div class="setelan-chip">' + kotak.map(([k, v]) => `<span>${k} <b>${escapeHtml(v)}</b></span>`).join('') + '</div>';
 }
-const namaPengganti = (b) => `<strong title="${escapeHtml(b.pengganti.nama)}">${escapeHtml(namaRapi(b.pengganti.nama, 40))}</strong>`;
+const IKON_MATIKAN = '<svg class="ikon" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><path d="M12 2v10"/></svg>';
+const IKON_PASANG = '<svg class="ikon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>';
 function langkahGanti(b) {
-  return `<ol class="ganti-daftar"><li>Matikan: <strong title="${escapeHtml(b.p.namaProduk)}">${escapeHtml(namaRapi(b.p.namaProduk, 40))}</strong>` +
-    `<small class="langkah-ket">${escapeHtml(alasanTugas(b))}</small></li>` +
-    `<li>Pasang iklan baru: ${namaPengganti(b)}<small class="langkah-ket">${escapeHtml(ketPengganti(b))}</small></li></ol>`;
+  const bukti = buktiPengganti(b.pengganti);
+  return '<div class="tukar">' +
+    `<div class="tukar-baris"><span class="tukar-aksi mati">${IKON_MATIKAN}Matikan</span><div>` +
+      `<strong class="tukar-produk" title="${escapeHtml(b.p.namaProduk)}">${escapeHtml(namaRapi(b.p.namaProduk, 48))}</strong>` +
+      `<small class="langkah-ket">${escapeHtml(alasanTugas(b))}</small></div></div>` +
+    `<div class="tukar-baris"><span class="tukar-aksi pasang">${IKON_PASANG}Pasang baru</span><div>` +
+      `<strong class="tukar-produk" title="${escapeHtml(b.pengganti.nama)}">${escapeHtml(namaRapi(b.pengganti.nama, 48))}</strong>` +
+      `<small class="langkah-ket">${escapeHtml(bukti[0].toUpperCase() + bukti.slice(1))} Cek stok dulu.</small>` +
+      setelanPengganti(b.pengganti) + '</div></div>' +
+  '</div>';
 }
 
 // Saran iklan: dropdown kecil di Tugas Minggu Ini (saranIklan.js). Pilihan, bukan tugas.

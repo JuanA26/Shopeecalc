@@ -1008,6 +1008,7 @@ async function simpanHpp(idProduk, namaProduk, nilaiMentah) {
     await muatDaftarHpp();
     hitungUlangDanTampilkanUlang();
     muatDataPenjualanIklan(); // untung per minggu di Analisis Iklan ikut HPP baru
+    muatStok(); // modal di stok, Beli lagi, Cuci gudang
   } catch (err) {
     alert(err.message);
   }
@@ -2869,6 +2870,9 @@ function renderTugas() {
       (alasanTugas(b) ? `<small class="langkah-ket">${escapeHtml(alasanTugas(b))}</small>` : '') });
   }
 
+  // d. Stok: beli lagi yang hampir habis, turunkan harga yang tidak laku (halaman Stok).
+  langkah.push(...langkahStok());
+
   daftarEl.innerHTML = langkah.length
     ? langkah.map((l, i) => `<div class="tugas-langkah langkah-${l.warna}"><div class="langkah-kepala"><span class="langkah">${i + 1}</span><span class="langkah-judul">${escapeHtml(l.judul)}</span></div>${l.isi}</div>`).join('')
     : '<p class="tugas-judul">Tidak ada tugas minggu ini.</p>';
@@ -2979,6 +2983,7 @@ const teksPcs = (n) => `${Number(n || 0).toLocaleString('id-ID')} pcs`;
 async function muatStok() {
   try { dataStok = await apiFetch('/api/stok'); } catch (err) { dataStok = { error: err.message }; }
   renderStok();
+  if (dataIklan) renderTugas(); // langkah Beli lagi / Turunkan harga di Dashboard
 }
 
 function renderStok() {
@@ -2991,6 +2996,7 @@ function renderStok() {
   if (dataStok.error || dataStok.kosong) {
     segmen.hidden = true;
     kartuTabel.classList.add('tersembunyi');
+    for (const id of ['kartuBeliLagi', 'kartuCuciGudang']) document.getElementById(id).classList.add('tersembunyi');
     el.innerHTML = `<p class="keterangan">${escapeHtml(dataStok.error
       || (gagal ? 'Stok belum bisa diambil dari Shopee. Dicoba lagi otomatis setiap 30 menit.'
         : 'Stok belum diambil dari Shopee. Biasanya muncul dalam 30 menit.'))}</p>`;
@@ -3016,6 +3022,7 @@ function renderStok() {
     ? 'Stok terakhir gagal diperbarui. Angka ini dari pembaruan sebelumnya.'
     : `Stok dari Shopee, diperbarui ${waktuWib(st.terakhirSelesai)} WIB.`}</p>`;
   el.innerHTML = html;
+  renderSaranStok();
   renderTabelStok();
 }
 
@@ -3052,7 +3059,7 @@ function renderTabelStok() {
     const stok = teksPcs(p.stok) + (p.dihitung === 'tidak-wajar' ? `<small class="stok-tanda">${teksPcs(p.stokMaksVarian)} di satu varian</small>` : '');
     const hpp = p.hpp > 0 ? formatRupiah(p.hpp)
       : p.stok > 0 && !akunBacaSaja
-        ? `<div class="sel-hpp-cepat"><input type="number" class="input-hpp-tabel-baru" inputmode="numeric" placeholder="Isi HPP" min="0" aria-label="Harga modal ${escapeHtml(p.nama)}" data-hpp-id="${escapeHtml(p.idProduk)}" data-hpp-nama="${escapeHtml(p.nama)}"><button type="button" class="tombol tombol-mini" data-simpan-hpp>Simpan</button></div>`
+        ? kotakHppTabel(p.idProduk, p.nama)
         : '-';
     const cukup = !(p.stok > 0) ? 'Habis' : p.cukupHari === null ? 'Tidak laku' : p.cukupHari > 365 ? '> 1 tahun' : `± ${p.cukupHari.toLocaleString('id-ID')} hari`;
     const peringatan = p.dihitung === 'tanpa-hpp' || p.dihitung === 'tidak-wajar';
@@ -3098,6 +3105,187 @@ document.getElementById('stokIsi').addEventListener('click', (e) => {
 document.getElementById('cariStok').addEventListener('input', () => { batasBarisStok = 50; renderTabelStok(); });
 document.getElementById('urutStok').addEventListener('change', () => { batasBarisStok = 50; renderTabelStok(); });
 document.getElementById('tombolStokLagi').addEventListener('click', () => { batasBarisStok += 50; renderTabelStok(); });
+
+// ====== Beli lagi + Cuci gudang (halaman Stok) ======
+// Dihitung di server (stokSaran.js, aturan di sana); di sini hanya tampilan, saringan dan halaman.
+// Dashboard memakai data yang sama untuk dua langkah pendek (langkahStok, paling banyak 3 produk).
+let batasBeliLagi = 10;
+let batasCuciGudang = 20;
+let saringCuci = 'semua';
+const MAKS_PRODUK_LANGKAH_STOK = 3;
+const SARING_CUCI = [
+  ['semua', 'Semua', () => true],
+  ['turun', 'Perlu turun harga', (p) => p.saran !== null && !p.sudahTurun],
+  ['tahap2', 'Tahap 2', (p) => p.tahap === 2],
+  ['tanpa-hpp', 'Belum ada HPP', (p) => !(p.hpp > 0)],
+  ['tersembunyi', 'Tersembunyi', (p) => p.status !== 'NORMAL'],
+];
+
+// Kotak isi HPP di dalam tabel (Simpan / Enter → simpanHppLangkah).
+const kotakHppTabel = (id, nama) => `<div class="sel-hpp-cepat"><input type="number" class="input-hpp-tabel-baru" inputmode="numeric" placeholder="Isi HPP" min="0" aria-label="Harga modal ${escapeHtml(nama)}" data-hpp-id="${escapeHtml(id)}" data-hpp-nama="${escapeHtml(nama)}"><button type="button" class="tombol tombol-mini" data-simpan-hpp>Simpan</button></div>`;
+// Deretan angka ringkas di atas daftar: [label, nilai].
+const angkaSaranStok = (isi) => `<div class="saran-stok-angka">${isi.map(([label, nilai]) => `<div><span class="label-ringkasan">${label}</span><strong>${nilai}</strong></div>`).join('')}</div>`;
+const tombolLagi = (sisa, atribut) => (sisa > 0 ? `<button type="button" class="tombol tombol-kecil saran-stok-lagi" ${atribut}>Tampilkan ${sisa.toLocaleString('id-ID')} lagi</button>` : '');
+
+function renderSaranStok() {
+  renderBeliLagi();
+  renderCuciGudang();
+}
+
+function renderBeliLagi() {
+  const kartu = document.getElementById('kartuBeliLagi');
+  const d = dataStok && dataStok.beliLagi;
+  kartu.classList.toggle('tersembunyi', !d);
+  if (!d) return;
+  const pill = document.getElementById('beliLagiPill');
+  pill.textContent = `${d.ringkas.produk.toLocaleString('id-ID')} produk`;
+  pill.classList.toggle('tersembunyi', !d.ringkas.produk);
+  const el = document.getElementById('beliLagiIsi');
+  if (!d.varianSiap) {
+    el.innerHTML = '<p class="saran-stok-pesan">Stok per ukuran dan warna belum diambil dari Shopee. Biasanya muncul dalam 30 menit.</p>';
+    return;
+  }
+  let html = '';
+  if (d.beli.length) {
+    const r = d.ringkas;
+    html += angkaSaranStok([
+      ['Produk', r.produk.toLocaleString('id-ID')],
+      ['Perlu dibeli', teksPcs(r.pcs)],
+      ['Modal', `± ${formatRupiahRingkas(r.modal)}`],
+    ]);
+    if (r.tanpaHpp) html += `<p class="keterangan saran-stok-catatan">Modal belum termasuk ${r.tanpaHpp} produk yang belum ada HPP.</p>`;
+    const tampil = d.beli.slice(0, batasBeliLagi);
+    html += '<div class="tabel-scroll"><table class="tabel-saran-stok" id="tabelBeliLagi">' +
+      '<colgroup><col class="k-saran-nama"><col class="k-saran-varian"><col class="k-saran-pcs"><col class="k-saran-rp"></colgroup>' +
+      '<thead><tr><th scope="col">Produk</th><th scope="col">Ukuran / warna yang dibeli</th><th scope="col">Beli</th><th scope="col">Modal</th></tr></thead><tbody>' +
+      tampil.map((b) => {
+        const info = [`terjual ${teksPcs(b.terjual30)} dalam 30 hari`, b.untungMinggu !== null ? `untung ± ${formatRupiahRingkas(b.untungMinggu)}/minggu` : 'HPP belum diisi']
+          .join(' · ');
+        const varian = '<ul class="daftar-varian">' + b.varian.map((v) => `<li><span class="varian-nama">${escapeHtml(v.nama || 'Tanpa varian')}</span>` +
+          `<span class="varian-sisa${v.stok > 0 ? '' : ' habis'}">${v.stok > 0 ? `sisa ${teksPcs(v.stok)} · ${v.sisaHari < 1 ? 'habis besok' : `± ${v.sisaHari} hari`}` : 'sudah habis'}</span>` +
+          `<strong>beli ${v.beli.toLocaleString('id-ID')}</strong></li>`).join('') + '</ul>';
+        const modal = b.modal !== null ? formatRupiah(b.modal) : akunBacaSaja ? '-' : kotakHppTabel(b.idProduk, b.nama);
+        return '<tr>' +
+          selStok('Produk', `<span class="stok-nama" title="${escapeHtml(b.nama)}">${escapeHtml(namaRapi(b.nama, 70))}</span><small>${escapeHtml(info)}</small>`, 'kolom-nama') +
+          selStok('Ukuran / warna', varian, 'kolom-varian') + selStok('Beli', `<strong>${teksPcs(b.pcsBeli)}</strong>`) +
+          selStok('Modal', modal, b.modal !== null ? '' : 'kolom-hpp') + '</tr>';
+      }).join('') + '</tbody></table></div>' + tombolLagi(d.beli.length - tampil.length, 'data-lagi-beli');
+  } else {
+    html += '<p class="saran-stok-pesan baik">Tidak ada yang perlu dibeli sekarang. Barang yang laku masih cukup untuk 2 minggu lebih.</p>';
+  }
+  if (d.jangan.length) {
+    const alasan = (b) => (b.jangan.alasan === 'rugi' ? 'Rugi: dijual di bawah modal' : `Banyak retur: ${b.jangan.persen}%`);
+    html += `<details class="details-dalam saran-stok-jangan"><summary>Hampir habis, tapi jangan beli lagi (${d.jangan.length})</summary>` +
+      '<ul class="langkah-daftar">' + d.jangan.map((b) => `<li><span title="${escapeHtml(b.nama)}">${escapeHtml(namaRapi(b.nama, 60))}</span><strong>${alasan(b)}</strong></li>`).join('') + '</ul>' +
+      '<small class="langkah-ket">Rugi = untung 30 hari terakhir nol atau minus. Banyak retur = 15% atau lebih pcs diretur dalam 60 hari. Perbaiki harga, ukuran, atau foto dulu sebelum beli lagi.</small></details>';
+  }
+  el.innerHTML = html;
+}
+
+function renderCuciGudang() {
+  const kartu = document.getElementById('kartuCuciGudang');
+  const d = dataStok && dataStok.cuciGudang;
+  kartu.classList.toggle('tersembunyi', !d);
+  if (!d) return;
+  const pill = document.getElementById('cuciGudangPill');
+  pill.textContent = `${d.ringkas.produk.toLocaleString('id-ID')} produk`;
+  pill.classList.toggle('tersembunyi', !d.ringkas.produk);
+  const el = document.getElementById('cuciGudangIsi');
+  const mulai = dataStok.dataMulai;
+  if (!d.produk.length) {
+    const terisi = mulai ? geserHari(mulai, dataStok.aturan.TAHAP_1_HARI) : null;
+    el.innerHTML = `<p class="saran-stok-pesan baik">Tidak ada barang yang tidak laku 60 hari.${terisi && terisi > hariIniWib() ? ` Data pesanan baru ada sejak ${tanggalSingkat(mulai)}, jadi daftar ini bisa mulai terisi ${tanggalSingkat(terisi)}.` : ''}</p>`;
+    return;
+  }
+  const r = d.ringkas;
+  const uangKembali = d.produk.reduce((t, p) => t + (p.uangKembali || 0), 0);
+  let html = angkaSaranStok([
+    ['Produk', r.produk.toLocaleString('id-ID')],
+    ['Stok', teksPcs(r.pcs)],
+    ['Modal tertahan', formatRupiahRingkas(r.modal)],
+    ['Uang bisa kembali', `± ${formatRupiahRingkas(uangKembali)}`],
+  ]);
+  const a = dataStok.aturan;
+  html += '<div class="tahap-info">' +
+    `<div><span class="pill pill-kuning">Tahap 1</span><span>Tidak laku ${a.TAHAP_1_HARI} hari: turunkan ke harga impas. Uang modal kembali utuh.</span></div>` +
+    `<div><span class="pill pill-oranye">Tahap 2</span><span>Tidak laku ${a.TAHAP_2_HARI} hari: boleh sampai ${Math.round(a.POTONG_TAHAP_2 * 100)}% di bawah modal, supaya uangnya kembali.</span></div></div>`;
+
+  const jumlah = Object.fromEntries(SARING_CUCI.map(([k, , cocok]) => [k, d.produk.filter(cocok).length]));
+  if (!jumlah[saringCuci]) saringCuci = 'semua';
+  html += '<div class="pill-filter-row saran-stok-saring" role="group" aria-label="Tampilkan produk">' + SARING_CUCI
+    .filter(([k]) => k === 'semua' || jumlah[k])
+    .map(([k, label]) => `<button type="button" class="pill-filter${k === saringCuci ? ' aktif' : ''}" data-saring-cuci="${k}" aria-pressed="${k === saringCuci}">${label} <span class="jumlah-pill">${jumlah[k].toLocaleString('id-ID')}</span></button>`)
+    .join('') + '</div>';
+
+  const terpilih = d.produk.filter(SARING_CUCI.find(([k]) => k === saringCuci)[2]);
+  const tampil = terpilih.slice(0, batasCuciGudang);
+  const harga = (p) => (!(p.hargaMin > 0) ? '-' : p.hargaMin === p.hargaMaks ? formatRupiah(p.hargaMin) : `${formatRupiah(p.hargaMin)}–${Math.round(p.hargaMaks).toLocaleString('id-ID')}`);
+  html += '<div class="tabel-scroll"><table class="tabel-saran-stok" id="tabelCuciGudang">' +
+    '<colgroup><col class="k-saran-nama"><col class="k-saran-pcs"><col class="k-saran-harga"><col class="k-saran-saran"><col class="k-saran-rp"></colgroup>' +
+    '<thead><tr><th scope="col">Produk</th><th scope="col">Stok</th><th scope="col">Harga sekarang</th><th scope="col">Harga saran</th><th scope="col">Uang kembali</th></tr></thead><tbody>' +
+    tampil.map((p) => {
+      const hari = p.hari.toLocaleString('id-ID');
+      const sejak = p.dariMana === 'laku' ? `Terakhir laku ${tanggalSingkat(p.sejak)} (${hari} hari lalu)`
+        : p.dariMana === 'dibuat' ? `Dibuat ${tanggalSingkat(p.sejak)}, belum pernah laku (${hari} hari)`
+          : `Tidak laku sejak ${tanggalSingkat(p.sejak)} atau lebih lama (${hari}+ hari)`;
+      const tanda = p.status !== 'NORMAL' ? `<small class="stok-tanda">${STATUS_PRODUK_TAMPIL[p.status] || 'tidak tampil'}: tampilkan lagi di toko dulu</small>` : '';
+      let saran;
+      if (p.saran === null) saran = akunBacaSaja ? '<span class="teks-redup">HPP belum diisi</span>' : kotakHppTabel(p.idProduk, p.nama);
+      else if (p.sudahTurun) {
+        saran = '<span class="pill pill-hijau">Sudah turun</span>' +
+          (p.tahap2Mulai ? `<small class="saran-harga-ket">Belum laku sampai ${tanggalSingkat(p.tahap2Mulai)}? Masuk tahap 2.</small>` : '');
+      } else {
+        saran = `<span class="saran-harga"><span class="pill ${p.tahap === 2 ? 'pill-oranye' : 'pill-kuning'}">Tahap ${p.tahap}</span><strong>${formatRupiah(p.saran)}</strong></span>`;
+      }
+      return `<tr${p.saran === null ? ' class="baris-peringatan"' : ''}>` +
+        selStok('Produk', `<span class="stok-nama" title="${escapeHtml(p.nama)}">${escapeHtml(namaRapi(p.nama, 70))}</span><small>${sejak}</small>${tanda}`, 'kolom-nama') +
+        selStok('Stok', teksPcs(p.stok)) + selStok('Harga sekarang', harga(p)) +
+        selStok('Harga saran', `<div>${saran}</div>`, 'kolom-saran') + selStok('Uang kembali', p.uangKembali !== null ? formatRupiah(p.uangKembali) : '-') + '</tr>';
+    }).join('') + '</tbody></table></div>' + tombolLagi(terpilih.length - tampil.length, 'data-lagi-cuci');
+  html += `<p class="keterangan stok-info-tabel">Harga saran berlaku untuk semua varian. Harga impas = HPP ÷ ${Math.round(d.rasio * 100)}% (bagian harga yang cair setelah potongan Shopee), dibulatkan ke atas per Rp 1.000. Uang kembali = perkiraan uang cair kalau semua stok laku.${mulai ? ` "Tidak laku" dihitung dari data pesanan sejak ${tanggalSingkat(mulai)}.` : ''}</p>`;
+  el.innerHTML = html;
+}
+
+// Dashboard: dua langkah pendek untuk orang tua. Selesai sendiri: stok bertambah / harga turun terbaca saat sinkron.
+function langkahStok() {
+  if (!dataStok || !dataStok.beliLagi || !dataStok.cuciGudang) return [];
+  const daftar = (baris, kanan) => '<ul class="langkah-daftar">' + baris.slice(0, MAKS_PRODUK_LANGKAH_STOK)
+    .map((b) => `<li><span>${escapeHtml(namaRapi(b.nama, 40))}</span><strong>${kanan(b)}</strong></li>`).join('') +
+    (baris.length > MAKS_PRODUK_LANGKAH_STOK ? `<li class="langkah-lagi">+ ${baris.length - MAKS_PRODUK_LANGKAH_STOK} produk lagi</li>` : '') + '</ul>';
+  const hasil = [];
+  const beli = dataStok.beliLagi.beli;
+  if (beli.length) {
+    hasil.push({ warna: 'oranye', judul: 'Beli lagi barang yang hampir habis', isi: daftar(beli, (b) => `beli ${teksPcs(b.pcsBeli)}`) +
+      '<button type="button" class="tombol tombol-kecil tombol-langkah-kedua" data-ke-stok="kartuBeliLagi">Lihat ukuran dan warnanya</button>' +
+      '<small class="langkah-ket">Barang datang ± 1 minggu setelah dipesan. Kalau tidak dibeli sekarang, stoknya habis.</small>' });
+  }
+  const turun = dataStok.cuciGudang.produk.filter((p) => p.status === 'NORMAL' && p.saran !== null && !p.sudahTurun);
+  if (turun.length) {
+    hasil.push({ warna: 'kuning', judul: 'Turunkan harga barang yang tidak laku', isi: daftar(turun, (p) => `jadi ${formatRupiah(p.saran)}`) +
+      '<button type="button" class="tombol tombol-kecil tombol-langkah-kedua" data-ke-stok="kartuCuciGudang">Lihat daftarnya</button>' +
+      '<small class="langkah-ket">Tidak laku 60 hari lebih. Ubah harga semua variannya di Seller Centre. Uangnya bisa dipakai untuk beli barang yang laku.</small>' });
+  }
+  return hasil;
+}
+
+document.getElementById('beliLagiIsi').addEventListener('click', (e) => {
+  if (!e.target.closest('[data-lagi-beli]')) return;
+  batasBeliLagi += 10;
+  renderBeliLagi();
+});
+document.getElementById('cuciGudangIsi').addEventListener('click', (e) => {
+  const saring = e.target.closest('[data-saring-cuci]');
+  if (saring) { saringCuci = saring.dataset.saringCuci; batasCuciGudang = 20; renderCuciGudang(); return; }
+  if (e.target.closest('[data-lagi-cuci]')) { batasCuciGudang += 20; renderCuciGudang(); }
+});
+// Tombol di langkah Dashboard → halaman Stok, langsung ke kartunya.
+document.addEventListener('click', (e) => {
+  const tombol = e.target.closest('[data-ke-stok]');
+  if (!tombol) return;
+  bukaHalaman('halamanStok');
+  const kartu = document.getElementById(tombol.dataset.keStok);
+  if (kartu) kartu.scrollIntoView({ block: 'start' }); // langsung: scroll halus batal saat halaman baru muncul
+});
 
 // ====== Pengaturan: diagnostik + unduh data ======
 async function muatDiagnostik() {

@@ -2,7 +2,8 @@
 // Claude/pemilik. Hanya data toko (pesanan, HPP, stok, iklan, riwayat setelan, status sinkron). TIDAK
 // memuat token, kata sandi, atau data pembeli (username pembeli memang tidak disimpan).
 const { geserHari: geser } = require('./util');
-const { daftarStok, ringkasStok, hitungTerjual, BATAS_STOK_TIDAK_WAJAR } = require('./sinkronStok');
+const { BATAS_STOK_TIDAK_WAJAR } = require('./sinkronStok');
+const { hitungStokLengkap, ATURAN_STOK: A } = require('./stokSaran');
 const seninDari = (iso) => { const d = new Date(iso + 'T00:00:00Z'); return geser(iso, -((d.getUTCDay() + 6) % 7)); };
 const bagi = (a, b) => (b ? a / b : null);
 const bulat = (n, d = 0) => (n === null || n === undefined || !Number.isFinite(n) ? null : Math.round(n * 10 ** d) / 10 ** d);
@@ -185,14 +186,20 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
     k.batasShopee, k.roasLangsung, k.roasMinimum, k.berakhir, k.bisaDiubahLagi, k.zonaTerbaru,
   ].map((v) => (typeof v === 'string' ? v.slice(0, 500) : typeof v === 'number' && Number.isFinite(v) ? v : v === null || v === undefined ? null : String(v).slice(0, 500))));
 
-  // ---- Stok (sinkronStok.js): satu baris per produk, juga yang stoknya habis; aturan = halaman Stok ----
-  const stokProduk = daftarStok(db.prepare('SELECT * FROM stok_produk WHERE shop_id = ?').all(shop),
-    new Map(hppRows.map((r) => [r.id_produk, r.hpp])), hitungTerjual(items, geser(hariIni, -29)));
+  // ---- Stok (sinkronStok.js + stokSaran.js): sama dengan halaman Stok ----
+  const stokLengkap = hitungStokLengkap(db, shop, hariIni, { bacaItemPesanan, rasio: rasioPerkiraan });
+  const stokProduk = stokLengkap.produk;
+  const { beliLagi, cuciGudang } = stokLengkap;
+  const sheetBeli = [...beliLagi.beli.map((b) => ['beli', b]), ...beliLagi.jangan.map((b) => [`jangan: ${b.jangan.alasan}`, b])]
+    .flatMap(([saran, b]) => b.varian.map((v) => [saran, b.idProduk, b.nama, v.nama, v.stok, v.laku30, v.sisaHari, v.beli, b.hpp,
+      b.hpp > 0 ? v.beli * b.hpp : null, b.terjual30, b.untungMinggu]));
+  const sheetCuci = cuciGudang.produk.map((p) => [p.idProduk, p.nama, p.status, p.stok, p.hpp, p.modal, p.hargaMin, p.hargaMaks, p.sejak, p.hari,
+    p.pernahLaku ? 'ya' : 'tidak', p.tahap, p.impas, p.saran, p.sudahTurun ? 'ya' : '', p.uangKembali]);
   const waktuWib = (ts) => (ts ? new Date((Number(ts) + 7 * 3600) * 1000).toISOString().slice(0, 16).replace('T', ' ') : '');
   const LABEL_DIHITUNG = { dihitung: 'ya', 'tanpa-hpp': 'tidak: belum ada HPP', 'tidak-wajar': 'tidak: stok tidak wajar', habis: 'stok habis' };
   const sheetStok = stokProduk.map((p) => [p.idProduk, p.nama, p.status, p.status === 'NORMAL' ? 'ya' : 'tidak', p.stok, p.jumlahVarian,
     p.stokMaksVarian, p.hpp, p.modal, LABEL_DIHITUNG[p.dihitung], p.terjual30, p.cukupHari, waktuWib(p.diambilTs)]);
-  const rStok = ringkasStok(stokProduk);
+  const rStok = stokLengkap.kelompok;
 
   // ---- Status & README ----
   const cair = new Set(items.filter((i) => !i.perkiraan).map((i) => i.noPesanan)).size;
@@ -210,6 +217,9 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
     ['stok_modal_semua', bulat(rStok.semua.modal)], ['stok_modal_aktif', bulat(rStok.aktif.modal)], ['stok_modal_tersembunyi', bulat(rStok.tersembunyi.modal)],
     ['stok_pcs_dihitung', rStok.semua.pcs], ['stok_produk_tanpa_hpp', rStok.semua.tanpaHpp.produk], ['stok_pcs_tanpa_hpp', rStok.semua.tanpaHpp.pcs],
     ['stok_produk_tidak_wajar', rStok.semua.tidakWajar.produk], ['stok_batas_tidak_wajar_per_varian', BATAS_STOK_TIDAK_WAJAR],
+    ['beli_lagi_produk', beliLagi.ringkas.produk], ['beli_lagi_pcs', beliLagi.ringkas.pcs], ['beli_lagi_modal', bulat(beliLagi.ringkas.modal)],
+    ['cuci_gudang_produk', cuciGudang.ringkas.produk], ['cuci_gudang_pcs', cuciGudang.ringkas.pcs], ['cuci_gudang_modal', bulat(cuciGudang.ringkas.modal)],
+    ['data_pesanan_untuk_tidak_laku_dari', stokLengkap.dataMulai],
     ...Object.entries(sinkron || {}).map(([k, v]) => [k, v]),
     ...db.prepare('SELECT kunci, nilai FROM pengaturan ORDER BY kunci').all().map((r) => [`pengaturan.${r.kunci}`, r.nilai]),
   ];
@@ -226,6 +236,8 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
     ['Iklan_Toko_Harian', 'Total iklan seluruh toko per hari. selisih = iklan di luar kampanye produk (iklan toko).'],
     ['Riwayat_Setelan', 'Setiap perubahan Target ROAS / Modal Harian yang terlihat saat sinkron. Sebelum = 7 hari sebelum tanggal perubahan, sesudah = 7 hari setelahnya (hari perubahan dilewati). untung_toko_per_hari = untung perkiraan semua produk − biaya iklan toko (rata-rata 7 hari; kosong kalau ada hari tanpa data). matang = sudah lewat 15 hari (atribusi lengkap). perubahan_lain_berdekatan > 0 berarti hasil bercampur (aplikasi menghitung beberapa perubahan satu iklan di hari yang sama sebagai satu perubahan; sheet ini tetap mencatat semuanya). Ini observasi, bukan bukti sebab-akibat.'],
     ['Stok', `Stok terkini per produk dari Shopee (semua status, juga yang habis), sama dengan halaman Stok. stok_pcs = semua varian, termasuk stok yang dipesan untuk promo; barang yang sudah dipesan pembeli sudah keluar. tampil_di_toko = status NORMAL; selain itu diarsipkan (UNLIST), diblokir (BANNED) atau sedang ditinjau (REVIEWING). modal = stok_pcs × hpp_per_pcs, hanya kalau dihitung = ya. Tidak dihitung: belum ada HPP, atau satu varian punya ≥ ${BATAS_STOK_TIDAK_WAJAR} pcs (kemungkinan angka asal seperti 999). terjual_30_hari = pcs terjual 30 hari terakhir (tanpa retur, batal tidak ikut). stok_cukup_hari = stok_pcs ÷ rata-rata terjual per hari; kosong kalau tidak terjual. stok_dibaca = kapan stok varian terakhir dibaca (WIB).`],
+    ['Beli_Lagi', `Sama dengan "Beli lagi" di halaman Stok, satu baris per varian. Produk aktif yang terjual ≥ ${A.MIN_PCS_PRODUK} pcs dalam 30 hari; varian yang terjual ≥ ${A.MIN_PCS_VARIAN} pcs dan stoknya habis dalam < ${A.BATAS_HARI_BELI} hari (barang datang ± ${A.LAMA_KIRIM_HARI} hari setelah dipesan). beli_pcs = rata-rata terjual per hari × ${A.LAMA_KIRIM_HARI + A.CUKUP_HARI} hari − stok (cukup ${A.CUKUP_HARI} hari setelah barang datang). saran "jangan: rugi" = untung 30 hari ≤ 0; "jangan: retur" = ≥ ${Math.round(A.BATAS_RETUR * 100)}% pcs diretur dalam 60 hari (≥ ${A.MIN_RETUR_PCS} pcs). untung_per_minggu = (dana cair − HPP) 30 hari ÷ 30 × 7.`],
+    ['Cuci_Gudang', `Sama dengan "Cuci gudang" di halaman Stok. Produk dengan stok yang tidak laku ≥ ${A.TAHAP_1_HARI} hari. tidak_laku_sejak = paling akhir dari: pesanan terakhir (bukan batal/belum bayar), tanggal produk dibuat, awal data pesanan (data_pesanan_untuk_tidak_laku_dari di Status). Tahap 1 (≥ ${A.TAHAP_1_HARI} hari): harga_saran = harga impas = HPP ÷ rasio pencairan toko, dibulatkan ke atas per Rp 1.000. Tahap 2 (≥ ${A.TAHAP_2_HARI} hari): HPP × ${1 - A.POTONG_TAHAP_2} ÷ rasio pencairan. sudah_turun = harga termahal sekarang ≤ harga_saran. uang_kembali = stok × harga × rasio pencairan (perkiraan dana cair kalau semua laku).`],
     ['Keputusan_Sekarang', 'Saran aplikasi untuk tiap iklan yang sedang berjalan saat file diunduh (sama dengan halaman Analisis Iklan). Kosong kalau data iklan belum termuat di halaman.'],
     ['Aturan aplikasi', 'Tujuan: untung toko per minggu setelah iklan. Zona iklan (untung / belum tentu / rugi, dari 7 hari matang) baru berganti kalau zona baru bertahan 3 hari berturut-turut; zona_terbaru di Keputusan_Sekarang = angka hari ini. Target ROAS naik ≤ 20% per langkah, batas = rekomendasi tertinggi Shopee × 1,25. Satu perubahan per iklan; beberapa iklan boleh diubah bersamaan. Hasil dinilai setelah 15 hari dari untung langsung iklan itu sendiri (7 hari sebelum vs 7 hari sesudah): perubahan ≥ Rp 20 rb/hari = baik, ≤ −Rp 20 rb/hari = buruk, selain itu belum jelas. Versi Shopee hanya pembanding karena bisa memuat produk lain. Buruk → kembalikan; belum jelas setelah target naik → target tidak dinaikkan lagi. Ganti hanya jika kampanye yang sedang berjalan punya ≥ 10 hari matang dengan biaya, rugi langsung ≥ Rp 100 rb, dan ROAS langsung < 0,6 × minimum, dan zona iklan sekarang bukan untung; hasil buruk dari perubahan setelan terakhir diperiksa dulu. Tanpa pengganti, Modal Harian dikurangi 50%. Untung toko tidak menahan perubahan (naik-turunnya mengikuti pembeli, bukan setelan iklan); hanya aturan 4 minggu yang menahan tambah modal. Untung iklan belum menghitung kredit Proteksi ROAS Saldo 1:1.'],
     ['Saran pertanyaan untuk Claude', 'Mis.: "Analisis tren untung toko per minggu", "Apakah perubahan target di Riwayat_Setelan menaikkan untung toko?", "Produk mana yang untung setelah biaya iklan?", "Cek data yang janggal atau tidak lengkap".'],
@@ -249,6 +261,10 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
       'pertama_terjual', 'terakhir_terjual', 'biaya_iklan', 'omzet_iklan_shopee', 'omzet_iklan_langsung', 'pcs_iklan_langsung', 'roas_langsung', 'sedang_diiklankan'], baris: sheetProduk },
     { nama: 'Stok', kolom: ['id_produk', 'nama_produk', 'status_shopee', 'tampil_di_toko', 'stok_pcs', 'jumlah_varian', 'stok_varian_terbanyak', 'hpp_per_pcs',
       'modal', 'dihitung', 'terjual_30_hari', 'stok_cukup_hari', 'stok_dibaca'], baris: sheetStok },
+    { nama: 'Beli_Lagi', kolom: ['saran', 'id_produk', 'nama_produk', 'varian', 'stok_pcs', 'terjual_30_hari', 'habis_dalam_hari', 'beli_pcs', 'hpp_per_pcs',
+      'modal_beli', 'produk_terjual_30_hari', 'untung_per_minggu'], baris: sheetBeli },
+    { nama: 'Cuci_Gudang', kolom: ['id_produk', 'nama_produk', 'status_shopee', 'stok_pcs', 'hpp_per_pcs', 'modal', 'harga_termurah', 'harga_termahal',
+      'tidak_laku_sejak', 'hari_tidak_laku', 'pernah_laku', 'tahap', 'harga_impas', 'harga_saran', 'sudah_turun', 'uang_kembali'], baris: sheetCuci },
     { nama: 'HPP', kolom: ['id_produk', 'nama_produk', 'hpp_per_pcs', 'diubah'], baris: hppRows.map((r) => [r.id_produk, r.nama_produk, r.hpp, r.updated_at]) },
     { nama: 'Iklan_Kampanye', kolom: ['campaign_id', 'id_produk', 'nama_iklan', 'status', 'mode', 'target_roas', 'modal_harian', 'mulai', 'selesai',
       'rekomendasi_rendah', 'rekomendasi_tengah', 'rekomendasi_tinggi', 'biaya', 'omzet_shopee', 'omzet_langsung', 'pcs_shopee', 'pcs_langsung',

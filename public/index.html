@@ -460,6 +460,23 @@
           </div>
           <div id="stokIsi" aria-live="polite"><span class="kerangka besar"></span><span class="kerangka pendek"></span></div>
         </div>
+        <!-- Beli lagi + Cuci gudang (stokSaran.js lewat /api/stok; app.js renderBeliLagi / renderCuciGudang) -->
+        <div class="kartu kartu-saran-stok tersembunyi" id="kartuBeliLagi">
+          <div class="grafik-kepala">
+            <h2>Beli lagi</h2>
+            <span class="pill pill-oranye tersembunyi" id="beliLagiPill"></span>
+          </div>
+          <p class="keterangan saran-stok-ket">Ukuran dan warna yang laku tapi habis dalam 2 minggu. Barang datang ± 1 minggu setelah dipesan, jadi pesan sekarang. Jumlahnya cukup untuk 4 minggu.</p>
+          <div id="beliLagiIsi"></div>
+        </div>
+        <div class="kartu kartu-saran-stok tersembunyi" id="kartuCuciGudang">
+          <div class="grafik-kepala">
+            <h2>Cuci gudang</h2>
+            <span class="pill pill-kuning tersembunyi" id="cuciGudangPill"></span>
+          </div>
+          <p class="keterangan saran-stok-ket">Barang yang tidak laku 60 hari. Turunkan harganya di Seller Centre supaya uangnya kembali dan bisa dipakai untuk barang yang laku.</p>
+          <div id="cuciGudangIsi"></div>
+        </div>
         <div class="kartu tersembunyi" id="kartuTabelStok">
           <div class="baris-filter">
             <h2>Daftar produk</h2>

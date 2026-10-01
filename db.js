@@ -250,7 +250,26 @@ db.exec(`
     diambil_ts INTEGER,
     PRIMARY KEY (shop_id, id_produk)
   );
+
+  -- Stok + harga per varian (sinkronStok.js) untuk "Beli lagi" (stokSaran.js). model_id '' = produk
+  -- tanpa varian (sama dengan api_order_item). nama_varian = pilihan tier digabung ", " (seperti
+  -- model_name di pesanan, mis. "Hitam, L"). harga = current_price (harga promo kalau sedang promo).
+  -- status = model_status (MODEL_UNAVAILABLE tidak bisa dibeli).
+  CREATE TABLE IF NOT EXISTS stok_varian (
+    shop_id TEXT NOT NULL,
+    id_produk TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    nama_varian TEXT,
+    stok INTEGER NOT NULL DEFAULT 0,
+    harga REAL,
+    status TEXT,
+    PRIMARY KEY (shop_id, id_produk, model_id)
+  );
 `);
+// Harga sekarang (termurah/termahal varian) + tanggal produk dibuat, untuk "Cuci gudang".
+for (const kolom of ['harga_min REAL', 'harga_maks REAL', 'dibuat_ts INTEGER']) {
+  try { db.exec(`ALTER TABLE stok_produk ADD COLUMN ${kolom}`); } catch (_) { /* sudah ada */ }
+}
 
 // Kolom yang ditambahkan setelah tabel sinkron_shopee sudah ada di produksi.
 try { db.exec('ALTER TABLE sinkron_shopee ADD COLUMN order_ts INTEGER'); } catch (_) { /* sudah ada */ }

@@ -91,7 +91,7 @@ same way. Read-only accounts only reload stored data. Hover (desktop) for the ex
 - **Unduh data (Excel):** one .xlsx workbook for analysis (e.g. by Claude): README, Status, current ad
   decisions, setting-change history with 7 days before/after (campaign ROAS and store profit per day),
   profit per month/week/day, products, current stock per product (modal, pcs sold in 30 days, days of
-  stock left), HPP, campaigns, daily ad figures and every order item. It contains
+  stock left), Beli lagi (one row per variant) and Cuci gudang (same as the Stok page), HPP, campaigns, daily ad figures and every order item. It contains
   no passwords, Shopee tokens or buyer data. Built without extra dependencies (`xlsx.js`, `eksporData.js`).
 - **Hitungan iklan:** the data period and payout ratio used for the ads maths, the paid-order rate
   override, and a short guide to how the ad advice is chosen.
@@ -104,7 +104,10 @@ On a phone: profit, the tiles in a 2 × 2 grid, then the tasks.
   month up to yesterday vs the same days of last month (e.g. "1–4 Okt · 1–4 Sep"; hidden on the 1st), then short numbered steps: (1) **Isi HPP** for products whose missing cost
   price holds the ad advice, with a price box + Simpan per product (and a button to the HPP tab); (2) **Ubah Periode jadi Tidak Terbatas** for
   ads ending soon; (3) one step per ad that needs a target/budget change, with the exact old → new
-  value. All other ads get one line ("jangan diubah"). New trials are limited to one ad at a time.
+  value; (4) **Beli lagi barang yang hampir habis** and (5) **Turunkan harga barang yang tidak laku**
+  (active products only, with the new price), each naming up to 3 products with a button to that list on
+  the Stok page. Stock steps disappear by themselves once the sync sees the stock come in or the price
+  drop. All other ads get one line ("jangan diubah"). New trials are limited to one ad at a time.
   Profit is labelled as an estimate.
 - **Hasil percobaan:** each settings change is judged by **the changed ad's direct product contribution**, seven days
   before vs seven days after (the change day is skipped), on change date +15 after seven full days for
@@ -224,6 +227,18 @@ Money tied up in stock now (Shopee stock × HPP), synced every 30 minutes with t
   (Tersembunyi = archived, blocked or under review). Left out of the total but named in a yellow "Perlu
   dicek" box, each with a "Lihat produknya" button: products without HPP, and products with ≥ 500 pcs in
   one variant (likely a placeholder like 999; check in Seller Centre).
+- **Beli lagi:** active products that sold ≥ 4 pcs in 30 days, per size/colour: variants that sold ≥ 2 pcs
+  and run out within 14 days (supplier delivery ≈ 1 week + 1 week spare). Amount = average daily sales ×
+  35 days − stock (lasts 4 weeks after it arrives). Shows stock left, days left, pcs to buy, the money
+  needed and the product's profit per week. Products that would qualify but lose money (30-day profit ≤ 0)
+  or have many returns (≥ 15% of pcs in 60 days, ≥ 3 pcs) go to a collapsed "jangan beli lagi" list.
+- **Cuci gudang:** products with stock and no sale for ≥ 60 days (counted from the last order, the
+  product's created date or the start of the stored order data, whichever is latest). Stage 1 (60 days):
+  suggested price = break-even (HPP ÷ the shop's payout ratio, rounded up to Rp 1,000), so the cost comes
+  back. Stage 2 (120 days): HPP × 0.7 ÷ payout ratio, up to 30% below cost to free the cash. Shows current
+  price, suggested price, "Sudah turun" once the highest variant price is at or below it, and the money
+  that would come back. Filters: Perlu turun harga, Tahap 2, Belum ada HPP (fill it in the row),
+  Tersembunyi (show it in the shop again first).
 - **Daftar produk:** every product with stock, HPP, modal, pcs sold in 30 days and "Cukup untuk" (stock ÷
   average daily sales). Filters with counts (Semua, Dihitung, Belum ada HPP, Stok tidak wajar, Habis),
   search, sort (modal, stock, slowest to sell, best-selling, name), 50 rows at a time. Missing HPP can be
@@ -274,7 +289,8 @@ cross-product sales, missing/zero days, overlapping changes, parallel per-ad cha
 `keamanan.test.js` starts the real server and checks headers, the cross-site block, the login limit,
 that sessions survive a restart, the public health check, the log and read-only accounts.
 `shopeeApi.test.js` checks the rate-limit retry and the read-only endpoint guard. `ekspor.test.js` checks the Excel export. `stok.test.js` checks the stock sync (variants, paging, re-read
-rules, one failed product), the per-product list (days of stock, sold in 30 days) and the totals. No Shopee credentials are needed.
+rules, one failed product, stored variants and prices), the per-product list (days of stock, sold in 30 days),
+the totals, and the Beli lagi / Cuci gudang rules. No Shopee credentials are needed.
 The calculator excludes business overhead unless it is already part of HPP/payout deductions.
 
 ## 6. Project structure
@@ -285,7 +301,8 @@ webapp/
   shopeeApi.js      Shopee API v2 client: HMAC signing, OAuth, read-only endpoint allowlist
   sinkronShopee.js  Order + payout sync into SQLite; measured paid-order rate
   sinkronIklan.js   Ads sync (campaigns, daily performance, shop totals, recommended ROAS)
-  sinkronStok.js    Stock sync (product list, variants) + per-product list and totals for the Stok page
+  sinkronStok.js    Stock sync (product list, variants, prices) + per-product list and totals for the Stok page
+  stokSaran.js      Beli lagi (restock per variant) and Cuci gudang (clearance prices); rules as constants
   analisisIklan.js  Ads maths and per-ad decision; parser for the Seller Centre ads CSV
   db.js             SQLite schema (users, HPP, settings, Shopee token, orders, payouts, ads, stock)
   eksporData.js     Pengaturan export: builds the analysis workbook sheets

@@ -69,6 +69,7 @@ test('export workbook: store profit per week, change before/after, and a valid x
   stok.run(shop, 'B', 'Celana B', 'UNLIST', 5, 5, 1, 1790000000);
   stok.run(shop, 'C', 'Rok C', 'NORMAL', 1000, 999, 2, 1790000000);
   stok.run(shop, 'D', 'Kaos D', 'NORMAL', 0, 0, 2, 1790000000);
+  db.prepare("INSERT INTO stok_varian (shop_id, id_produk, model_id, nama_varian, stok, harga, status) VALUES (?, 'A', '', '', 3, 100000, 'MODEL_NORMAL')").run(shop);
   const sheets = susunEkspor(db, shop, { margin, bacaItemPesanan, rasioPerkiraan: 0.78, hariIni,
     keputusan: [{ idProduk: 'A', namaProduk: 'Blus A', keputusan: 'tunggu', target: 10.8, token: 'ignored' }], versi: 'test', sinkron: { 'sinkron.status': 'sukses' } });
   const s = Object.fromEntries(sheets.map((x) => [x.nama, x]));
@@ -106,6 +107,11 @@ test('export workbook: store profit per week, change before/after, and a valid x
   assert.equal(status.stok_modal_tersembunyi, 0);
   assert.equal(status.stok_produk_tanpa_hpp, 1);
   assert.equal(status.stok_produk_tidak_wajar, 1);
+  // Beli lagi = Stok page: A sold 20 pcs in 30 days, 3 left → 0.67/day × 35 days − 3 = 21 pcs. Nothing unsold for 60 days yet.
+  const beliA = s.Beli_Lagi.baris[0];
+  assert.deepEqual([beliA[kol('Beli_Lagi', 'saran')], beliA[kol('Beli_Lagi', 'beli_pcs')], beliA[kol('Beli_Lagi', 'modal_beli')]], ['beli', 21, 21 * 50000]);
+  assert.equal(s.Cuci_Gudang.baris.length, 0);
+  assert.deepEqual([status.beli_lagi_pcs, status.cuci_gudang_produk, status.data_pesanan_untuk_tidak_laku_dari], [21, 0, '2026-09-01']);
 
   // Current decisions are copied, unknown fields dropped.
   assert.equal(s.Keputusan_Sekarang.baris[0][0], 'A');

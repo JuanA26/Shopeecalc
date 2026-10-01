@@ -219,7 +219,7 @@ test('dashboard shows numbered simple steps: HPP first, then extend period; no p
       untungTokoPerMinggu: () => null, untungTokoPerBulan: () => null, dataIklan: data, sumberIklan: () => sumber,
       keputusanBerjalan: () => ({ baris: [b, hpp], dataBelumLengkap }), PERLU_TINDAKAN: new Set(['isi-hpp']), namaSingkat: s => s, namaRapi: s => s, escapeHtml: s => s,
       tanggalSingkat: s => s, kalimatKeputusan: () => 'Tetap dulu.', EvaluasiIklan: E, labelKeputusan: () => ['', 'pill-abu'], alasanTugas: () => '', akunBacaSaja: false,
-      formatRupiahRingkas: n => String(n), renderSaranIklan: () => {},
+      formatRupiahRingkas: n => String(n), renderSaranIklan: () => {}, langkahStok: () => [],
     });
     const html = nodes.tugasDaftar.innerHTML;
     assert.ok(html.indexOf('Isi HPP') < html.indexOf('Tidak Terbatas'));
@@ -230,6 +230,30 @@ test('dashboard shows numbered simple steps: HPP first, then extend period; no p
     assert.match(nodes.tugasLain.innerHTML, /jangan diubah/); assert.doesNotMatch(nodes.tugasLain.innerHTML, /Sample product/);
     assert.equal(nodes.tugasHasil.innerHTML, '');
   }
+});
+
+test('Dashboard stock steps: buy the products that run out, lower prices of active unsold products only; max 3 named', () => {
+  const ctx = { MAKS_PRODUK_LANGKAH_STOK: 3, namaRapi: s => s, escapeHtml: s => s, teksPcs: n => `${n} pcs`, formatRupiah: n => `Rp ${n}` };
+  vm.runInNewContext(extract('langkahStok') + ';this.f = langkahStok', ctx);
+  const beli = ['A', 'B', 'C', 'D'].map((nama, i) => ({ nama, pcsBeli: 10 + i }));
+  const cuci = [
+    { nama: 'Arsip', status: 'UNLIST', saran: 50000, sudahTurun: false },
+    { nama: 'Turun', status: 'NORMAL', saran: 60000, sudahTurun: false },
+    { nama: 'Sudah', status: 'NORMAL', saran: 70000, sudahTurun: true },
+    { nama: 'TanpaHpp', status: 'NORMAL', saran: null, sudahTurun: false },
+  ];
+  ctx.dataStok = { beliLagi: { beli, jangan: [] }, cuciGudang: { produk: cuci } };
+  const [a, b] = ctx.f();
+  assert.equal(a.judul, 'Beli lagi barang yang hampir habis');
+  assert.match(a.isi, /A<\/span><strong>beli 10 pcs/); assert.doesNotMatch(a.isi, />D</); assert.match(a.isi, /\+ 1 produk lagi/);
+  assert.match(a.isi, /data-ke-stok="kartuBeliLagi"/);
+  assert.equal(b.judul, 'Turunkan harga barang yang tidak laku');
+  assert.match(b.isi, /Turun<\/span><strong>jadi Rp 60000/);
+  for (const nama of ['Arsip', 'Sudah', 'TanpaHpp']) assert.doesNotMatch(b.isi, new RegExp(`>${nama}<`));
+  ctx.dataStok = { beliLagi: { beli: [], jangan: [] }, cuciGudang: { produk: [cuci[2]] } };
+  assert.equal(ctx.f().length, 0);
+  ctx.dataStok = null;
+  assert.equal(ctx.f().length, 0);
 });
 
 test('Dashboard week comparison leaves out busy days (> 1.8 × median payout) and compares per day', () => {

@@ -13,7 +13,8 @@ const { parseCsvLine, parseShopeeAdsCsv, hitungAnalisisIklan, RASIO_PENCAIRAN_DE
 const shopeeApi = require('./shopeeApi');
 const { sinkronkan, bacaItemPesanan, rasioPencairanToko, tingkatCairTerukur, modeEscrow, isiAntreanUlang, STATUS_BUKAN_PENJUALAN } = require('./sinkronShopee');
 const { sinkronIklan, kampanyeDariDb } = require('./sinkronIklan');
-const { sinkronStok, daftarStok, ringkasStok, hitungTerjual, BATAS_STOK_TIDAK_WAJAR } = require('./sinkronStok');
+const { sinkronStok, BATAS_STOK_TIDAK_WAJAR } = require('./sinkronStok');
+const { hitungStokLengkap, ATURAN_STOK } = require('./stokSaran');
 const { susunEkspor } = require('./eksporData');
 const { perkiraanMingguTerakhir, gagalSetelahTujuhHari, cekHargaMultiPcs } = require('./cekData');
 const { buatXlsx } = require('./xlsx');
@@ -553,19 +554,16 @@ function statusSinkron() {
 
 app.get('/api/sinkron/status', requireLogin, (req, res) => res.json(statusSinkron()));
 
-// Halaman Stok: semua produk (stok × HPP, terjual 30 hari) + ringkasan semua/aktif/tersembunyi.
+// Halaman Stok: semua produk (stok × HPP, terjual 30 hari) + ringkasan semua/aktif/tersembunyi
+// + saran Beli lagi / Cuci gudang (stokSaran.js).
 app.get('/api/stok', requireLogin, (req, res) => {
   const token = barisTokenAktif();
   if (!token) return res.status(400).json({ error: 'Toko belum terhubung ke Shopee.' });
   const shop = String(token.shop_id);
-  const baris = db.prepare('SELECT * FROM stok_produk WHERE shop_id = ?').all(shop);
   const s = statusSinkron().stok;
-  if (!baris.length) return res.json({ kosong: true, status: s });
-  const petaHpp = new Map(db.prepare('SELECT id_produk, hpp FROM product_hpp').all().map((r) => [r.id_produk, r.hpp]));
-  const hariIni = hariIniWib(), dari = geserHari(hariIni, -29);
-  const items = bacaItemPesanan(db, shop, dari, hariIni, rasioPencairanToko(db, shop) || RASIO_PENCAIRAN_DEFAULT);
-  const produk = daftarStok(baris, petaHpp, hitungTerjual(items, dari));
-  res.json({ status: s, batasTidakWajar: BATAS_STOK_TIDAK_WAJAR, kelompok: ringkasStok(produk), produk });
+  if (!db.prepare('SELECT 1 FROM stok_produk WHERE shop_id = ? LIMIT 1').get(shop)) return res.json({ kosong: true, status: s });
+  const h = hitungStokLengkap(db, shop, hariIniWib(), { bacaItemPesanan, rasio: rasioPencairanToko(db, shop) || RASIO_PENCAIRAN_DEFAULT });
+  res.json({ status: s, batasTidakWajar: BATAS_STOK_TIDAK_WAJAR, aturan: ATURAN_STOK, ...h });
 });
 
 // Cek kesehatan PUBLIK (tanpa login) untuk debugging dari luar: versi, status sinkron + pesan

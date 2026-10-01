@@ -157,3 +157,130 @@ test('product list and summary: groups, missing HPP, implausible stock, sold-out
   assert.equal(r.tersembunyi.modal, 20 * 30000 + 2 * 40000);
   assert.equal(r.tersembunyi.tidakWajar.produk, 0);
 });
+
+test('sync stores each variant (name from tiers, price, status) and the created date; cached products keep their variant rows', async () => {
+  const toko = { produk: {
+    30: { status: 'NORMAL', update: 1, nama: 'Kulot', varian: [2, 0] },
+    31: { status: 'NORMAL', update: 1, nama: 'Kaos polos', stok: 5 },
+  } };
+  const m = mockShopee(toko);
+  const asli = m.panggil;
+  const panggil = async (p, o) => {
+    const r = await asli(p, o);
+    if (p.endsWith('get_item_base_info')) {
+      for (const it of r.response.item_list) {
+        it.create_time = 1750000000;
+        if (it.item_id === 31) it.price_info = [{ current_price: 85000, original_price: 99000 }];
+      }
+    }
+    if (p.endsWith('get_model_list')) {
+      r.response.tier_variation = [{ name: 'Warna', option_list: [{ option: 'Hitam' }] }, { name: 'Ukuran', option_list: [{ option: 'M' }, { option: 'L' }] }];
+      r.response.model.forEach((md, k) => Object.assign(md, { model_id: 900 + k, tier_index: [0, k], price_info: [{ current_price: 120000 + k * 5000 }],
+        model_status: k ? 'MODEL_UNAVAILABLE' : 'MODEL_NORMAL' }));
+    }
+    return r;
+  };
+  await sinkronStok({ db, panggil, shopId: 'v', sekarang: 1000 });
+  const varian = () => db.prepare("SELECT * FROM stok_varian WHERE shop_id = 'v' ORDER BY id_produk, model_id").all()
+    .map((r) => [r.id_produk, r.model_id, r.nama_varian, r.stok, r.harga, r.status].join('|'));
+  assert.deepEqual(varian(), ['30|900|Hitam, M|2|120000|MODEL_NORMAL', '30|901|Hitam, L|0|125000|MODEL_UNAVAILABLE', '31|||5|85000|MODEL_NORMAL']);
+  const r = baca('v');
+  assert.deepEqual([r[30].harga_min, r[30].harga_maks, r[30].dibuat_ts], [120000, 125000, 1750000000]);
+  assert.deepEqual([r[31].harga_min, r[31].harga_maks], [85000, 85000]);
+
+  // Unchanged a minute later: no get_model_list call, variant rows and prices stay.
+  db.prepare("INSERT OR REPLACE INTO sinkron_shopee (shop_id, stok_ts) VALUES ('v', 1000)").run();
+  m.log.length = 0;
+  await sinkronStok({ db, panggil, shopId: 'v', sekarang: 1060 });
+  assert.equal(m.log.filter((x) => x === 'get_model_list').length, 0);
+  assert.equal(varian().length, 3);
+  assert.equal(baca('v')[30].harga_min, 120000);
+
+  // A variant product without stored variant rows (stock synced before this table existed) is read again.
+  db.prepare("DELETE FROM stok_varian WHERE shop_id = 'v' AND id_produk = '30'").run();
+  m.log.length = 0;
+  await sinkronStok({ db, panggil, shopId: 'v', sekarang: 1120 });
+  assert.equal(m.log.filter((x) => x === 'get_model_list').length, 1);
+
+  // Deleted product: its variant rows go too.
+  delete toko.produk[30];
+  await sinkronStok({ db, panggil, shopId: 'v', sekarang: 1180 });
+  assert.deepEqual(varian(), ['31|||5|85000|MODEL_NORMAL']);
+});
+
+const { saranBeliLagi, saranCuciGudang, ATURAN_STOK } = require('../stokSaran');
+
+test('Beli lagi: variants that sell and run out within 14 days, amount for 7 + 28 days; rugi / many returns → jangan', () => {
+  const hariIni = '2026-10-01';
+  const produk = [
+    { idProduk: 'A', nama: 'Kulot laris', status: 'NORMAL', dihitung: 'dihitung', hpp: 50000 },
+    { idProduk: 'B', nama: 'Kaos rugi', status: 'NORMAL', dihitung: 'dihitung', hpp: 90000 },
+    { idProduk: 'C', nama: 'Retur banyak', status: 'NORMAL', dihitung: 'dihitung', hpp: null },
+    { idProduk: 'D', nama: 'Jarang laku', status: 'NORMAL', dihitung: 'dihitung', hpp: 40000 },
+    { idProduk: 'E', nama: 'Diarsipkan', status: 'UNLIST', dihitung: 'dihitung', hpp: 40000 },
+  ];
+  const v = (id, model, stok, status = 'MODEL_NORMAL') => ({ id_produk: id, model_id: model, nama_varian: id + '-' + model, stok, status });
+  const varianStok = [v('A', '1', 0), v('A', '2', 3), v('A', '3', 50), v('A', '4', 0, 'MODEL_UNAVAILABLE'), v('A', '5', 0),
+    v('B', '1', 1), v('C', '', 1), v('D', '1', 0), v('E', '1', 0)];
+  const jual = (id, model, jumlah, tgl, extra = {}) => ({ idProduk: id, modelId: model, jumlah, waktuPesanan: tgl, totalPenghasilan: 100000 * jumlah, ...extra });
+  const items = [
+    jual('A', '1', 6, '2026-09-20'), jual('A', '2', 9, '2026-09-25'), jual('A', '3', 9, '2026-09-25'), jual('A', '4', 5, '2026-09-25'),
+    jual('A', '5', 1, '2026-09-25'), // 1 pcs: noise, not listed
+    jual('A', '2', 30, '2026-08-01'), // older than 30 days: not counted
+    jual('B', '1', 6, '2026-09-20', { totalPenghasilan: 80000 * 6 }), // payout below HPP
+    jual('C', '', 8, '2026-09-20'), jual('C', '', 3, '2026-09-10', { dikembalikan: true }),
+    jual('D', '1', 3, '2026-09-20'), jual('E', '1', 9, '2026-09-20'),
+  ];
+  const petaHpp = new Map(produk.map((p) => [p.idProduk, p.hpp]));
+  const h = saranBeliLagi({ produk, varianStok, items, petaHpp, hariIni });
+  assert.deepEqual(h.beli.map((b) => b.idProduk), ['A']);
+  const a = h.beli[0];
+  // A-1: 6 pcs / 30 days = 0.2/day, sold out → 0.2 × 35 = 7. A-2: 0.3/day, 3 pcs = 10 days left → 0.3 × 35 − 3 = 7.5 → 8.
+  // A-3 lasts 166 days; A-4 unavailable; A-5 sold only 1 pcs.
+  assert.deepEqual(a.varian.map((x) => [x.nama, x.sisaHari, x.beli]), [['A-1', 0, 7], ['A-2', 10, 8]]);
+  assert.equal(a.pcsBeli, 15);
+  assert.equal(a.modal, 15 * 50000);
+  assert.equal(a.terjual30, 30);
+  assert.equal(a.untungMinggu, Math.round((30 * 100000 - 30 * 50000) / 30 * 7));
+  assert.deepEqual(h.jangan.map((b) => [b.idProduk, b.jangan.alasan, b.jangan.persen]), [['C', 'retur', 27], ['B', 'rugi', undefined]]); // C runs out first (3 vs 5 days)
+  assert.deepEqual(h.ringkas, { produk: 1, pcs: 15, modal: 750000, tanpaHpp: 0 });
+  assert.equal(ATURAN_STOK.LAMA_KIRIM_HARI + ATURAN_STOK.CUKUP_HARI, 35);
+});
+
+test('Cuci gudang: 60 days unsold → break-even price, 120 days → 30% below HPP; start = last sale, created date or data start', () => {
+  const hariIni = '2026-10-01';
+  const ts = (iso) => Date.parse(iso + 'T00:00:00+07:00') / 1000;
+  const p = (idProduk, extra) => ({ idProduk, nama: idProduk, status: 'NORMAL', stok: 10, dihitung: 'dihitung', hpp: 78000, modal: 780000,
+    hargaMin: 150000, hargaMaks: 150000, dibuatTs: ts('2025-01-01'), ...extra });
+  const produk = [
+    p('laku-lama', {}), // last sale 2026-07-15 → 78 days → stage 1
+    p('tak-pernah', {}), // never sold, data from 2026-05-01 → 153 days → stage 2
+    p('baru', { dibuatTs: ts('2026-08-20') }), // created 42 days ago → not listed
+    p('dibuat', { dibuatTs: ts('2026-06-01') }), // never sold, created 122 days ago → stage 2
+    p('masih-laku', {}), // sold 10 days ago
+    p('sudah-murah', { hargaMin: 95000, hargaMaks: 100000 }), // stage 1, already ≤ break-even
+    p('tanpa-hpp', { hpp: null, modal: null, dihitung: 'tanpa-hpp' }),
+    p('999', { dihitung: 'tidak-wajar' }),
+    p('habis', { stok: 0, dihitung: 'habis' }),
+    p('arsip', { status: 'UNLIST' }),
+  ];
+  const lakuTerakhir = new Map([['laku-lama', '2026-07-15'], ['masih-laku', '2026-09-21'], ['sudah-murah', '2026-07-01'], ['arsip', '2026-07-15']]);
+  const h = saranCuciGudang({ produk, lakuTerakhir, dataMulai: '2026-05-01', hariIni, rasio: 0.78 });
+  const per = Object.fromEntries(h.produk.map((x) => [x.idProduk, x]));
+  assert.deepEqual(Object.keys(per).sort(), ['arsip', 'dibuat', 'laku-lama', 'sudah-murah', 'tak-pernah', 'tanpa-hpp']);
+  // Break-even = 78,000 ÷ 0.78 = 100,000; stage 2 = 78,000 × 0.7 ÷ 0.78 = 70,000.
+  const l = per['laku-lama'];
+  assert.deepEqual([l.tahap, l.hari, l.saran, l.dariMana, l.tahap2Mulai], [1, 78, 100000, 'laku', '2026-11-12']);
+  const t = per['tak-pernah'];
+  assert.deepEqual([t.tahap, t.hari, t.saran, t.dariMana], [2, 153, 70000, 'data']);
+  assert.deepEqual([per.dibuat.tahap, per.dibuat.dariMana, per.dibuat.sejak], [2, 'dibuat', '2026-06-01']);
+  assert.equal(per['sudah-murah'].sudahTurun, true);
+  assert.equal(per['sudah-murah'].uangKembali, Math.round(10 * 100000 * 0.78));
+  assert.equal(l.uangKembali, Math.round(10 * 100000 * 0.78));
+  assert.deepEqual([per['tanpa-hpp'].saran, per['tanpa-hpp'].uangKembali], [null, null]);
+  assert.equal(h.produk[h.produk.length - 1].idProduk, 'tanpa-hpp'); // no modal → last
+  assert.deepEqual(h.ringkas, { produk: 6, pcs: 60, modal: 5 * 780000, tahap2: 3, tanpaHpp: 1, tersembunyi: 1, perluTurun: 4 });
+  // Rounded up to Rp 1,000, so the payout never falls below the target.
+  const ganjil = saranCuciGudang({ produk: [p('x', { hpp: 55555 })], lakuTerakhir: new Map(), dataMulai: '2026-07-01', hariIni, rasio: 0.78 });
+  assert.equal(ganjil.produk[0].saran, 72000); // 55,555 ÷ 0.78 = 71,224.4
+});

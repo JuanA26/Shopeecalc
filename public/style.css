@@ -475,6 +475,51 @@ a.tombol { text-decoration: none; }
 .stok-info-tabel { margin: 10px 0 0; font-size: 0.875rem; }
 #tombolStokLagi { margin-top: 10px; }
 
+/* Beli lagi + Cuci gudang: angka ringkas, lalu satu tabel bergaris (sama dengan Daftar produk) */
+.kartu-saran-stok .grafik-kepala { margin-bottom: 0; }
+.saran-stok-ket { margin: 6px 0 0; max-width: 72ch; }
+.saran-stok-angka { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 16px 0; }
+.saran-stok-angka > div { padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-kecil); background: var(--abu-terang); }
+.saran-stok-angka .label-ringkasan { display: block; margin: 0; font-size: 0.875rem; }
+.saran-stok-angka strong { display: block; font-family: var(--huruf-judul); font-size: 1.3rem; font-weight: 800; letter-spacing: -0.02em; white-space: nowrap; font-variant-numeric: normal; }
+.saran-stok-catatan { margin: -6px 0 12px; font-size: 0.875rem; }
+.saran-stok-pesan { margin: 16px 0 0; padding: 14px 18px; border-radius: 12px; background: var(--abu-terang); color: var(--teks); }
+.saran-stok-pesan.baik { background: var(--hijau-muda); color: var(--hijau); font-weight: 600; }
+.saran-stok-lagi { margin-top: 10px; }
+.saran-stok-saring { margin-bottom: 12px; }
+.saran-stok-saring .pill-filter { min-height: 44px; }
+.saran-stok-jangan { margin-top: 16px; padding-top: 4px; border-top: 1px solid var(--border); }
+.saran-stok-jangan .langkah-daftar li strong { color: var(--merah-teks); }
+.tahap-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 16px; margin: 0 0 14px; font-size: 0.92rem; color: var(--abu-teks); }
+.tahap-info > div { display: flex; align-items: baseline; gap: 10px; }
+.tahap-info .pill { flex-shrink: 0; }
+.tabel-saran-stok thead th { white-space: normal; line-height: 1.25; vertical-align: bottom; }
+.tabel-saran-stok td { vertical-align: top; }
+.tabel-saran-stok td.kolom-nama small, .tabel-saran-stok td.kolom-nama .stok-tanda { display: block; color: var(--abu-teks); font-size: 0.85rem; }
+.tabel-saran-stok td.kolom-nama .stok-tanda { color: var(--kuning); font-weight: 600; }
+.tabel-saran-stok td:not(.kolom-nama):not(.kolom-varian):not(.kolom-saran):not(.kolom-hpp),
+.tabel-saran-stok th:not(:first-child) { text-align: right; }
+#tabelBeliLagi th:nth-child(2) { text-align: left; }
+.tabel-saran-stok .k-saran-nama { width: auto; }
+.tabel-saran-stok .k-saran-pcs { width: 96px; }
+.tabel-saran-stok .k-saran-rp { width: 150px; }
+#tabelBeliLagi .k-saran-varian { width: 42%; }
+#tabelCuciGudang .k-saran-harga { width: 160px; }
+#tabelCuciGudang .k-saran-saran { width: 200px; }
+.tabel-saran-stok td.kolom-varian, .tabel-saran-stok td.kolom-saran { white-space: normal; overflow: visible; }
+.daftar-varian { list-style: none; margin: 0; padding: 0; }
+.daftar-varian li { display: grid; grid-template-columns: minmax(0, 1fr) auto 64px; gap: 12px; align-items: baseline; padding: 3px 0; }
+.daftar-varian li + li { border-top: 1px solid var(--border-lemah); }
+.varian-nama { font-weight: 600; color: var(--teks-judul); overflow-wrap: anywhere; }
+.varian-sisa { font-size: 0.85rem; color: var(--abu-teks); white-space: nowrap; }
+.varian-sisa.habis { color: var(--merah-teks); font-weight: 600; }
+.daftar-varian strong { text-align: right; white-space: nowrap; }
+.tabel-saran-stok td.kolom-saran { text-align: right; }
+.saran-harga { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.saran-harga strong { white-space: nowrap; }
+.saran-harga-ket { display: block; margin-top: 4px; font-size: 0.85rem; color: var(--abu-teks); line-height: 1.4; }
+.tabel-saran-stok .sel-hpp-cepat input { width: 100px; }
+
 @media (max-width: 1100px) {
   .dash-ringkas { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .dash-ringkas .kartu-untung { grid-column: 1 / -1; }
@@ -487,6 +532,9 @@ a.tombol { text-decoration: none; }
   .kpi-angka { font-size: 1.3rem; }
   .kartu-tugas { padding: 18px 16px; }
   .stok-angka { font-size: 1.9rem; }
+  .saran-stok-angka { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .saran-stok-angka > div:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .saran-stok-angka > div { padding: 10px 14px; }
   .baris-filter-stok { flex-direction: column; align-items: stretch; }
   .pilih-urut { width: 100%; }
   .pilih-urut select { flex: 1; }
@@ -619,6 +667,8 @@ tbody tr:hover td { background: var(--abu-terang); }
   #tabelHpp { min-width: 820px; }
   #tabelIklan { min-width: 1000px; }
   #tabelStok { min-width: 860px; }
+  #tabelBeliLagi { min-width: 820px; }
+  #tabelCuciGudang { min-width: 860px; }
 }
 #tabelData { font-size: 0.86rem; }
 #tabelData td, #tabelData th { padding-left: 8px; padding-right: 8px; }
@@ -919,17 +969,19 @@ tr.terbuka .panah-baris { transform: rotate(90deg); }
    ========================================================================== */
 @media (max-width: 700px) {
   .tabel-scroll { overflow-x: visible; border: none; border-radius: 0; }
-  #tabelData, #tabelHpp, #tabelStok, :is(#tabelIklan, #tabelKeputusan) { table-layout: auto; min-width: 0; }
-  #tabelData colgroup, #tabelHpp colgroup, #tabelStok colgroup, :is(#tabelIklan, #tabelKeputusan) colgroup,
-  #tabelData thead, #tabelHpp thead, #tabelStok thead, :is(#tabelIklan, #tabelKeputusan) > thead { display: none; }
-  #tabelData tbody, #tabelHpp tbody, #tabelStok tbody, :is(#tabelIklan, #tabelKeputusan) > tbody { display: block; }
-  #tabelData tbody tr, #tabelHpp tbody tr, #tabelStok tbody tr, :is(#tabelIklan, #tabelKeputusan) > tbody > tr {
+  #tabelData, #tabelHpp, #tabelStok, .tabel-saran-stok, :is(#tabelIklan, #tabelKeputusan) { table-layout: auto; min-width: 0; }
+  #tabelData colgroup, #tabelHpp colgroup, #tabelStok colgroup, .tabel-saran-stok colgroup, :is(#tabelIklan, #tabelKeputusan) colgroup,
+  #tabelData thead, #tabelHpp thead, #tabelStok thead, .tabel-saran-stok thead, :is(#tabelIklan, #tabelKeputusan) > thead { display: none; }
+  #tabelData tbody, #tabelHpp tbody, #tabelStok tbody, .tabel-saran-stok tbody, :is(#tabelIklan, #tabelKeputusan) > tbody { display: block; }
+  #tabelData tbody tr, #tabelHpp tbody tr, #tabelStok tbody tr, .tabel-saran-stok tbody tr, :is(#tabelIklan, #tabelKeputusan) > tbody > tr {
     display: block; width: 100% !important; margin-bottom: 10px; padding: 10px 14px;
     background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--bayangan);
   }
-  #tabelData tbody tr td, #tabelHpp tbody tr td, #tabelStok tbody tr td, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td,
-  #tabelData tbody tr:hover td, #tabelHpp tbody tr:hover td, #tabelStok tbody tr:hover td, :is(#tabelIklan, #tabelKeputusan) > tbody > tr:hover > td { background: transparent; }
-  #tabelData tbody tr.baris-peringatan, #tabelHpp tbody tr.baris-peringatan, #tabelStok tbody tr.baris-peringatan, :is(#tabelIklan, #tabelKeputusan) > tbody > tr.baris-peringatan { background: var(--kuning-muda); border-color: var(--kuning-garis); }
+  #tabelData tbody tr td, #tabelHpp tbody tr td, #tabelStok tbody tr td, .tabel-saran-stok tbody tr td,
+  :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td, #tabelData tbody tr:hover td, #tabelHpp tbody tr:hover td, #tabelStok tbody tr:hover td,
+  .tabel-saran-stok tbody tr:hover td, :is(#tabelIklan, #tabelKeputusan) > tbody > tr:hover > td { background: transparent; }
+  #tabelData tbody tr.baris-peringatan, #tabelHpp tbody tr.baris-peringatan, #tabelStok tbody tr.baris-peringatan,
+  .tabel-saran-stok tbody tr.baris-peringatan, :is(#tabelIklan, #tabelKeputusan) > tbody > tr.baris-peringatan { background: var(--kuning-muda); border-color: var(--kuning-garis); }
   #tabelData tbody tr.baris-dikembalikan { background: var(--abu-terang); }
   :is(#tabelIklan, #tabelKeputusan) > tbody > tr.baris-untung { background: var(--hijau-muda); }
   :is(#tabelIklan, #tabelKeputusan) > tbody > tr.baris-rugi { background: var(--merah-muda); }
@@ -937,22 +989,28 @@ tr.terbuka .panah-baris { transform: rotate(90deg); }
   #tabelKeputusan > tbody > tr.baris-kurangi { background: var(--tenggat-muda); }
   .sel-setelan { justify-content: flex-end; }
 
-  #tabelData td, #tabelHpp td, #tabelStok td, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td {
+  #tabelData td, #tabelHpp td, #tabelStok td, .tabel-saran-stok td, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td {
     display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
     width: 100% !important; max-width: none; padding: 7px 0; white-space: normal; text-align: right;
     border-bottom: 1px solid var(--border-lemah);
   }
-  #tabelData tr td:last-child, #tabelHpp tr td:last-child, #tabelStok tr td:last-child, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td:last-child { border-bottom: none; }
-  #tabelData td::before, #tabelHpp td::before, #tabelStok td::before, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td::before {
+  #tabelData tr td:last-child, #tabelHpp tr td:last-child, #tabelStok tr td:last-child, .tabel-saran-stok tr td:last-child,
+  :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td:last-child { border-bottom: none; }
+  #tabelData td::before, #tabelHpp td::before, #tabelStok td::before, .tabel-saran-stok td::before,
+  :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td::before {
     content: attr(data-label); flex: 0 0 auto; padding-right: 8px; text-align: left;
     font-weight: 600; color: var(--abu-teks); font-size: 0.85rem;
   }
-  #tabelData td[data-label=""]::before, #tabelHpp td[data-label=""]::before, #tabelStok td[data-label=""]::before, :is(#tabelIklan, #tabelKeputusan) td[data-label=""]::before { content: none; }
+  #tabelData td[data-label=""]::before, #tabelHpp td[data-label=""]::before, #tabelStok td[data-label=""]::before,
+  .tabel-saran-stok td[data-label=""]::before, :is(#tabelIklan, #tabelKeputusan) td[data-label=""]::before { content: none; }
   /* Nama, HPP, Penghasilan, Tindakan: label di atas, isi selebar kartu. */
-  #tabelData td.kolom-nama, #tabelHpp td.kolom-nama, #tabelStok td.kolom-nama, :is(#tabelIklan, #tabelKeputusan) td.kolom-nama, :is(#tabelIklan, #tabelKeputusan) td.kolom-tindakan,
-  #tabelData td.kolom-hpp, #tabelHpp td.kolom-hpp, #tabelStok td.kolom-hpp, #tabelData td.kolom-total { display: block; max-width: none; text-align: left !important; }
-  #tabelData td.kolom-nama::before, #tabelHpp td.kolom-nama::before, #tabelStok td.kolom-nama::before, :is(#tabelIklan, #tabelKeputusan) td.kolom-nama::before, :is(#tabelIklan, #tabelKeputusan) td.kolom-tindakan::before,
-  #tabelData td.kolom-hpp::before, #tabelHpp td.kolom-hpp::before, #tabelStok td.kolom-hpp::before, #tabelData td.kolom-total::before { display: block; margin-bottom: 4px; }
+  #tabelData td.kolom-nama, #tabelHpp td.kolom-nama, #tabelStok td.kolom-nama, .tabel-saran-stok td.kolom-nama,
+  :is(#tabelIklan, #tabelKeputusan) td.kolom-nama, :is(#tabelIklan, #tabelKeputusan) td.kolom-tindakan, #tabelData td.kolom-hpp,
+  #tabelHpp td.kolom-hpp, #tabelStok td.kolom-hpp, .tabel-saran-stok td.kolom-hpp, #tabelData td.kolom-total { display: block; max-width: none; text-align: left !important; }
+  #tabelData td.kolom-nama::before, #tabelHpp td.kolom-nama::before, #tabelStok td.kolom-nama::before, .tabel-saran-stok td.kolom-nama::before,
+  :is(#tabelIklan, #tabelKeputusan) td.kolom-nama::before, :is(#tabelIklan, #tabelKeputusan) td.kolom-tindakan::before,
+  #tabelData td.kolom-hpp::before, #tabelHpp td.kolom-hpp::before, #tabelStok td.kolom-hpp::before, .tabel-saran-stok td.kolom-hpp::before,
+  #tabelData td.kolom-total::before { display: block; margin-bottom: 4px; }
   #tabelData td.kolom-total .pill { margin-left: 6px; margin-top: 0; }
   .input-hpp-tabel { max-width: none; }
   :is(#tabelIklan, #tabelKeputusan) { display: block; width: 100%; }
@@ -967,6 +1025,13 @@ tr.terbuka .panah-baris { transform: rotate(90deg); }
   #tabelIklan td.kolom-nama small { margin-left: 0; }
   #tabelStok .sel-hpp-cepat input { flex: 1; width: auto; min-width: 0; }
   #tabelStok td.stok-kosong::before { content: none; }
+  .tabel-saran-stok .sel-hpp-cepat input { flex: 1; width: auto; min-width: 0; }
+  /* Daftar varian: label di atas, isi selebar kartu (seperti nama produk). */
+  .tabel-saran-stok td.kolom-varian { display: block; text-align: left; }
+  .tabel-saran-stok td.kolom-varian::before { display: block; margin-bottom: 4px; }
+  .daftar-varian li { grid-template-columns: minmax(0, 1fr) auto; }
+  .daftar-varian .varian-sisa { grid-column: 1; grid-row: 2; }
+  .daftar-varian strong { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 1.05rem; }
 }
 
 /* Halaman di HP: ruang untuk bar bawah */

@@ -2,7 +2,7 @@
 // Claude/pemilik. Hanya data toko (pesanan, HPP, stok, iklan, riwayat setelan, status sinkron). TIDAK
 // memuat token, kata sandi, atau data pembeli (username pembeli memang tidak disimpan).
 const { geserHari: geser } = require('./util');
-const { ringkasStok, BATAS_STOK_TIDAK_WAJAR } = require('./sinkronStok');
+const { daftarStok, ringkasStok, hitungTerjual, BATAS_STOK_TIDAK_WAJAR } = require('./sinkronStok');
 const seninDari = (iso) => { const d = new Date(iso + 'T00:00:00Z'); return geser(iso, -((d.getUTCDay() + 6) % 7)); };
 const bagi = (a, b) => (b ? a / b : null);
 const bulat = (n, d = 0) => (n === null || n === undefined || !Number.isFinite(n) ? null : Math.round(n * 10 ** d) / 10 ** d);
@@ -185,25 +185,14 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
     k.batasShopee, k.roasLangsung, k.roasMinimum, k.berakhir, k.bisaDiubahLagi, k.zonaTerbaru,
   ].map((v) => (typeof v === 'string' ? v.slice(0, 500) : typeof v === 'number' && Number.isFinite(v) ? v : v === null || v === undefined ? null : String(v).slice(0, 500))));
 
-  // ---- Stok (sinkronStok.js): satu baris per produk, juga yang stoknya habis ----
-  const stokBaris = db.prepare('SELECT * FROM stok_produk WHERE shop_id = ?').all(shop);
-  const dari30 = geser(hariIni, -29);
-  const terjual30 = new Map();
-  for (const it of items) {
-    if (it.dikembalikan || String(it.waktuPesanan || '').slice(0, 10) < dari30) continue;
-    terjual30.set(it.idProduk, (terjual30.get(it.idProduk) || 0) + (it.jumlah || 0));
-  }
+  // ---- Stok (sinkronStok.js): satu baris per produk, juga yang stoknya habis; aturan = halaman Stok ----
+  const stokProduk = daftarStok(db.prepare('SELECT * FROM stok_produk WHERE shop_id = ?').all(shop),
+    new Map(hppRows.map((r) => [r.id_produk, r.hpp])), hitungTerjual(items, geser(hariIni, -29)));
   const waktuWib = (ts) => (ts ? new Date((Number(ts) + 7 * 3600) * 1000).toISOString().slice(0, 16).replace('T', ' ') : '');
-  const sheetStok = stokBaris.map((b) => {
-    const hpp = hppMap.has(b.id_produk) ? hppMap.get(b.id_produk).hpp : null;
-    // Sama dengan kartu Dashboard (ringkasStok): stok tidak wajar dicek sebelum HPP.
-    const dihitung = !(b.stok > 0) ? 'stok habis' : b.stok_maks_varian >= BATAS_STOK_TIDAK_WAJAR ? 'tidak: stok tidak wajar'
-      : !(hpp > 0) ? 'tidak: belum ada HPP' : 'ya';
-    const laku = terjual30.get(b.id_produk) || 0;
-    return [b.id_produk, b.nama_produk, b.status, b.status === 'NORMAL' ? 'ya' : 'tidak', b.stok, b.jumlah_varian, b.stok_maks_varian,
-      hpp, dihitung === 'ya' ? b.stok * hpp : null, dihitung, laku, laku && b.stok > 0 ? bulat(b.stok / (laku / 30)) : null, waktuWib(b.diambil_ts)];
-  }).sort((a, b) => (b[8] ?? -1) - (a[8] ?? -1) || b[4] - a[4]);
-  const rStok = ringkasStok(stokBaris, new Map(hppRows.map((r) => [r.id_produk, r.hpp])));
+  const LABEL_DIHITUNG = { dihitung: 'ya', 'tanpa-hpp': 'tidak: belum ada HPP', 'tidak-wajar': 'tidak: stok tidak wajar', habis: 'stok habis' };
+  const sheetStok = stokProduk.map((p) => [p.idProduk, p.nama, p.status, p.status === 'NORMAL' ? 'ya' : 'tidak', p.stok, p.jumlahVarian,
+    p.stokMaksVarian, p.hpp, p.modal, LABEL_DIHITUNG[p.dihitung], p.terjual30, p.cukupHari, waktuWib(p.diambilTs)]);
+  const rStok = ringkasStok(stokProduk);
 
   // ---- Status & README ----
   const cair = new Set(items.filter((i) => !i.perkiraan).map((i) => i.noPesanan)).size;
@@ -220,7 +209,7 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
     ['perubahan_setelan_tercatat', riwayat.length],
     ['stok_modal_semua', bulat(rStok.semua.modal)], ['stok_modal_aktif', bulat(rStok.aktif.modal)], ['stok_modal_tersembunyi', bulat(rStok.tersembunyi.modal)],
     ['stok_pcs_dihitung', rStok.semua.pcs], ['stok_produk_tanpa_hpp', rStok.semua.tanpaHpp.produk], ['stok_pcs_tanpa_hpp', rStok.semua.tanpaHpp.pcs],
-    ['stok_produk_tidak_wajar', rStok.semua.tidakWajar.length], ['stok_batas_tidak_wajar_per_varian', BATAS_STOK_TIDAK_WAJAR],
+    ['stok_produk_tidak_wajar', rStok.semua.tidakWajar.produk], ['stok_batas_tidak_wajar_per_varian', BATAS_STOK_TIDAK_WAJAR],
     ...Object.entries(sinkron || {}).map(([k, v]) => [k, v]),
     ...db.prepare('SELECT kunci, nilai FROM pengaturan ORDER BY kunci').all().map((r) => [`pengaturan.${r.kunci}`, r.nilai]),
   ];
@@ -236,7 +225,7 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
     ['Iklan_Kampanye / Iklan_Harian', 'Kampanye GMV Max dari Shopee Ads API. omzet = atribusi luas Shopee (termasuk produk lain, 7 hari setelah klik, termasuk pesanan batal). omzet_langsung = hanya produk yang diiklankan. Angka hari terakhir masih bisa naik sampai 7 hari.'],
     ['Iklan_Toko_Harian', 'Total iklan seluruh toko per hari. selisih = iklan di luar kampanye produk (iklan toko).'],
     ['Riwayat_Setelan', 'Setiap perubahan Target ROAS / Modal Harian yang terlihat saat sinkron. Sebelum = 7 hari sebelum tanggal perubahan, sesudah = 7 hari setelahnya (hari perubahan dilewati). untung_toko_per_hari = untung perkiraan semua produk − biaya iklan toko (rata-rata 7 hari; kosong kalau ada hari tanpa data). matang = sudah lewat 15 hari (atribusi lengkap). perubahan_lain_berdekatan > 0 berarti hasil bercampur (aplikasi menghitung beberapa perubahan satu iklan di hari yang sama sebagai satu perubahan; sheet ini tetap mencatat semuanya). Ini observasi, bukan bukti sebab-akibat.'],
-    ['Stok', `Stok terkini per produk dari Shopee (semua status, juga yang habis), sama dengan kartu Modal di stok di Dashboard. stok_pcs = semua varian, termasuk stok yang dipesan untuk promo; barang yang sudah dipesan pembeli sudah keluar. tampil_di_toko = status NORMAL; selain itu diarsipkan (UNLIST), diblokir (BANNED) atau sedang ditinjau (REVIEWING). modal = stok_pcs × hpp_per_pcs, hanya kalau dihitung = ya. Tidak dihitung: belum ada HPP, atau satu varian punya ≥ ${BATAS_STOK_TIDAK_WAJAR} pcs (kemungkinan angka asal seperti 999). terjual_30_hari = pcs terjual 30 hari terakhir (tanpa retur, batal tidak ikut). stok_cukup_hari = stok_pcs ÷ rata-rata terjual per hari; kosong kalau tidak terjual. stok_dibaca = kapan stok varian terakhir dibaca (WIB).`],
+    ['Stok', `Stok terkini per produk dari Shopee (semua status, juga yang habis), sama dengan halaman Stok. stok_pcs = semua varian, termasuk stok yang dipesan untuk promo; barang yang sudah dipesan pembeli sudah keluar. tampil_di_toko = status NORMAL; selain itu diarsipkan (UNLIST), diblokir (BANNED) atau sedang ditinjau (REVIEWING). modal = stok_pcs × hpp_per_pcs, hanya kalau dihitung = ya. Tidak dihitung: belum ada HPP, atau satu varian punya ≥ ${BATAS_STOK_TIDAK_WAJAR} pcs (kemungkinan angka asal seperti 999). terjual_30_hari = pcs terjual 30 hari terakhir (tanpa retur, batal tidak ikut). stok_cukup_hari = stok_pcs ÷ rata-rata terjual per hari; kosong kalau tidak terjual. stok_dibaca = kapan stok varian terakhir dibaca (WIB).`],
     ['Keputusan_Sekarang', 'Saran aplikasi untuk tiap iklan yang sedang berjalan saat file diunduh (sama dengan halaman Analisis Iklan). Kosong kalau data iklan belum termuat di halaman.'],
     ['Aturan aplikasi', 'Tujuan: untung toko per minggu setelah iklan. Zona iklan (untung / belum tentu / rugi, dari 7 hari matang) baru berganti kalau zona baru bertahan 3 hari berturut-turut; zona_terbaru di Keputusan_Sekarang = angka hari ini. Target ROAS naik ≤ 20% per langkah, batas = rekomendasi tertinggi Shopee × 1,25. Satu perubahan per iklan; beberapa iklan boleh diubah bersamaan. Hasil dinilai setelah 15 hari dari untung langsung iklan itu sendiri (7 hari sebelum vs 7 hari sesudah): perubahan ≥ Rp 20 rb/hari = baik, ≤ −Rp 20 rb/hari = buruk, selain itu belum jelas. Versi Shopee hanya pembanding karena bisa memuat produk lain. Buruk → kembalikan; belum jelas setelah target naik → target tidak dinaikkan lagi. Ganti hanya jika kampanye yang sedang berjalan punya ≥ 10 hari matang dengan biaya, rugi langsung ≥ Rp 100 rb, dan ROAS langsung < 0,6 × minimum; hasil buruk dari perubahan setelan terakhir diperiksa dulu. Tanpa pengganti, Modal Harian dikurangi 50%. Untung toko tidak menahan perubahan (naik-turunnya mengikuti pembeli, bukan setelan iklan); hanya aturan 4 minggu yang menahan tambah modal. Untung iklan belum menghitung kredit Proteksi ROAS Saldo 1:1.'],
     ['Saran pertanyaan untuk Claude', 'Mis.: "Analisis tren untung toko per minggu", "Apakah perubahan target di Riwayat_Setelan menaikkan untung toko?", "Produk mana yang untung setelah biaya iklan?", "Cek data yang janggal atau tidak lengkap".'],

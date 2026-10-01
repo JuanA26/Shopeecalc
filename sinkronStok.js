@@ -1,5 +1,5 @@
-// Sinkron stok produk dari Shopee (modul Product, baca-saja) untuk kartu "Modal di stok" di
-// Dashboard: berapa uang (HPP × pcs) yang sedang tertahan di barang.
+// Sinkron stok produk dari Shopee (modul Product, baca-saja) untuk halaman Stok
+// (menu Stok): berapa uang (HPP × pcs) yang sedang tertahan di barang.
 //
 // Alur per sinkron (dicek di open.shopee.com 2026-10-01):
 //   1. get_item_list       — semua produk per status (NORMAL = tampil, UNLIST = diarsipkan,
@@ -126,30 +126,49 @@ async function sinkronStok({ db, panggil, shopId, sekarang = Math.floor(Date.now
   return { produk: baris.length, varianDibaca: perluVarian.length - gagal, gagal };
 }
 
-// Ringkasan untuk kartu Dashboard, per pilihan: semua / aktif (tampil di toko) / tersembunyi
-// (diarsipkan, diblokir, sedang ditinjau). Produk tanpa HPP atau dengan stok tidak wajar tidak
-// ikut di total, tapi dihitung terpisah supaya halaman bisa menyebutnya.
+// Satu baris per produk untuk halaman Stok dan sheet Excel `Stok`, dengan alasan dihitung atau tidak:
+// 'habis' (stok 0) · 'tidak-wajar' (satu varian ≥ BATAS_STOK_TIDAK_WAJAR, dicek dulu) · 'tanpa-hpp' ·
+// 'dihitung'. modal hanya untuk yang dihitung. terjual30: Map idProduk → pcs terjual 30 hari.
+function daftarStok(baris, petaHpp, terjual30 = new Map()) {
+  return baris.map((b) => {
+    const hpp = petaHpp.has(b.id_produk) ? petaHpp.get(b.id_produk) : null;
+    const dihitung = !(b.stok > 0) ? 'habis' : b.stok_maks_varian >= BATAS_STOK_TIDAK_WAJAR ? 'tidak-wajar' : !(hpp > 0) ? 'tanpa-hpp' : 'dihitung';
+    const laku = terjual30.get(b.id_produk) || 0;
+    return {
+      idProduk: b.id_produk, nama: b.nama_produk || '', status: b.status, stok: b.stok, jumlahVarian: b.jumlah_varian ?? null,
+      stokMaksVarian: b.stok_maks_varian, hpp, dihitung, modal: dihitung === 'dihitung' ? b.stok * hpp : null,
+      terjual30: laku, cukupHari: laku && b.stok > 0 ? Math.round(b.stok / (laku / 30)) : null, diambilTs: b.diambil_ts ?? null,
+    };
+  }).sort((a, b) => (b.modal ?? -1) - (a.modal ?? -1) || b.stok - a.stok);
+}
+
+// Pcs terjual per produk sejak tanggal `dari` (baris dari bacaItemPesanan; retur tidak dihitung).
+function hitungTerjual(items, dari) {
+  const peta = new Map();
+  for (const it of items) {
+    if (it.dikembalikan || String(it.waktuPesanan || '').slice(0, 10) < dari) continue;
+    peta.set(it.idProduk, (peta.get(it.idProduk) || 0) + (it.jumlah || 0));
+  }
+  return peta;
+}
+
+// Ringkasan per pilihan: semua / aktif (tampil di toko) / tersembunyi (diarsipkan, diblokir, sedang
+// ditinjau). Produk tanpa HPP atau dengan stok tidak wajar tidak ikut di total, tapi dihitung terpisah.
 const KELOMPOK_STOK = { semua: () => true, aktif: (s) => s === 'NORMAL', tersembunyi: (s) => s !== 'NORMAL' };
-function ringkasStok(baris, petaHpp, teratas = 10) {
+function ringkasStok(daftar) {
   const hasil = {};
   for (const [kunci, cocok] of Object.entries(KELOMPOK_STOK)) {
-    const r = { modal: 0, pcs: 0, produk: 0, tanpaHpp: { produk: 0, pcs: 0 }, tidakWajar: [], teratas: [] };
-    const dihitung = [];
-    for (const b of baris) {
-      if (!cocok(b.status) || !(b.stok > 0)) continue;
-      const hpp = petaHpp.get(b.id_produk);
-      const p = { idProduk: b.id_produk, nama: b.nama_produk || '', status: b.status, stok: b.stok, stokMaksVarian: b.stok_maks_varian, hpp: hpp ?? null };
-      if (b.stok_maks_varian >= BATAS_STOK_TIDAK_WAJAR) { r.tidakWajar.push(p); continue; }
-      if (!(hpp > 0)) { r.tanpaHpp.produk++; r.tanpaHpp.pcs += b.stok; continue; }
-      p.modal = b.stok * hpp;
-      r.modal += p.modal; r.pcs += b.stok; r.produk++;
-      dihitung.push(p);
+    const r = { modal: 0, pcs: 0, produk: 0, tanpaHpp: { produk: 0, pcs: 0 }, tidakWajar: { produk: 0, pcs: 0 }, habis: 0 };
+    for (const p of daftar) {
+      if (!cocok(p.status)) continue;
+      if (p.dihitung === 'habis') r.habis++;
+      else if (p.dihitung === 'tidak-wajar') { r.tidakWajar.produk++; r.tidakWajar.pcs += p.stok; }
+      else if (p.dihitung === 'tanpa-hpp') { r.tanpaHpp.produk++; r.tanpaHpp.pcs += p.stok; }
+      else { r.modal += p.modal; r.pcs += p.stok; r.produk++; }
     }
-    r.teratas = dihitung.sort((a, b) => b.modal - a.modal).slice(0, teratas);
-    r.tidakWajar.sort((a, b) => b.stok - a.stok);
     hasil[kunci] = r;
   }
   return hasil;
 }
 
-module.exports = { sinkronStok, ringkasStok, jumlahStok, BATAS_STOK_TIDAK_WAJAR, STATUS_PRODUK };
+module.exports = { sinkronStok, daftarStok, ringkasStok, hitungTerjual, jumlahStok, BATAS_STOK_TIDAK_WAJAR, STATUS_PRODUK };

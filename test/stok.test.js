@@ -8,7 +8,7 @@ const path = require('node:path');
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stok-test-'));
 process.env.DATA_DIR = dataDir;
 const db = require('../db');
-const { sinkronStok, ringkasStok, BATAS_STOK_TIDAK_WAJAR } = require('../sinkronStok');
+const { sinkronStok, daftarStok, ringkasStok, hitungTerjual, BATAS_STOK_TIDAK_WAJAR } = require('../sinkronStok');
 const { callShopApi } = require('../shopeeApi');
 after(() => { db.close(); fs.rmSync(dataDir, { recursive: true, force: true }); });
 
@@ -120,7 +120,7 @@ test('one failing variant read keeps the old number and does not fail the sync',
   assert.equal(r[21].stok, 3);
 });
 
-test('summary: groups, missing HPP, implausible stock, top products', () => {
+test('product list and summary: groups, missing HPP, implausible stock, sold-out, days of stock', () => {
   const baris = [
     { id_produk: '1', nama_produk: 'Aktif murah', status: 'NORMAL', stok: 10, stok_maks_varian: 4 },
     { id_produk: '2', nama_produk: 'Aktif mahal', status: 'NORMAL', stok: 5, stok_maks_varian: 5 },
@@ -131,15 +131,29 @@ test('summary: groups, missing HPP, implausible stock, top products', () => {
     { id_produk: '7', nama_produk: 'Ditinjau', status: 'REVIEWING', stok: 2, stok_maks_varian: 2 },
   ];
   const hpp = new Map([['1', 20000], ['2', 100000], ['3', 30000], ['5', 50000], ['6', 10000], ['7', 40000]]);
-  const r = ringkasStok(baris, hpp);
+  // Sold in the last 30 days: returns and older orders don't count.
+  const terjual = hitungTerjual([
+    { idProduk: '1', jumlah: 3, waktuPesanan: '2026-09-20' }, { idProduk: '1', jumlah: 2, waktuPesanan: '2026-09-25 10:00' },
+    { idProduk: '1', jumlah: 9, waktuPesanan: '2026-08-01' }, { idProduk: '2', jumlah: 4, waktuPesanan: '2026-09-21', dikembalikan: true },
+  ], '2026-09-02');
+  const daftar = daftarStok(baris, hpp, terjual);
+  const per = Object.fromEntries(daftar.map((p) => [p.idProduk, p]));
+  assert.deepEqual(daftar.map((p) => p.idProduk).slice(0, 4), ['3', '2', '1', '7']); // biggest modal first
+  assert.deepEqual([per[4].dihitung, per[5].dihitung, per[6].dihitung, per[1].dihitung], ['tanpa-hpp', 'tidak-wajar', 'habis', 'dihitung']);
+  assert.equal(per[5].modal, null);
+  assert.equal(per[1].terjual30, 5);
+  assert.equal(per[1].cukupHari, 60); // 10 pcs ÷ (5 pcs / 30 days)
+  assert.equal(per[2].terjual30, 0);
+  assert.equal(per[2].cukupHari, null);
+
+  const r = ringkasStok(daftar);
   assert.equal(r.semua.modal, 10 * 20000 + 5 * 100000 + 20 * 30000 + 2 * 40000);
   assert.equal(r.semua.pcs, 37);
   assert.equal(r.semua.produk, 4);
   assert.deepEqual(r.semua.tanpaHpp, { produk: 1, pcs: 7 });
-  assert.deepEqual(r.semua.tidakWajar.map((p) => p.idProduk), ['5']);
-  assert.deepEqual(r.semua.teratas.map((p) => p.idProduk), ['3', '2', '1', '7']);
+  assert.deepEqual(r.semua.tidakWajar, { produk: 1, pcs: 1000 });
+  assert.equal(r.semua.habis, 1);
   assert.equal(r.aktif.modal, 10 * 20000 + 5 * 100000);
   assert.equal(r.tersembunyi.modal, 20 * 30000 + 2 * 40000);
-  assert.equal(r.tersembunyi.tidakWajar.length, 0);
-  assert.equal(ringkasStok(baris, hpp, 2).semua.teratas.length, 2);
+  assert.equal(r.tersembunyi.tidakWajar.produk, 0);
 });

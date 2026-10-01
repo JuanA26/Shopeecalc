@@ -73,7 +73,7 @@ Sales data needs a one-time shop authorization at `/auth/shopee/authorize`.
 
 ### Look and feel
 Built for older users: 16 px base text, high-contrast grey, buttons at least 44 px tall. On phones the
-menu sits at the bottom (icon + label) and every table becomes stacked cards (no sideways scrolling). Short fade-in animations and a one-time profit count-up are
+menu sits at the bottom (4 buttons, icon + label) and every table becomes stacked cards (no sideways scrolling). Short fade-in animations and a one-time profit count-up are
 skipped when the device asks for reduced motion.
 
 ### Data status (top bar, every page)
@@ -139,11 +139,6 @@ On a phone: profit, the tiles in a 2 × 2 grid, then the tasks.
   one-trial-at-a-time slot; a recently changed ad still waits for its result.
 - Estimated ad contribution excludes any conditional **Proteksi ROAS Saldo 1:1** credit; the app does not
   read eligibility or received credits. This is disclosed in the owner's ad details.
-- **Modal di stok** (card under the tasks): money tied up in stock now = Shopee stock × HPP, with a
-  Semua / Aktif / Tersembunyi filter (Tersembunyi = archived, blocked or under review), pcs and product
-  count, and a collapsed table of the 10 products with the most modal. Left out of the total but named in
-  a yellow "Perlu dicek" box: products without HPP, and products with ≥ 500 pcs in one variant (likely a
-  placeholder like 999; check in Seller Centre). Stock is synced every 30 minutes with the other data.
 
 ### Kalkulator Margin
 - **Lihat Data Penjualan:**
@@ -218,6 +213,17 @@ Below the table:
 
 The ads CSV from Seller Centre can still be uploaded under "Cadangan" if the automatic data fails.
 
+### Stok
+Money tied up in stock now (Shopee stock × HPP), synced every 30 minutes with the other data.
+- **Modal di stok** (top card): the total, pcs and product count, with a Semua / Aktif / Tersembunyi filter
+  (Tersembunyi = archived, blocked or under review). Left out of the total but named in a yellow "Perlu
+  dicek" box, each with a "Lihat produknya" button: products without HPP, and products with ≥ 500 pcs in
+  one variant (likely a placeholder like 999; check in Seller Centre).
+- **Daftar produk:** every product with stock, HPP, modal, pcs sold in 30 days and "Cukup untuk" (stock ÷
+  average daily sales). Filters with counts (Semua, Dihitung, Belum ada HPP, Stok tidak wajar, Habis),
+  search, sort (modal, stock, slowest to sell, best-selling, name), 50 rows at a time. Missing HPP can be
+  filled in the row; read-only accounts only see it.
+
 ## 4. How the numbers are calculated
 
 **Kalkulator**
@@ -263,7 +269,7 @@ cross-product sales, missing/zero days, overlapping changes, parallel per-ad cha
 `keamanan.test.js` starts the real server and checks headers, the cross-site block, the login limit,
 that sessions survive a restart, the public health check, the log and read-only accounts.
 `shopeeApi.test.js` checks the rate-limit retry and the read-only endpoint guard. `ekspor.test.js` checks the Excel export. `stok.test.js` checks the stock sync (variants, paging, re-read
-rules, one failed product) and the Modal di stok totals. No Shopee credentials are needed.
+rules, one failed product), the per-product list (days of stock, sold in 30 days) and the totals. No Shopee credentials are needed.
 The calculator excludes business overhead unless it is already part of HPP/payout deductions.
 
 ## 6. Project structure
@@ -274,7 +280,7 @@ webapp/
   shopeeApi.js      Shopee API v2 client: HMAC signing, OAuth, read-only endpoint allowlist
   sinkronShopee.js  Order + payout sync into SQLite; measured paid-order rate
   sinkronIklan.js   Ads sync (campaigns, daily performance, shop totals, recommended ROAS)
-  sinkronStok.js    Stock sync (product list, variants) + Modal di stok totals
+  sinkronStok.js    Stock sync (product list, variants) + per-product list and totals for the Stok page
   analisisIklan.js  Ads maths and per-ad decision; parser for the Seller Centre ads CSV
   db.js             SQLite schema (users, HPP, settings, Shopee token, orders, payouts, ads, stock)
   eksporData.js     Pengaturan export: builds the analysis workbook sheets

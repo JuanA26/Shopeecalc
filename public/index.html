@@ -50,6 +50,10 @@
           <svg class="ikon" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m7 15 4-5 4 3 5-7"/></svg>
           Analisis Iklan
         </button>
+        <button class="nav-item" data-page="halamanStok">
+          <svg class="ikon" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg>
+          Stok
+        </button>
       </nav>
       <div class="info-user">
         <button type="button" id="tombolStatusData" class="status-data tersembunyi" title="Perbarui data dari Shopee">
@@ -120,18 +124,6 @@
             <div id="saranIklanIsi"></div>
           </details>
           <p class="keterangan tugas-cara">Semua perubahan iklan dilakukan di Seller Centre → Iklan Shopee.</p>
-        </div>
-        <!-- Modal di stok: stok Shopee × HPP (app.js renderStok, server /api/stok) -->
-        <div class="kartu kartu-stok" id="kartuStok">
-          <div class="grafik-kepala">
-            <h2>Modal di stok</h2>
-            <div class="segmen" role="group" aria-label="Produk yang dihitung" id="segmenStok" hidden>
-              <button type="button" class="pill-filter aktif" data-stok="semua" aria-pressed="true">Semua</button>
-              <button type="button" class="pill-filter" data-stok="aktif" aria-pressed="false">Aktif</button>
-              <button type="button" class="pill-filter" data-stok="tersembunyi" aria-pressed="false">Tersembunyi</button>
-            </div>
-          </div>
-          <div id="stokIsi" aria-live="polite"><span class="kerangka besar"></span><span class="kerangka pendek"></span></div>
         </div>
       </section>
 
@@ -444,6 +436,55 @@
           <p id="pesanErrorIklan" class="pesan-error tersembunyi"></p>
           <p id="pesanLoadingIklan" class="pesan-loading tersembunyi"><span class="spinner"></span> Sedang memproses file...</p>
           </details>
+        </div>
+      </section>
+
+      <!-- ---------- STOK: modal di stok (stok Shopee × HPP), semua produk (app.js renderStok, server /api/stok) ---------- -->
+      <section id="halamanStok" class="halaman">
+        <div class="judul-halaman">
+          <h1>Stok</h1>
+          <p class="keterangan">Uang yang tertahan di barang: stok di Shopee × harga modal (HPP).</p>
+        </div>
+        <div class="kartu kartu-stok">
+          <div class="grafik-kepala">
+            <h2>Modal di stok</h2>
+            <div class="segmen" role="group" aria-label="Produk yang dihitung" id="segmenStok" hidden>
+              <button type="button" class="pill-filter aktif" data-stok="semua" aria-pressed="true">Semua</button>
+              <button type="button" class="pill-filter" data-stok="aktif" aria-pressed="false">Aktif</button>
+              <button type="button" class="pill-filter" data-stok="tersembunyi" aria-pressed="false">Tersembunyi</button>
+            </div>
+          </div>
+          <div id="stokIsi" aria-live="polite"><span class="kerangka besar"></span><span class="kerangka pendek"></span></div>
+        </div>
+        <div class="kartu tersembunyi" id="kartuTabelStok">
+          <div class="baris-filter">
+            <h2>Daftar produk</h2>
+            <div class="input-ikon">
+              <svg class="ikon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="cariStok" placeholder="Cari nama produk / ID Produk..." aria-label="Cari produk">
+            </div>
+          </div>
+          <div class="baris-filter baris-filter-stok">
+            <div class="pill-filter-row" role="group" aria-label="Tampilkan produk" id="filterStok"></div>
+            <label class="pilih-urut">Urutkan
+              <select id="urutStok">
+                <option value="modal">Modal terbesar</option>
+                <option value="stok">Stok terbanyak</option>
+                <option value="lama">Paling lama habis</option>
+                <option value="laku">Paling laku (30 hari)</option>
+                <option value="nama">Nama A–Z</option>
+              </select>
+            </label>
+          </div>
+          <div class="tabel-scroll">
+            <table id="tabelStok">
+              <colgroup><col class="k-stok-nama"><col class="k-stok-pcs"><col class="k-stok-hpp"><col class="k-stok-modal"><col class="k-stok-laku"><col class="k-stok-cukup"></colgroup>
+              <thead><tr><th scope="col">Produk</th><th scope="col">Stok</th><th scope="col">HPP</th><th scope="col">Modal</th><th scope="col">Terjual 30 hari</th><th scope="col">Cukup untuk</th></tr></thead>
+              <tbody id="isiTabelStok"></tbody>
+            </table>
+          </div>
+          <p class="keterangan stok-info-tabel" id="infoTabelStok"></p>
+          <button type="button" class="tombol tombol-kecil tersembunyi" id="tombolStokLagi">Tampilkan lebih banyak</button>
         </div>
       </section>
 

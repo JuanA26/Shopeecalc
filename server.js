@@ -13,7 +13,7 @@ const { parseCsvLine, parseShopeeAdsCsv, hitungAnalisisIklan, RASIO_PENCAIRAN_DE
 const shopeeApi = require('./shopeeApi');
 const { sinkronkan, bacaItemPesanan, rasioPencairanToko, tingkatCairTerukur, modeEscrow, isiAntreanUlang, STATUS_BUKAN_PENJUALAN } = require('./sinkronShopee');
 const { sinkronIklan, kampanyeDariDb } = require('./sinkronIklan');
-const { sinkronStok, ringkasStok, BATAS_STOK_TIDAK_WAJAR } = require('./sinkronStok');
+const { sinkronStok, daftarStok, ringkasStok, hitungTerjual, BATAS_STOK_TIDAK_WAJAR } = require('./sinkronStok');
 const { susunEkspor } = require('./eksporData');
 const { buatXlsx } = require('./xlsx');
 const SesiSqlite = require('./sesiSqlite');
@@ -475,7 +475,7 @@ function jalankanSinkron(opsi = {}) {
     }
     await lanjutStok();
   };
-  // Stok (kartu "Modal di stok") paling akhir, juga dengan status sendiri.
+  // Stok (halaman Stok) paling akhir, juga dengan status sendiri.
   const lanjutStok = async () => {
     progresSinkron = { tahap: 'stok', selesai: null, total: null };
     const mulai = Math.floor(Date.now() / 1000);
@@ -552,15 +552,19 @@ function statusSinkron() {
 
 app.get('/api/sinkron/status', requireLogin, (req, res) => res.json(statusSinkron()));
 
-// Modal di stok (kartu Dashboard): stok terkini × HPP, per kelompok semua/aktif/tersembunyi.
+// Halaman Stok: semua produk (stok × HPP, terjual 30 hari) + ringkasan semua/aktif/tersembunyi.
 app.get('/api/stok', requireLogin, (req, res) => {
   const token = barisTokenAktif();
   if (!token) return res.status(400).json({ error: 'Toko belum terhubung ke Shopee.' });
-  const baris = db.prepare('SELECT id_produk, nama_produk, status, stok, stok_maks_varian FROM stok_produk WHERE shop_id = ?').all(String(token.shop_id));
+  const shop = String(token.shop_id);
+  const baris = db.prepare('SELECT * FROM stok_produk WHERE shop_id = ?').all(shop);
   const s = statusSinkron().stok;
   if (!baris.length) return res.json({ kosong: true, status: s });
   const petaHpp = new Map(db.prepare('SELECT id_produk, hpp FROM product_hpp').all().map((r) => [r.id_produk, r.hpp]));
-  res.json({ status: s, batasTidakWajar: BATAS_STOK_TIDAK_WAJAR, kelompok: ringkasStok(baris, petaHpp) });
+  const hariIni = hariIniWib(), dari = geserHari(hariIni, -29);
+  const items = bacaItemPesanan(db, shop, dari, hariIni, rasioPencairanToko(db, shop) || RASIO_PENCAIRAN_DEFAULT);
+  const produk = daftarStok(baris, petaHpp, hitungTerjual(items, dari));
+  res.json({ status: s, batasTidakWajar: BATAS_STOK_TIDAK_WAJAR, kelompok: ringkasStok(produk), produk });
 });
 
 // Cek kesehatan PUBLIK (tanpa login) untuk debugging dari luar: versi, status sinkron + pesan

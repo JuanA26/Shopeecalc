@@ -234,7 +234,7 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_iklan_riwayat ON iklan_riwayat_setelan (shop_id, tanggal);
 
-  -- Stok terkini per produk (sinkronStok.js) untuk kartu "Modal di stok". stok = Σ semua varian;
+  -- Stok terkini per produk (sinkronStok.js) untuk halaman Stok. stok = Σ semua varian;
   -- stok_maks_varian = varian terbanyak (penanda angka asal seperti 999). status = item_status
   -- Shopee (NORMAL = tampil di toko). diambil_ts = kapan stok varian terakhir dibaca (unix detik).
   CREATE TABLE IF NOT EXISTS stok_produk (

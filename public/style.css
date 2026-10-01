@@ -235,12 +235,12 @@ a.tombol { text-decoration: none; }
   .header-isi { height: auto; flex-wrap: wrap; padding: 10px 24px 0; row-gap: 4px; }
   .nav-atas { order: 3; flex-basis: 100%; margin-left: -14px; min-height: 48px; }
 }
-/* HP: menu jadi bar bawah (3 tombol, ikon di atas tulisan). */
+/* HP: menu jadi bar bawah (4 tombol, ikon di atas tulisan). */
 @media (max-width: 640px) {
   .header-isi { height: 58px; padding: 0 14px; gap: 10px; }
   .header-app .nama-toko { display: none; }
   .nav-atas {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: grid; grid-template-columns: repeat(3, 1fr);
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: grid; grid-template-columns: repeat(4, 1fr);
     gap: 4px; padding: 6px 8px calc(8px + env(safe-area-inset-bottom)); overflow: visible;
     background: rgba(255, 255, 255, 0.97); border-top: 1px solid var(--border); box-shadow: 0 -4px 16px rgba(16, 24, 40, 0.06);
   }
@@ -426,18 +426,39 @@ a.tombol { text-decoration: none; }
 .saran-iklan > summary { font-size: 1rem; }
 .saran-judul { font-size: 1.05rem; margin: 14px 0 2px; }
 
-/* Modal di stok: angka besar + pilihan Semua/Aktif/Tersembunyi + produk dengan modal terbesar */
+/* Halaman Stok: kartu ringkas (angka besar + Semua/Aktif/Tersembunyi) + daftar semua produk */
 .kartu-stok .grafik-kepala { margin-bottom: 4px; }
 .kartu-stok .segmen .pill-filter { min-height: 44px; }
 .stok-ket-kelompok { margin: 12px 0 0; }
 .stok-angka { font-size: 2.2rem; margin: 14px 0 4px; }
 .stok-sub { margin: 0 0 12px; }
-.stok-cek p { margin: 2px 0; }
-.stok-cek .daftar-catatan { margin-top: 4px; }
+.stok-cek p { margin: 4px 0 0; }
+.stok-cek .tombol { margin: 4px 0 6px; }
 .stok-waktu { margin: 12px 0 0; font-size: 0.875rem; }
-.tabel-stok td.stok-nama { white-space: normal; text-align: left; }
-.tabel-stok td.stok-nama small { display: block; color: var(--abu-teks); font-size: 0.85rem; }
-.tabel-stok td:last-child { vertical-align: top; font-weight: 600; color: var(--teks-judul); white-space: nowrap; }
+.baris-filter-stok { align-items: flex-start; }
+.baris-filter-stok .pill-filter-row { margin-bottom: 0; }
+.baris-filter-stok .pill-filter { min-height: 44px; }
+.jumlah-pill { font-weight: 500; opacity: 0.75; margin-left: 2px; }
+.pilih-urut { display: inline-flex; align-items: center; gap: 8px; font-size: 0.92rem; font-weight: 600; color: var(--abu-teks); }
+.pilih-urut select {
+  min-height: 44px; padding: 8px 12px; border: 1px solid var(--border-kuat); border-radius: var(--radius-kecil);
+  background: #fff; font: inherit; font-size: 16px; color: var(--teks-judul);
+}
+.pilih-urut select:focus { border-color: var(--oranye); box-shadow: 0 0 0 4px rgba(238, 77, 45, 0.12); outline: none; }
+#tabelStok .k-stok-nama { width: auto; }
+#tabelStok .k-stok-pcs { width: 92px; }
+#tabelStok .k-stok-hpp { width: 200px; }
+#tabelStok .k-stok-modal { width: 140px; }
+#tabelStok .k-stok-laku { width: 104px; }
+#tabelStok .k-stok-cukup { width: 124px; }
+#tabelStok thead th { white-space: normal; line-height: 1.25; vertical-align: bottom; }
+#tabelStok td:not(.kolom-nama):not(.kolom-hpp), #tabelStok th:not(:first-child):not(:nth-child(3)) { text-align: right; }
+#tabelStok td.kolom-nama small, .stok-tanda { display: block; color: var(--abu-teks); font-size: 0.85rem; }
+.stok-tanda { color: var(--kuning); font-weight: 600; }
+#tabelStok .sel-hpp-cepat input { width: 100px; }
+.stok-kosong { text-align: center !important; color: var(--abu-teks); padding: 20px !important; }
+.stok-info-tabel { margin: 10px 0 0; font-size: 0.875rem; }
+#tombolStokLagi { margin-top: 10px; }
 
 @media (max-width: 1100px) {
   .dash-ringkas { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -451,7 +472,9 @@ a.tombol { text-decoration: none; }
   .kpi-angka { font-size: 1.3rem; }
   .kartu-tugas { padding: 18px 16px; }
   .stok-angka { font-size: 1.9rem; }
-  .tabel-stok tbody td.stok-nama { white-space: normal; }
+  .baris-filter-stok { flex-direction: column; align-items: stretch; }
+  .pilih-urut { width: 100%; }
+  .pilih-urut select { flex: 1; }
   .tugas-langkah { padding: 16px; }
   .tugas-langkah > :not(.langkah-kepala) { margin-left: 0; }
   .tukar-baris { grid-template-columns: minmax(0, 1fr); gap: 6px; }
@@ -580,6 +603,7 @@ tbody tr:hover td { background: var(--abu-terang); }
   #tabelData { min-width: 1400px; }
   #tabelHpp { min-width: 820px; }
   #tabelIklan { min-width: 1000px; }
+  #tabelStok { min-width: 860px; }
 }
 #tabelData { font-size: 0.86rem; }
 #tabelData td, #tabelData th { padding-left: 8px; padding-right: 8px; }
@@ -880,17 +904,17 @@ tr.terbuka .panah-baris { transform: rotate(90deg); }
    ========================================================================== */
 @media (max-width: 700px) {
   .tabel-scroll { overflow-x: visible; border: none; border-radius: 0; }
-  #tabelData, #tabelHpp, :is(#tabelIklan, #tabelKeputusan) { table-layout: auto; min-width: 0; }
-  #tabelData colgroup, #tabelHpp colgroup, :is(#tabelIklan, #tabelKeputusan) colgroup,
-  #tabelData thead, #tabelHpp thead, :is(#tabelIklan, #tabelKeputusan) > thead { display: none; }
-  #tabelData tbody, #tabelHpp tbody, :is(#tabelIklan, #tabelKeputusan) > tbody { display: block; }
-  #tabelData tbody tr, #tabelHpp tbody tr, :is(#tabelIklan, #tabelKeputusan) > tbody > tr {
+  #tabelData, #tabelHpp, #tabelStok, :is(#tabelIklan, #tabelKeputusan) { table-layout: auto; min-width: 0; }
+  #tabelData colgroup, #tabelHpp colgroup, #tabelStok colgroup, :is(#tabelIklan, #tabelKeputusan) colgroup,
+  #tabelData thead, #tabelHpp thead, #tabelStok thead, :is(#tabelIklan, #tabelKeputusan) > thead { display: none; }
+  #tabelData tbody, #tabelHpp tbody, #tabelStok tbody, :is(#tabelIklan, #tabelKeputusan) > tbody { display: block; }
+  #tabelData tbody tr, #tabelHpp tbody tr, #tabelStok tbody tr, :is(#tabelIklan, #tabelKeputusan) > tbody > tr {
     display: block; width: 100% !important; margin-bottom: 10px; padding: 10px 14px;
     background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--bayangan);
   }
-  #tabelData tbody tr td, #tabelHpp tbody tr td, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td,
-  #tabelData tbody tr:hover td, #tabelHpp tbody tr:hover td, :is(#tabelIklan, #tabelKeputusan) > tbody > tr:hover > td { background: transparent; }
-  #tabelData tbody tr.baris-peringatan, #tabelHpp tbody tr.baris-peringatan, :is(#tabelIklan, #tabelKeputusan) > tbody > tr.baris-peringatan { background: var(--kuning-muda); border-color: var(--kuning-garis); }
+  #tabelData tbody tr td, #tabelHpp tbody tr td, #tabelStok tbody tr td, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td,
+  #tabelData tbody tr:hover td, #tabelHpp tbody tr:hover td, #tabelStok tbody tr:hover td, :is(#tabelIklan, #tabelKeputusan) > tbody > tr:hover > td { background: transparent; }
+  #tabelData tbody tr.baris-peringatan, #tabelHpp tbody tr.baris-peringatan, #tabelStok tbody tr.baris-peringatan, :is(#tabelIklan, #tabelKeputusan) > tbody > tr.baris-peringatan { background: var(--kuning-muda); border-color: var(--kuning-garis); }
   #tabelData tbody tr.baris-dikembalikan { background: var(--abu-terang); }
   :is(#tabelIklan, #tabelKeputusan) > tbody > tr.baris-untung { background: var(--hijau-muda); }
   :is(#tabelIklan, #tabelKeputusan) > tbody > tr.baris-rugi { background: var(--merah-muda); }
@@ -898,22 +922,22 @@ tr.terbuka .panah-baris { transform: rotate(90deg); }
   #tabelKeputusan > tbody > tr.baris-kurangi { background: var(--tenggat-muda); }
   .sel-setelan { justify-content: flex-end; }
 
-  #tabelData td, #tabelHpp td, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td {
+  #tabelData td, #tabelHpp td, #tabelStok td, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td {
     display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
     width: 100% !important; max-width: none; padding: 7px 0; white-space: normal; text-align: right;
     border-bottom: 1px solid var(--border-lemah);
   }
-  #tabelData tr td:last-child, #tabelHpp tr td:last-child, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td:last-child { border-bottom: none; }
-  #tabelData td::before, #tabelHpp td::before, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td::before {
+  #tabelData tr td:last-child, #tabelHpp tr td:last-child, #tabelStok tr td:last-child, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td:last-child { border-bottom: none; }
+  #tabelData td::before, #tabelHpp td::before, #tabelStok td::before, :is(#tabelIklan, #tabelKeputusan) > tbody > tr > td::before {
     content: attr(data-label); flex: 0 0 auto; padding-right: 8px; text-align: left;
     font-weight: 600; color: var(--abu-teks); font-size: 0.85rem;
   }
-  #tabelData td[data-label=""]::before, #tabelHpp td[data-label=""]::before, :is(#tabelIklan, #tabelKeputusan) td[data-label=""]::before { content: none; }
+  #tabelData td[data-label=""]::before, #tabelHpp td[data-label=""]::before, #tabelStok td[data-label=""]::before, :is(#tabelIklan, #tabelKeputusan) td[data-label=""]::before { content: none; }
   /* Nama, HPP, Penghasilan, Tindakan: label di atas, isi selebar kartu. */
-  #tabelData td.kolom-nama, #tabelHpp td.kolom-nama, :is(#tabelIklan, #tabelKeputusan) td.kolom-nama, :is(#tabelIklan, #tabelKeputusan) td.kolom-tindakan,
-  #tabelData td.kolom-hpp, #tabelHpp td.kolom-hpp, #tabelData td.kolom-total { display: block; max-width: none; text-align: left !important; }
-  #tabelData td.kolom-nama::before, #tabelHpp td.kolom-nama::before, :is(#tabelIklan, #tabelKeputusan) td.kolom-nama::before, :is(#tabelIklan, #tabelKeputusan) td.kolom-tindakan::before,
-  #tabelData td.kolom-hpp::before, #tabelHpp td.kolom-hpp::before, #tabelData td.kolom-total::before { display: block; margin-bottom: 4px; }
+  #tabelData td.kolom-nama, #tabelHpp td.kolom-nama, #tabelStok td.kolom-nama, :is(#tabelIklan, #tabelKeputusan) td.kolom-nama, :is(#tabelIklan, #tabelKeputusan) td.kolom-tindakan,
+  #tabelData td.kolom-hpp, #tabelHpp td.kolom-hpp, #tabelStok td.kolom-hpp, #tabelData td.kolom-total { display: block; max-width: none; text-align: left !important; }
+  #tabelData td.kolom-nama::before, #tabelHpp td.kolom-nama::before, #tabelStok td.kolom-nama::before, :is(#tabelIklan, #tabelKeputusan) td.kolom-nama::before, :is(#tabelIklan, #tabelKeputusan) td.kolom-tindakan::before,
+  #tabelData td.kolom-hpp::before, #tabelHpp td.kolom-hpp::before, #tabelStok td.kolom-hpp::before, #tabelData td.kolom-total::before { display: block; margin-bottom: 4px; }
   #tabelData td.kolom-total .pill { margin-left: 6px; margin-top: 0; }
   .input-hpp-tabel { max-width: none; }
   :is(#tabelIklan, #tabelKeputusan) { display: block; width: 100%; }
@@ -926,6 +950,8 @@ tr.terbuka .panah-baris { transform: rotate(90deg); }
   #tabelIklan tr.baris-detail { padding: 0; border: none; box-shadow: none; background: transparent; }
   #tabelIklan tr.baris-detail > td { padding: 0; overflow: visible; }
   #tabelIklan td.kolom-nama small { margin-left: 0; }
+  #tabelStok .sel-hpp-cepat input { flex: 1; width: auto; min-width: 0; }
+  #tabelStok td.stok-kosong::before { content: none; }
 }
 
 /* Halaman di HP: ruang untuk bar bawah */

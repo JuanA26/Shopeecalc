@@ -52,6 +52,7 @@
 // tidak meramalkan yang sekarang. Gabungan tetap ada untuk tabel "Semua produk".
 
 const { metrikTerbaru } = require('./public/evaluasiIklan');
+const { geserHari: tambahHari } = require('./util');
 const RASIO_PENCAIRAN_DEFAULT = 0.78;
 const TINGKAT_CAIR_DEFAULT = 0.85; // 85% pesanan iklan dianggap dibayar kalau belum ada angka toko
 const PENYANGGA_TARGET = 2;         // poin di atas ROAS minimum
@@ -101,11 +102,6 @@ function tanggalShopee(teks) {
   return { tampil: `${m[1]}/${m[2]}/${m[3]}`, iso: `${m[3]}-${m[2]}-${m[1]}` };
 }
 
-const tambahHari = (iso, n) => {
-  const d = new Date(iso + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-};
 const selisihHari = (isoA, isoB) => Math.round((Date.parse(isoB) - Date.parse(isoA)) / 86400000);
 const isoKeTampil = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : iso);
 
@@ -255,7 +251,6 @@ function vonis(p) {
       ? { status: 'rugi', aksi: 'rugi', tindakan: 'Belum ada penjualan dari iklan ini.' }
       : { status: 'untung', aksi: 'untung', tindakan: 'Belum ada biaya dan penjualan.' };
   }
-  if (p.marginPerRp <= 0) return { status: 'tipis', aksi: 'jeda', tindakan: 'Jeda — harga di bawah modal.' };
   const roasL = m.roasLangsung;
   if (roasL === null) return { status: 'untung', aksi: 'untung', tindakan: 'Belum ada biaya iklan.' };
   const teksRoas = `langsung ${f(roasL)}, min ${f(p.roasImpas)}`;

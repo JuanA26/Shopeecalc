@@ -34,12 +34,12 @@ function antreanUlang(db, shopId, jenis) {
   );
   const buang = db.prepare('DELETE FROM sinkron_ulang WHERE shop_id = ? AND order_sn = ? AND jenis = ?');
   const hitung = db.prepare('SELECT COUNT(*) AS n FROM sinkron_ulang WHERE shop_id = ? AND jenis = ?');
+  const tandai = db.prepare('UPDATE sinkron_ulang SET percobaan = percobaan + 1 WHERE shop_id = ? AND jenis = ? AND order_sn IN (SELECT value FROM json_each(?))');
   return {
     daftar: () => {
       const ids = pilih.all(shopId, jenis, BATAS_ULANG).map((r) => r.order_sn);
-      // Rotate even when the API omits a row or throws before processing its response.
-      const tandai = db.prepare('UPDATE sinkron_ulang SET percobaan = percobaan + 1 WHERE shop_id = ? AND jenis = ? AND order_sn = ?');
-      for (const sn of ids) tandai.run(shopId, jenis, sn);
+      // Rotate even when the API omits a row or throws before processing its response (one statement).
+      if (ids.length) tandai.run(shopId, jenis, JSON.stringify(ids));
       return ids;
     },
     catat: (sn) => tambah.run(shopId, sn, jenis),

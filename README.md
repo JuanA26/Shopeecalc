@@ -73,7 +73,7 @@ Sales data needs a one-time shop authorization at `/auth/shopee/authorize`.
 
 ### Look and feel
 Built for older users: 16 px base text, high-contrast grey, buttons at least 44 px tall. On phones the
-menu sits at the bottom (icon + label). Short fade-in animations and a one-time profit count-up are
+menu sits at the bottom (icon + label) and every table becomes stacked cards (no sideways scrolling). Short fade-in animations and a one-time profit count-up are
 skipped when the device asks for reduced motion.
 
 ### Data status (top bar, every page)
@@ -147,7 +147,7 @@ phone: profit, then tasks, then shortcuts.
     replaces it automatically. Cancelled and unpaid orders are left out.
 - **Atur Harga Modal (HPP):** set the cost price per Product ID (shared by all users). Bulk CSV
   import/export. The "Belum Diisi" filter lists products without HPP, best sellers first.
-- Yellow rows = no HPP yet (type it straight into the row). Running-ad products without HPP are listed
+- Yellow rows = no HPP yet (type it straight into the row, then Simpan or Enter). Running-ad products without HPP are listed
   too, even without sales in the period. Click a column header to sort.
 - **Sync:**
   - Runs every 30 minutes and only downloads new or changed orders.
@@ -180,8 +180,7 @@ stacks. The groups, most urgent first:
    changed at once (each is judged on its own direct sales); within a group, the biggest 7-day loss comes
    first.
 
-Notices appear once at the top: missing data (yellow, with an "Isi HPP" button), a large store-profit drop,
-and how many ads end soon ("ubah Periode jadi Tidak Terbatas"; the rows carry the date).
+Notices appear once at the top: missing data (yellow, with an "Isi HPP" button) and how many ads end soon ("ubah Periode jadi Tidak Terbatas"; the rows carry the date).
 
 How each ad's change is chosen (the trial checks above take priority over this ladder):
 - Each ad first gets a zone from **direct ROAS** (sales of the advertised product only) and Shopee's ROAS

@@ -72,8 +72,6 @@ app.set('trust proxy', 1); // perlu kalau dideploy di belakang reverse proxy/htt
   }
 })();
 
-// Batas dinaikkan dari 100 kb bawaan: /api/iklan/hitung-ulang mengirim balik semua baris
-// kampanye (ratusan baris × ~0,5 kb) supaya tidak perlu unggah ulang file.
 // Header keamanan untuk semua respons. CSP: hanya skrip dari situs ini sendiri (tidak ada
 // skrip inline), font dari Google Fonts; halaman tidak boleh dibingkai situs lain.
 app.use((req, res, next) => {
@@ -102,6 +100,8 @@ app.use((req, res, next) => {
   next();
 });
 
+// Batas dinaikkan dari 100 kb bawaan: /api/iklan/hitung-ulang mengirim balik semua baris
+// kampanye (ratusan baris × ~0,5 kb) supaya tidak perlu unggah ulang file.
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -202,6 +202,17 @@ app.get('/api/me', (req, res) => {
 });
 
 // ---------- Rute HPP (Harga Pokok Penjualan) ----------
+// Simpan satu HPP; nama kosong tidak menimpa nama yang sudah ada.
+const simpanHpp = db.prepare(
+  `INSERT INTO product_hpp (id_produk, nama_produk, hpp, updated_at, updated_by)
+   VALUES (?, ?, ?, datetime('now'), ?)
+   ON CONFLICT(id_produk) DO UPDATE SET
+     hpp = excluded.hpp,
+     nama_produk = COALESCE(NULLIF(excluded.nama_produk, ''), product_hpp.nama_produk),
+     updated_at = excluded.updated_at,
+     updated_by = excluded.updated_by`
+);
+
 app.get('/api/hpp', requireLogin, (req, res) => {
   const rows = db.prepare('SELECT * FROM product_hpp ORDER BY updated_at DESC').all();
   res.json(rows);
@@ -217,15 +228,7 @@ app.put('/api/hpp/:idProduk', requireLogin, (req, res) => {
     return res.status(400).json({ error: 'Nilai HPP harus berupa angka dan tidak boleh negatif.' });
   }
 
-  db.prepare(
-    `INSERT INTO product_hpp (id_produk, nama_produk, hpp, updated_at, updated_by)
-     VALUES (?, ?, ?, datetime('now'), ?)
-     ON CONFLICT(id_produk) DO UPDATE SET
-       hpp = excluded.hpp,
-       nama_produk = COALESCE(NULLIF(excluded.nama_produk, ''), product_hpp.nama_produk),
-       updated_at = excluded.updated_at,
-       updated_by = excluded.updated_by`
-  ).run(idProduk, typeof namaProduk === 'string' ? namaProduk : '', hppNum, req.session.username);
+  simpanHpp.run(idProduk, typeof namaProduk === 'string' ? namaProduk : '', hppNum, req.session.username);
 
   const row = db.prepare('SELECT * FROM product_hpp WHERE id_produk = ?').get(idProduk);
   res.json(row);
@@ -264,11 +267,9 @@ app.get('/api/hpp/export-csv', requireLogin, (req, res) => {
   res.send(csv);
 });
 
-// parseCsvLine() dipakai bersama dengan pembaca CSV iklan — lihat analisisIklan.js.
-
-// Impor massal dari file CSV dengan format yang sama dengan yang diunduh dari
-// versi statis (kolom: ID Produk, Nama Produk, Harga Modal (HPP), ...).
-// Berguna untuk memindahkan data HPP yang sudah ada ke versi server ini.
+// Impor massal dari file CSV dengan format yang sama dengan ekspor di atas (kolom: ID Produk,
+// Nama Produk, Harga Modal (HPP), ...). parseCsvLine() sama dengan pembaca CSV iklan.
+// Satu transaksi: ratusan baris tersimpan sekaligus (cepat), atau tidak sama sekali.
 app.post('/api/hpp/import-csv', requireLogin, upload.single('file'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'Tidak ada file yang diunggah.' });
@@ -291,34 +292,31 @@ app.post('/api/hpp/import-csv', requireLogin, upload.single('file'), (req, res) 
     });
   }
 
-  const upsert = db.prepare(
-    `INSERT INTO product_hpp (id_produk, nama_produk, hpp, updated_at, updated_by)
-     VALUES (?, ?, ?, datetime('now'), ?)
-     ON CONFLICT(id_produk) DO UPDATE SET
-       hpp = excluded.hpp,
-       nama_produk = COALESCE(NULLIF(excluded.nama_produk, ''), product_hpp.nama_produk),
-       updated_at = excluded.updated_at,
-       updated_by = excluded.updated_by`
-  );
-
+  const sudahAda = db.prepare('SELECT 1 FROM product_hpp WHERE id_produk = ?');
   let ditambahkan = 0;
   let diperbarui = 0;
   let dilewati = 0;
 
-  for (let i = 1; i < baris.length; i++) {
-    const kolom = parseCsvLine(baris[i]);
-    const idProduk = String(kolom[idxId] || '').trim();
-    const namaProduk = idxNama !== -1 ? String(kolom[idxNama] || '').trim() : '';
-    const hppNum = Number(kolom[idxHpp]);
+  db.exec('BEGIN');
+  try {
+    for (let i = 1; i < baris.length; i++) {
+      const kolom = parseCsvLine(baris[i]);
+      const idProduk = String(kolom[idxId] || '').trim();
+      const namaProduk = idxNama !== -1 ? String(kolom[idxNama] || '').trim() : '';
+      const hppNum = Number(kolom[idxHpp]);
 
-    if (!idProduk || !Number.isFinite(hppNum) || hppNum < 0) {
-      dilewati += 1;
-      continue;
+      if (!idProduk || !Number.isFinite(hppNum) || hppNum < 0) {
+        dilewati += 1;
+        continue;
+      }
+
+      if (sudahAda.get(idProduk)) diperbarui += 1; else ditambahkan += 1;
+      simpanHpp.run(idProduk, namaProduk, hppNum, req.session.username);
     }
-
-    const sudahAda = db.prepare('SELECT 1 FROM product_hpp WHERE id_produk = ?').get(idProduk);
-    upsert.run(idProduk, namaProduk, hppNum, req.session.username);
-    if (sudahAda) diperbarui += 1; else ditambahkan += 1;
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
   }
 
   res.json({ ok: true, ditambahkan, diperbarui, dilewati });
@@ -590,7 +588,6 @@ function ringkasDiagnostik(token) {
         AND NOT EXISTS (SELECT 1 FROM api_pesanan p WHERE p.order_sn = o.order_sn)`, shop) },
     // Sama dengan tab HPP (periode 30 hari): produk yang laku (tidak batal/retur) tanpa HPP.
     tanpaHpp30: produkTanpaHppTerjual(token.shop_id, geserHari(hariIniWib(), -29), hariIniWib()),
-    produkDenganHpp: angka('SELECT COUNT(*) FROM product_hpp'),
     iklan: { kampanyeBerjalan: angka("SELECT COUNT(*) FROM iklan_kampanye WHERE shop_id = ? AND status = 'ongoing'", shop),
       dari: angka('SELECT MIN(tanggal) FROM iklan_toko_harian WHERE shop_id = ?', shop), sampai: angka('SELECT MAX(tanggal) FROM iklan_toko_harian WHERE shop_id = ?', shop),
       perubahanTercatat: angka('SELECT COUNT(*) FROM iklan_riwayat_setelan WHERE shop_id = ?', shop) },
@@ -854,26 +851,23 @@ app.put('/api/iklan/setelan/:idProduk', requireLogin, (req, res) => {
   res.json(db.prepare('SELECT id_produk, target_roas, modal_harian, updated_at, updated_by FROM iklan_setelan WHERE id_produk = ?').get(idProduk));
 });
 
-// ---------- Shopee Open Platform API — OAuth + tes ambil data ----------
-// Lihat shopeeApi.js untuk signing/endpoint, §10/§19 PROJECT_NOTES.md (folder induk) untuk
-// konteks. Tahap sekarang: sandbox saja (SHOPEE_ENV=sandbox di .env, Test Partner ID/Key
-// dari App yang baru dibuat) — belum Go Live, jadi belum bisa ambil data toko asli.
+// ---------- Shopee Open Platform API — OAuth + token ----------
+// Signing/endpoint: shopeeApi.js. Produksi (Render) memakai SHOPEE_ENV=production; lokal tanpa
+// partner key tidak bisa menghubungi Shopee sama sekali.
 
 function redirectUriDariRequest(req) {
   return process.env.SHOPEE_REDIRECT_URL || `${req.protocol}://${req.get('host')}/auth/shopee/callback`;
 }
 
-// Ambil access_token yang masih berlaku untuk satu shop_id, refresh dulu ke Shopee kalau
-// sudah (atau hampir) kedaluwarsa. Dilempar error kalau belum pernah otorisasi sama sekali.
 // Refresh yang sedang berjalan per shop_id. Refresh token Shopee sekali pakai (tiap refresh
 // memberi yang baru dan mematikan yang lama), jadi panggilan paralel (sinkron menjalankan 4
 // sekaligus) harus menunggu SATU refresh yang sama — kalau tidak, yang kedua gagal.
 const refreshBerjalan = new Map();
 
+// Access_token yang masih berlaku untuk satu shop_id, di-refresh dulu ke Shopee kalau sudah
+// (atau hampir) kedaluwarsa. Error kalau toko ini belum pernah diotorisasi.
 async function ambilTokenAktif(shopId) {
-  const baris = shopId
-    ? db.prepare('SELECT * FROM shopee_token WHERE shop_id = ?').get(String(shopId))
-    : db.prepare('SELECT * FROM shopee_token ORDER BY updated_at DESC LIMIT 1').get();
+  const baris = db.prepare('SELECT * FROM shopee_token WHERE shop_id = ?').get(String(shopId));
   if (!baris) throw new Error('Belum ada toko yang diotorisasi. Buka /auth/shopee/authorize dulu.');
 
   const umurDetik = Math.floor(Date.now() / 1000) - baris.obtained_at;

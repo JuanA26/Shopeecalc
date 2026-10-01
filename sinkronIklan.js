@@ -174,6 +174,10 @@ async function sinkronIklan({ db, panggil, shopId, iklanSampai, hariIni = tangga
     `INSERT OR REPLACE INTO iklan_harian (campaign_id, tanggal, shop_id, dilihat, klik, biaya, omzet, omzet_langsung, terjual, terjual_langsung)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
+  const simpanToko = db.prepare(
+    `INSERT OR REPLACE INTO iklan_toko_harian (shop_id, tanggal, dilihat, klik, biaya, omzet, omzet_langsung, terjual, terjual_langsung)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
   let barisHarian = 0;
   for (const [a, b] of jendela(dari, sampai)) {
     // Kampanye yang periodenya menyentuh jendela ini. Kampanye selesai tanpa tanggal selesai
@@ -211,10 +215,6 @@ async function sinkronIklan({ db, panggil, shopId, iklanSampai, hariIni = tangga
     const toko = cekError(await panggil('/api/v2/ads/get_all_cpc_ads_daily_performance', {
       query: { start_date: keShopee(a), end_date: keShopee(b) },
     }), 'get_all_cpc_ads_daily_performance');
-    const simpanToko = db.prepare(
-      `INSERT OR REPLACE INTO iklan_toko_harian (shop_id, tanggal, dilihat, klik, biaya, omzet, omzet_langsung, terjual, terjual_langsung)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    );
     db.exec('BEGIN');
     try {
       for (const d of Array.isArray(toko) ? toko : []) {

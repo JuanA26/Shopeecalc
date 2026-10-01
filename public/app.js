@@ -159,7 +159,7 @@ function bukaHalaman(idHalaman) {
   document.querySelectorAll('.halaman').forEach((s) => s.classList.toggle('aktif', s.id === idHalaman));
   // Grafik tren diukur dari lebar kartunya — gambar ulang begitu halamannya kelihatan.
   if (idHalaman === 'halamanKalkulator' && dataHasilUpload) renderTren();
-  if (idHalaman === 'halamanPengaturan') bukaPengaturan();
+  if (idHalaman === 'halamanPengaturan') muatDiagnostik();
 }
 
 document.querySelectorAll('.nav-item[data-page]').forEach((btn) => {
@@ -213,6 +213,9 @@ const geserHari = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTC
 const formatTanggalPendek = (iso) =>
   iso ? new Date(iso + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
 const tanggalSingkat = (iso) => (iso ? new Date(iso + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '-');
+// "1 Okt 14.05": jam HP (waktuSingkat) atau jam WIB (waktuWib, untuk teks yang menyebut "WIB").
+const waktuSingkat = (iso) => new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const waktuWib = (iso) => (iso ? new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) : '-');
 
 // [dari, sampai] sebagai string YYYY-MM-DD (kalender WIB).
 function rentangPeriode(kode) {
@@ -286,7 +289,7 @@ function renderStatusSinkron(s) {
   const bagian = [];
   if (s.sedangBerjalan) bagian.push('Sedang mengambil data dari Shopee...');
   else if (s.terakhirSelesai) {
-    const waktu = new Date(s.terakhirSelesai).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const waktu = waktuSingkat(s.terakhirSelesai);
     bagian.push(s.status === 'gagal' ? `Sinkron terakhir gagal (${waktu})` : `Terakhir diperbarui ${waktu}`);
   } else bagian.push('Belum pernah sinkron');
   if (s.jumlahPesanan) bagian.push(`${s.jumlahPesanan.toLocaleString('id-ID')} pesanan tersimpan (${formatTanggalPendek(s.tanggalTerlama)} – ${formatTanggalPendek(s.tanggalTerbaru)})`);
@@ -576,7 +579,7 @@ function dataTrenHarian() {
   const { dari, sampai } = (dataHasilUpload.ringkasan && dataHasilUpload.ringkasan.periode) || {};
   if (!dari || !sampai) return [];
   const hari = new Map();
-  for (let d = dari; d <= sampai; d = tambahHari(d, 1)) {
+  for (let d = dari; d <= sampai; d = geserHari(d, 1)) {
     hari.set(d, { tanggal: d, omzet: 0, untung: 0, pesananSet: new Set(), pcs: 0, perkiraan: false, belumHpp: 0 });
   }
   for (const it of dataHasilUpload.items) {
@@ -827,9 +830,8 @@ function renderTabelData(items) {
           : formatRupiah(it.hpp)
         : `<div class="sel-hpp-cepat">
              <input type="number" class="input-hpp-cepat" placeholder="Isi HPP" min="0"
-                    data-id="${escapeHtml(it.idProduk)}" data-nama="${escapeHtml(it.namaProduk)}">
-             <button type="button" class="tombol tombol-mini simpan-hpp-cepat"
-                     data-id="${escapeHtml(it.idProduk)}" data-nama="${escapeHtml(it.namaProduk)}">Simpan</button>
+                    data-hpp-id="${escapeHtml(it.idProduk)}" data-hpp-nama="${escapeHtml(it.namaProduk)}">
+             <button type="button" class="tombol tombol-mini simpan-hpp-cepat" data-simpan-hpp>Simpan</button>
            </div>`;
 
       // Jumlah pcs langsung dari Shopee (model_quantity_purchased / quantity_purchased).
@@ -868,22 +870,7 @@ function renderTabelData(items) {
         </tr>`;
     })
     .join('');
-
-  // Isi cepat HPP langsung dari tabel data (untuk baris yang ditandai kuning):
-  // bisa disimpan dengan klik tombol "Simpan" ATAU dengan menekan Enter di kotaknya.
-  isiTabelData.querySelectorAll('.simpan-hpp-cepat').forEach((tombol) => {
-    tombol.addEventListener('click', () => {
-      const input = tombol.parentElement.querySelector('.input-hpp-cepat');
-      simpanHpp(tombol.dataset.id, tombol.dataset.nama, input.value);
-    });
-  });
-  isiTabelData.querySelectorAll('.input-hpp-cepat').forEach((input) => {
-    input.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return;
-      simpanHpp(input.dataset.id, input.dataset.nama, input.value);
-    });
-  });
-
+  // Isi cepat HPP (baris kuning): tombol Simpan atau Enter, lewat simpanHppLangkah() di bawah.
 }
 
 // Fungsi bersama: simpan satu nilai HPP ke server, lalu refresh tabel Data & tabel HPP.
@@ -939,8 +926,7 @@ function hitungUlangDanTampilkanUlang() {
     return { ...it, hpp, hppTotal, untung, marginPersen };
   });
 
-  // Field lain dari server (rasioPencairan, biayaPenjual, sheetTerbaca) tidak berubah
-  // karena HPP — dipertahankan lewat spread.
+  // Field lain dari server (rasioPencairan, periode, ...) tidak berubah karena HPP — dipertahankan lewat spread.
   dataHasilUpload.ringkasan = {
     ...dataHasilUpload.ringkasan,
     jumlahBaris: dataHasilUpload.items.length,
@@ -984,13 +970,9 @@ async function muatDaftarHpp() {
   hitungUlangIklan();
 }
 
-// Gabungkan daftar HPP yang sudah tersimpan dengan produk-produk yang muncul di file
-// yang baru diunggah tapi belum punya HPP — supaya semuanya kelihatan & bisa diisi di sini juga,
-// tidak perlu ketik ulang ID Produk secara manual.
-// Total penjualan per produk dari file yang sedang diunggah (pcs & penghasilan, tanpa
-// baris yang dikembalikan). Dipakai untuk mengurutkan daftar "Belum Diisi" supaya
-// produk yang paling banyak menghasilkan uang ada di atas — itulah yang paling penting
-// diisi HPP-nya dulu. Dihitung sekali per unggahan.
+// Total penjualan per produk dari data penjualan yang sedang dimuat (pcs & penghasilan, tanpa
+// baris yang dikembalikan). Dipakai untuk mengurutkan daftar "Belum Diisi" supaya produk yang
+// paling banyak menghasilkan uang ada di atas. Dihitung sekali per data.
 let penjualanPerProdukCache = { sumber: null, peta: new Map() };
 function penjualanPerProduk(sumber = dataHasilUpload) {
   if (!sumber) return new Map();
@@ -1011,6 +993,8 @@ function penjualanPerProduk(sumber = dataHasilUpload) {
   return peta;
 }
 
+// Daftar HPP tersimpan + produk yang terjual (atau sedang beriklan) tapi belum punya HPP, supaya
+// semuanya bisa diisi di sini tanpa mengetik ID Produk.
 function gabunganProdukUntukTabelHpp() {
   const sudahAda = new Set(daftarHpp.map((r) => r.id_produk));
   const penjualan = penjualanPerProduk();
@@ -1086,8 +1070,8 @@ function renderTabelHpp() {
       const selHpp = punyaHpp
         ? `<input type="number" class="input-hpp-tabel" min="0" value="${r.hpp}" data-id="${escapeHtml(r.id_produk)}" data-nama="${escapeHtml(r.nama_produk || '')}">`
         : `<div class="sel-hpp-cepat">
-             <input type="number" class="input-hpp-tabel-baru" placeholder="Isi HPP" min="0" data-id="${escapeHtml(r.id_produk)}" data-nama="${escapeHtml(r.nama_produk || '')}">
-             <button type="button" class="tombol tombol-mini simpan-hpp-tabel-baru" data-id="${escapeHtml(r.id_produk)}" data-nama="${escapeHtml(r.nama_produk || '')}">Simpan</button>
+             <input type="number" class="input-hpp-tabel-baru" placeholder="Isi HPP" min="0" data-hpp-id="${escapeHtml(r.id_produk)}" data-hpp-nama="${escapeHtml(r.nama_produk || '')}">
+             <button type="button" class="tombol tombol-mini simpan-hpp-tabel-baru" data-simpan-hpp>Simpan</button>
            </div>`;
 
       return `
@@ -1112,26 +1096,18 @@ function renderTabelHpp() {
     input.addEventListener('change', () => simpanHpp(input.dataset.id, input.dataset.nama, input.value));
   });
 
-  // Baris yang belum punya HPP (termasuk hasil unggahan): isi + klik Simpan (atau tekan Enter).
-  isiTabelHpp.querySelectorAll('.simpan-hpp-tabel-baru').forEach((tombol) => {
-    tombol.addEventListener('click', () => {
-      const input = tombol.parentElement.querySelector('.input-hpp-tabel-baru');
-      simpanHpp(tombol.dataset.id, tombol.dataset.nama, input.value);
-    });
-  });
-  isiTabelHpp.querySelectorAll('.input-hpp-tabel-baru').forEach((input) => {
-    input.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return;
-      simpanHpp(input.dataset.id, input.dataset.nama, input.value);
-    });
-  });
+  // Baris yang belum punya HPP: Simpan atau Enter, lewat simpanHppLangkah() di bawah.
 
   isiTabelHpp.querySelectorAll('[data-hapus]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       if (!confirm('Hapus harga modal produk ini?')) return;
-      await apiFetch(`/api/hpp/${encodeURIComponent(btn.dataset.hapus)}`, { method: 'DELETE' });
-      await muatDaftarHpp();
-      hitungUlangDanTampilkanUlang();
+      try {
+        await apiFetch(`/api/hpp/${encodeURIComponent(btn.dataset.hapus)}`, { method: 'DELETE' });
+        await muatDaftarHpp();
+        hitungUlangDanTampilkanUlang();
+      } catch (err) {
+        alert(err.message);
+      }
     });
   });
 }
@@ -1216,9 +1192,8 @@ tombolImporCsv.addEventListener('click', async () => {
 });
 
 // ====== Analisis Iklan ======
-// Alur sama dengan unggah Income: pilih file CSV "Data Keseluruhan Iklan" → Proses → server
-// menggabungkan dengan HPP dan rasio pencairan → tabel per produk dengan vonis + kalimat
-// tindakan. Data hanya di memori halaman ini (dataIklan), tidak disimpan di server.
+// Data iklan otomatis dari Shopee (muatIklanDariShopee); file CSV "Data Keseluruhan Iklan" hanya
+// cadangan tersembunyi. Server menggabungkan dengan HPP dan rasio pencairan → vonis per produk.
 let dataIklan = null;       // { produk, kampanye, ringkasan, sumberRasio, periode, namaToko }
 let sortKolomIklan = 'biaya';
 let sortArahIklan = -1;     // biaya terbesar di atas: di situ uang paling banyak dipertaruhkan
@@ -1339,8 +1314,6 @@ function produkIncomeSaatIni() {
   return hasil;
 }
 
-// Tanggal dana dilepaskan paling akhir di file Income — sampai tanggal itu pesanan sudah
-// pasti cair; dipakai server untuk tahu periode kampanye mana yang sudah bisa diukur.
 // Tanggal pertama periode data penjualan yang dipakai Analisis Iklan — kampanye yang mulai
 // sebelum ini tidak bisa diukur batas pesanan dibayarnya (analisisIklan.js).
 function tanggalDataMulaiSaatIni() {
@@ -1348,6 +1321,8 @@ function tanggalDataMulaiSaatIni() {
   return (s && s.ringkasan && s.ringkasan.periode && s.ringkasan.periode.dari) || '';
 }
 
+// Tanggal dana cair paling akhir di data penjualan — sampai tanggal itu pesanan sudah pasti cair;
+// dipakai server untuk tahu periode kampanye mana yang sudah bisa diukur.
 function tanggalRilisTerakhirSaatIni() {
   if (!sumberIklan()) return '';
   let maks = '';
@@ -1393,7 +1368,6 @@ tombolProsesIklan.addEventListener('click', async () => {
 // terakhir, sama dengan data penjualan halaman ini) lalu menghitung dengan rumus yang sama
 // seperti file CSV. File unggahan (cadangan) menggantikannya sampai halaman dimuat ulang.
 const statusIklanShopee = document.getElementById('statusIklanShopee');
-const waktuSingkat = (iso) => new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 function teksStatusIklan(body) {
   const st = body.statusIklan || {};
   const gagal = st.status === 'gagal' ? ` <span class="teks-merah">Sinkron iklan terakhir gagal: ${escapeHtml(st.pesan || '')}</span>` : '';
@@ -1484,8 +1458,7 @@ const namaSingkat = (nama, maks = 46) => potongNama(String(nama || '').replace(/
 // JEDA_LENGKAP_HARI (pembatalan & atribusi iklan 7 hari sudah selesai) dan tidak terpotong
 // awal data; minggu yang belum lengkap ditandai dan tidak dipakai untuk aturan.
 const JEDA_LENGKAP_HARI = 7;
-const tambahHari = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-const seninIso = (iso) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return null; const d = new Date(iso + 'T00:00:00Z'); const geser = (d.getUTCDay() + 6) % 7; return tambahHari(iso, -geser); };
+const seninIso = (iso) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return null; const d = new Date(iso + 'T00:00:00Z'); const geser = (d.getUTCDay() + 6) % 7; return geserHari(iso, -geser); };
 const labelMinggu = (iso) => { const [, m, d] = iso.split('-'); return `${Number(d)}/${Number(m)}`; };
 
 function untungTokoPerMinggu() {
@@ -1530,7 +1503,7 @@ function untungTokoPerMinggu() {
       const perHari = k.biaya / hari;
       const pcsPerHari = k.terjual / hari; // pcs yang DIKLAIM iklan (atribusi luas, termasuk produk lain & pesanan batal)
       for (let i = 0; i < hari; i++) {
-        const h = tambahHari(k.tanggalMulaiIso, i);
+        const h = geserHari(k.tanggalMulaiIso, i);
         const t = ambil(seninIso(h));
         t.biayaIklan += perHari; t.pcsIklan += pcsPerHari; t.adaIklan = true;
       }
@@ -1539,11 +1512,11 @@ function untungTokoPerMinggu() {
     }
   }
   if (dataIklan && dataIklan.rentangData) { iklanMulai = dataIklan.rentangData.dari; iklanSelesai = dataIklan.rentangData.sampai; }
-  const batasLengkap = tambahHari(hariIniWib(), -JEDA_LENGKAP_HARI);
+  const batasLengkap = geserHari(hariIniWib(), -JEDA_LENGKAP_HARI);
   // Minggu yang terpotong awal data (periode halaman, atau pesanan tersimpan paling awal) tidak lengkap.
   const awalData = [tanggalDataMulaiSaatIni(), minPesanan].filter(Boolean).sort().pop() || minRilis;
   const daftar = [...minggu.values()].sort((a, b) => a.mulai.localeCompare(b.mulai)).map((t) => {
-    const selesai = tambahHari(t.mulai, 6);
+    const selesai = geserHari(t.mulai, 6);
     // Untung kotor: baris tanpa HPP diperkirakan pakai margin baris yang ada HPP-nya minggu itu.
     const marginDiketahui = t.penghasilanDiketahui ? t.untungDiketahui / t.penghasilanDiketahui : 0;
     // No order rows is not proof of zero sales: coverage has not been established.
@@ -1568,7 +1541,7 @@ function aturanMingguan(data, banding) {
   const n = Math.min(4, Math.floor(lengkap.length / 2));
   const akhir = lengkap.slice(-n), awal = lengkap.slice(-2 * n, -n);
   const dibandingkan = [...awal, ...akhir];
-  if (dibandingkan.some((t, i) => i > 0 && t.mulai !== tambahHari(dibandingkan[i - 1].mulai, 7))) {
+  if (dibandingkan.some((t, i) => i > 0 && t.mulai !== geserHari(dibandingkan[i - 1].mulai, 7))) {
     return { kelas: '', teks: 'Ada minggu yang datanya belum lengkap. Jangan ubah modal dulu.', detail: '' };
   }
   const jml = (arr, f) => arr.reduce((a, t) => a + t[f], 0);
@@ -1866,12 +1839,14 @@ function harianProduk(idProduk) {
 // Rata-rata biaya pada tujuh hari matang yang sama dengan vonis ÷ Modal Harian.
 function pemakaianModal(idProduk, modal) {
   if (!dariApi() || !modal) return null;
+  const berjalan = dataIklan.kampanye.filter((k) => k.kodeProduk === idProduk && k.status === 'Berjalan');
+  if (!berjalan.length) return null;
   const harian = harianProduk(idProduk);
-  const hariIni = geserHari(hariIniWib(), -7);
+  const akhir = geserHari(hariIniWib(), -7);
   let biaya = 0;
   for (let i = 1; i <= 7; i++) {
-    const d = geserHari(hariIni, -i);
-    if (!dataIklan.kampanye.filter(k => k.kodeProduk === idProduk && k.status === 'Berjalan').every(k => k.perHari && k.perHari[d] && Number.isFinite(k.perHari[d].biaya))) return null;
+    const d = geserHari(akhir, -i);
+    if (!berjalan.every((k) => k.perHari && k.perHari[d] && Number.isFinite(k.perHari[d].biaya))) return null;
     biaya += harian[d].biaya;
   }
   return biaya / 7 / modal;
@@ -2004,7 +1979,7 @@ function bannerDataBelumLengkap(info) {
   const alasan = [];
   const d = info.dasar;
   if (d && d.alasan === 'hpp') {
-    const nama = d.produkTanpaHpp.slice(0, 3).map((t) => escapeHtml(namaSingkat(t.namaProduk || t.idProduk, 32))).join(', ');
+    const nama = d.produkTanpaHpp.slice(0, 3).map((t) => escapeHtml(namaRapi(t.namaProduk || t.idProduk, 32))).join(', ');
     alasan.push(`HPP belum diisi untuk <strong>${Math.round(d.bagianTanpaHpp * 100)}%</strong> penjualan ${tanggalSingkat(d.dari)}–${tanggalSingkat(d.sampai)} (batasnya ${Math.round(EvaluasiIklan.BATAS_TANPA_HPP * 100)}%).` +
       (nama ? ` Paling besar: ${nama}.` : ''));
   } else if (d) {
@@ -2021,8 +1996,9 @@ function bannerDataBelumLengkap(info) {
     alasan.map((t) => `<span>${t}</span>`).join('') + tombol + '</div>';
 }
 
-// Kotak harga modal di langkah "Isi HPP" (Dashboard): simpan lewat simpanHpp() yang sama dengan tab HPP;
-// setelah data dimuat ulang, produk itu hilang dari langkah.
+// Kotak HPP kosong (langkah "Isi HPP" di Dashboard, baris kuning di tabel Data dan tab HPP):
+// input[data-hpp-id] + tombol [data-simpan-hpp] di sebelahnya; Simpan atau Enter. Setelah data
+// dimuat ulang, produk itu pindah dari daftar "belum diisi".
 async function simpanHppLangkah(input) {
   if (!input || !input.value) { if (input) input.focus(); return; }
   const tombol = input.parentElement.querySelector('[data-simpan-hpp]');
@@ -2093,10 +2069,7 @@ function catatanKeputusanTeks(b) {
   if (b.alasan === 'di-atas-batas') {
     catatan.push(`Target ${f(b.target)} sudah di atas batas (${f(b.batasShopee)}). Jangan dinaikkan lagi. Iklan bisa jarang tayang.`);
   }
-  if (b.alasan === 'ke-batas' || b.alasan === 'di-batas') {
-    catatan.push(`Batas tertinggi ${f(b.batasShopee)} (saran Shopee paling tinggi ${f(b.rekomendasi.tinggi)}). Lebih tinggi bisa mengurangi penjualan.`);
-  }
-  if (b.keputusan === 'turunkan') {
+  if (b.alasan === 'ke-batas' || b.alasan === 'di-batas' || b.keputusan === 'turunkan') {
     catatan.push(`Batas tertinggi ${f(b.batasShopee)} (saran Shopee paling tinggi ${f(b.rekomendasi.tinggi)}). Lebih tinggi bisa mengurangi penjualan.`);
   }
   if (b.keputusan === 'lanjut' && b.target !== null && b.batasShopee !== null && b.target > b.batasShopee + 0.05) {
@@ -2751,7 +2724,6 @@ function renderSaranIklan() {
 }
 
 // ====== Pengaturan: diagnostik + unduh data ======
-const waktuWib = (iso) => (iso ? new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) : '-');
 async function muatDiagnostik() {
   const el = document.getElementById('isiDiagnostik');
   try {
@@ -2795,11 +2767,6 @@ async function muatLogServer() {
 }
 document.getElementById('tombolDiagnostik').addEventListener('click', muatDiagnostik);
 
-// Ambil data terbaru dari Shopee: tombol status di bar atas (renderStatusData).
-function bukaPengaturan() {
-  muatDiagnostik();
-}
-
 // Saran iklan yang sedang tampil ikut dikirim, karena dihitung di browser.
 function keputusanUntukEkspor() {
   try {
@@ -2810,7 +2777,10 @@ function keputusanUntukEkspor() {
       batasShopee: b.batasShopee, roasLangsung: metrikBerjalan(b.p).roasLangsung ?? null, roasMinimum: b.p.roasImpas ?? null,
       berakhir: b.berakhir || '', bisaDiubahLagi: b.bisaDiubahLagi || '',
     }));
-  } catch (_) { return []; }
+  } catch (err) {
+    console.error('Saran iklan tidak ikut ekspor:', err); // file tetap dibuat, tanpa sheet keputusan
+    return [];
+  }
 }
 document.getElementById('tombolEkspor').addEventListener('click', async () => {
   const tombol = document.getElementById('tombolEkspor'), pesan = document.getElementById('pesanEkspor');
@@ -2818,7 +2788,6 @@ document.getElementById('tombolEkspor').addEventListener('click', async () => {
   pesan.innerHTML = '<span class="spinner"></span> Menyiapkan file... (bisa 10–30 detik)';
   try {
     if (sinkronKlien) await sinkronKlien;
-    pesan.innerHTML = '<span class="spinner"></span> Menyiapkan file... (bisa 10–30 detik)';
     if (muatIklanBerjalan) await muatIklanBerjalan;
     else if (!dataIklan) await muatDataPenjualanIklan();
     const keputusan = keputusanUntukEkspor();

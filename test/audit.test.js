@@ -76,7 +76,7 @@ function sourceFunction(file, name) {
 }
 
 test('ad-only weeks retain spending without inventing profit, and gaps prevent comparisons', () => {
-  const dates = `const tambahHari=(iso,n)=>{const d=new Date(iso+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};`;
+  const dates = `const geserHari=(iso,n)=>{const d=new Date(iso+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};`;
   const context = {
     sumberIklan: () => ({ items: [] }),
     dataIklan: { kampanye: [{ perHari: { '2026-08-10': { biaya: 100000, terjual: 0 } } }],
@@ -114,7 +114,7 @@ test('payout allocation conserves money, including a full-return deduction', () 
 test('daily and weekly charts include return costs without counting returned units as sales', () => {
   const items = [{ idProduk: 'p', waktuPesanan: '2026-08-03', dikembalikan: true,
     totalPenghasilan: -12000, untung: -12000, hpp: null, jumlah: 2, hargaProduk: 200000 }];
-  const dates = `const tambahHari = (iso,n) => { const d=new Date(iso+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); };`;
+  const dates = `const geserHari = (iso,n) => { const d=new Date(iso+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); };`;
   const context = {
     dataHasilUpload: { items, ringkasan: { periode: { dari: '2026-08-03', sampai: '2026-08-03' } } },
     METRIK_TREN: { untung: {}, omzet: {}, pcs: {}, pesanan: {} },

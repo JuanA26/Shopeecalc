@@ -241,7 +241,7 @@ test('Dashboard week comparison leaves out busy days (> 1.8 × median payout) an
 
 test('4-week card judges ads and profit per ordinary day when daily data exists', () => {
   const weeks = ['2026-07-06', '2026-07-13', '2026-07-20', '2026-07-27'].map(mulai => ({ mulai, lengkap: true, iklanLengkap: true, biayaIklan: 100, untungSetelahIklan: 100 }));
-  const ctx = { weeks, tambahHari: E.geser };
+  const ctx = { weeks, geserHari: E.geser };
   vm.runInNewContext(extract('aturanMingguan') + ';this.f = aturanMingguan', ctx);
   assert.equal(ctx.f({ minggu: weeks }).teks, 'Pertahankan. Cek lagi minggu depan.'); // weekly sums: flat
   // Per ordinary day: ads +20%, profit down → no budget increase; busy days are counted in the detail.
@@ -269,7 +269,7 @@ test('a small share of sales without HPP is estimated; a large share still holds
 });
 
 test('the missing-data banner names the reason once, with the HPP share and products', () => {
-  const ctx = { EvaluasiIklan: E, escapeHtml: s => s, namaSingkat: s => s, tanggalSingkat: s => s };
+  const ctx = { EvaluasiIklan: E, escapeHtml: s => s, namaRapi: s => s, tanggalSingkat: s => s };
   vm.runInNewContext(extract('bannerDataBelumLengkap') + ';globalThis.f = bannerDataBelumLengkap', ctx);
   assert.equal(ctx.f(null), '');
   const html = ctx.f({ dasar: { alasan: 'hpp', bagianTanpaHpp: 0.12, dari: 'a', sampai: 'b', produkTanpaHpp: [{ namaProduk: 'Blus X' }] },

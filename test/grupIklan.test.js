@@ -77,7 +77,7 @@ test('each running ad lands in exactly one group', () => {
   const g = (b) => ctx.grupIklan(b, hariIni);
   assert.equal(g(row('a', 'jeda')), 'hentikan');
   assert.equal(g(row('a', 'ganti')), 'ganti');
-  for (const k of ['naikkan', 'turunkan', 'tambah', 'kurangi', 'kembalikan', 'tinjau', 'isi-hpp']) assert.equal(g(row('a', k)), 'ubah', k);
+  for (const k of ['naikkan', 'turunkan', 'tambah', 'tumbuh', 'kurangi', 'kembalikan', 'tinjau', 'isi-hpp']) assert.equal(g(row('a', k)), 'ubah', k);
   assert.equal(g(row('a', 'tunggu', { p: { idProduk: 'a', aksi: 'tunggu' } })), 'belajar'); // new ad
   assert.equal(g(row('a', 'tunggu', { perubahan: { tanggal: '2026-09-20' } })), 'belajar'); // changed 10 days ago
   assert.equal(g(row('a', 'lanjut', { perubahan: { tanggal: '2026-09-15' } })), 'lanjut'); // result is out (day 15)

@@ -1783,7 +1783,11 @@ function barisRincianIklan(p, kampanyePerProduk, colspan) {
 //   zona 'untung' → 'tambah'  : Modal Harian +20% kalau modalnya hampir selalu habis (≥ 90%
 //                               rata-rata 7 hari) dan untung toko mingguan tidak sedang turun
 //                               sementara iklan naik; kalau tidak → 'lanjut'.
-//   zona 'abu'/'rugi' → 'naikkan' : Target ROAS +20% (panduan Shopee: ≤ 20% per perubahan),
+//   zona 'untung' → 'tumbuh'  : modal jarang habis (< 90%), ROAS langsung ≥ 1,2 × minimum, mode ROAS
+//                               → Target ROAS −15% supaya lebih sering tayang (user, 01/10: tumbuh),
+//                               tidak di bawah saran Shopee terendah / titik impas.
+//   zona 'abu' → 'lanjut'       : mungkin untung lewat produk lain; jangan kurangi tayangnya (user, 01/10).
+//   zona 'rugi' → 'naikkan' : Target ROAS +20% (panduan Shopee: ≤ 20% per perubahan),
 //                               paling tinggi batas Shopee (rekomendasi tertinggi × 1,25).
 //                   → di/atas batas: 'rugi' → 'kurangi' (Modal Harian −50%; target jangan naik lagi);
 //                     'abu' di atas batas → 'turunkan' (≤ 20% per langkah, sampai batas); di batas → 'lanjut'.
@@ -1796,9 +1800,11 @@ const bulatkanTargetBawah = (n) => Math.floor(n * 10 + 1e-9) / 10; // 10,78 → 
 const LANGKAH_TARGET = 1.2;       // naik 20% per langkah (FAQ GMV Max Shopee: ≤ 20% sekali ubah)
 const LANGKAH_MODAL = 1.2;        // tambah modal 20% per langkah (percobaan toko, bukan aturan Shopee)
 const MODAL_HABIS = 0.9;          // rata-rata biaya ≥ 90% Modal Harian = iklan dibatasi modal
+const LANGKAH_TUMBUH = 0.85;      // turunkan target 15% untuk tumbuh (user, 01/10)
+const RUANG_TUMBUH = 1.2;         // hanya kalau ROAS langsung ≥ 1,2 × minimum (sama dengan Saran "ulang")
 const HARI_TUNGGU_UBAH = 15;      // abaikan hari perubahan; 7 hari hasil + 7 hari atribusi penuh
 const MODAL_IKLAN_BARU = 50000;    // iklan pengganti: 40–50 rb/hari (reports/saran-iklan-2026-09-27.md)
-const PERLU_TINDAKAN = new Set(['jeda', 'ganti', 'kurangi', 'naikkan', 'turunkan', 'tambah', 'isi-hpp', 'kembalikan', 'tinjau']);
+const PERLU_TINDAKAN = new Set(['jeda', 'ganti', 'kurangi', 'naikkan', 'turunkan', 'tambah', 'tumbuh', 'isi-hpp', 'kembalikan', 'tinjau']);
 const metrikBerjalan = (p) => p.penilaian && p.penilaian.siap ? p.penilaian : p.berjalan || p;
 const dariApi = () => !!(dataIklan && dataIklan.sumber === 'api');
 function setelanProduk(idProduk) {
@@ -1870,7 +1876,7 @@ function saranIklanSekarang() {
 function terapkanGanti(baris, saran, hasilTerakhir) {
   if (!saran || !saran.ganti.length) return;
   const pengganti = [...saran.ulang.map((p) => ({ ...p, jenis: 'ulang' })), ...saran.coba.map((p) => ({ ...p, jenis: 'coba' }))];
-  const bisaDiganti = new Set(['naikkan', 'turunkan', 'kurangi', 'lanjut', 'tunggu']);
+  const bisaDiganti = new Set(['naikkan', 'turunkan', 'tumbuh', 'kurangi', 'lanjut', 'tunggu']);
   for (const rugi of saran.ganti) { // paling rugi dulu
     const b = baris.find((x) => x.p.idProduk === rugi.idProduk);
     if (!b || !bisaDiganti.has(b.keputusan) || b.p.aksi === 'tunggu') continue;
@@ -1922,7 +1928,7 @@ function keputusanBerjalan() {
     const bisaDiubahLagi = perubahan ? geserHari(perubahan.tanggal, HARI_TUNGGU_UBAH) : null;
     const baruDiubah = !!(perubahan && bisaDiubahLagi > hariIni);
     const m = metrikBerjalan(p);
-    let keputusan = 'lanjut', modalBaru = modal, targetBaru = null, alasan = '';
+    let keputusan = 'lanjut', modalBaru = modal, targetBaru = null, alasan = '', pakai = null;
     const zonaIklan = ['untung', 'abu', 'rugi'].includes(p.aksi);
     if (p.aksi === 'isi-hpp') keputusan = 'isi-hpp';
     else if (p.aksi === 'toko') keputusan = 'toko';
@@ -1930,11 +1936,23 @@ function keputusanBerjalan() {
     else if (p.aksi === 'jeda') { keputusan = 'jeda'; modalBaru = 0; }
     else if (zonaIklan && baruDiubah) { keputusan = 'tunggu'; alasan = 'baru-diubah'; }
     else if (p.aksi === 'untung') {
-      const pakai = pemakaianModal(p.idProduk, modal);
-      if (pakai !== null && pakai >= MODAL_HABIS && !tokoTurun) { keputusan = 'tambah'; modalBaru = bulatkanModal(modal * LANGKAH_MODAL); }
-      else alasan = pakai !== null && pakai >= MODAL_HABIS ? 'toko-turun' : '';
+      pakai = pemakaianModal(p.idProduk, modal);
+      const habis = pakai !== null && pakai >= MODAL_HABIS;
+      if (habis && !tokoTurun) { keputusan = 'tambah'; modalBaru = bulatkanModal(modal * LANGKAH_MODAL); }
+      else if (habis) alasan = 'toko-turun';
+      else if (pakai !== null && target !== null && !modeAuto && p.roasImpas > 0 && m.roasLangsung >= RUANG_TUMBUH * p.roasImpas) {
+        // Untung, tapi modal jarang habis: targetnya yang menahan tayang. Turunkan 15% supaya tumbuh
+        // (user, 01/10), tidak di bawah saran Shopee terendah dan titik impas produk ini.
+        const rek = st.rekomendasi;
+        const bawah = Math.max(rek && rek.rendah > 0 ? rek.rendah : 0, Math.ceil(p.roasImpas * 10 - 1e-9) / 10);
+        const baru = Math.max(bawah, Math.ceil(target * LANGKAH_TUMBUH * 10 - 1e-9) / 10);
+        if (baru >= target - 0.05) alasan = 'di-bawah';
+        else if (tokoTurun) alasan = 'toko-turun-target';
+        else { keputusan = 'tumbuh'; targetBaru = baru; }
+      }
     } else {
-      // Zona abu-abu / rugi: naikkan target bertahap; di batas Shopee, rugi → kurangi modal.
+      // Zona abu-abu: biarkan (mungkin untung lewat produk lain; user 01/10: tumbuh), kecuali target di
+      // atas batas Shopee. Zona rugi: naikkan target bertahap; di batas Shopee → kurangi modal.
       const dasar = target !== null ? target : m.roasShopee || (st.rekomendasi && st.rekomendasi.tengah) || null;
       const diAtas = target !== null && batasShopee !== null && target > batasShopee + 0.05;
       if (diAtas && p.aksi === 'abu') {
@@ -1945,6 +1963,8 @@ function keputusanBerjalan() {
         // yang rugi, jadi yang dikurangi modalnya.
         if (p.aksi === 'rugi') { keputusan = 'kurangi'; modalBaru = modal !== null ? bulatkanModal(modal / 2) : null; }
         alasan = diAtas ? 'di-atas-batas' : 'di-batas';
+      } else if (p.aksi === 'abu') {
+        alasan = 'abu';
       } else if (dasar !== null) {
         targetBaru = bulatkanTargetBawah(dasar * LANGKAH_TARGET);
         if (batasShopee !== null && targetBaru >= batasShopee) { targetBaru = batasShopee; alasan = 'ke-batas'; }
@@ -1953,13 +1973,13 @@ function keputusanBerjalan() {
     }
     if (modal !== null) { modalSekarang += modal; adaModal = true; modalSaran += modalBaru !== null ? modalBaru : modal; }
     else if (!tanpaBatas && p.aksi !== 'toko') belumDiisi += 1; // iklan toko tidak punya modal harian sendiri
-    baris.push({ p, target, modal, minimal: p.targetDisarankan, keputusan, modalBaru, targetBaru, alasan, tanpaBatas, modeAuto,
+    baris.push({ p, target, modal, minimal: p.targetDisarankan, keputusan, modalBaru, targetBaru, alasan, pakai, tanpaBatas, modeAuto,
       rekomendasi: st.rekomendasi || null, batasShopee, perubahan, bisaDiubahLagi, berakhir: p.aksi === 'toko' ? null : berakhirSegera(p.idProduk) });
   }
   // Keputusan sama: rugi 7 hari paling besar dulu (user, 30/09), lalu biaya paling besar.
   const untung7 = (b) => { const h = untungIklanTujuhHari(b.p); return h ? h.untung : 0; };
   const urutkan = () => baris.sort((a, b) => urutan[a.keputusan] - urutan[b.keputusan] || untung7(a) - untung7(b) || b.p.biaya - a.p.biaya);
-  const urutan = { jeda: 0, ganti: 0, kembalikan: 1, tinjau: 1, kurangi: 2, turunkan: 3, naikkan: 4, tambah: 5, 'isi-hpp': 6, tunggu: 7, lanjut: 8, toko: 9 };
+  const urutan = { jeda: 0, ganti: 0, kembalikan: 1, tinjau: 1, kurangi: 2, turunkan: 3, naikkan: 4, tambah: 5, tumbuh: 5, 'isi-hpp': 6, tunggu: 7, lanjut: 8, toko: 9 };
   terapkanGanti(baris, saranIklanSekarang(), (b) => EvaluasiIklan.hasilIklan(dataIklan, b.p.idProduk, hariIni, b.p.roasImpas));
   urutkan();
   if (dariApi() && Array.isArray(dataIklan.riwayatSetelan)) {
@@ -2040,6 +2060,7 @@ const LABEL_KEPUTUSAN = {
   naikkan: ['Naikkan target', 'pill-biru', 'baris-ragu'],
   kurangi: ['Kurangi modal', 'pill-oranye', 'baris-kurangi'],
   tambah: ['Tambah modal', 'pill-hijau', 'baris-untung'],
+  tumbuh: ['Turunkan target', 'pill-hijau', 'baris-untung'],
   tunggu: ['Tunggu', 'pill-abu', ''],
   lanjut: ['Biarkan', 'pill-hijau', 'baris-untung'],
   toko: ['Iklan toko', 'pill-abu', ''],
@@ -2104,9 +2125,13 @@ function kalimatKeputusan(b) {
     'tinjau-hasil': 'Untung toko turun. Periksa hasil perubahan dulu.',
     'tinjau-iklan': 'Untung iklan ini turun setelah beberapa setelan diubah. Periksa dulu.',
     'data-iklan': 'Tetap dulu. Data harian iklan ini belum lengkap.',
-    'sudah-kembali': 'Target sudah dikembalikan. Jangan dinaikkan lagi dulu.',
+    'sudah-kembali': 'Target sudah dikembalikan. Jangan diubah lagi dulu.',
     'hasil-baik': 'Hasil bagus. Biarkan.',
     'belum-jelas': 'Hasil belum jelas. Biarkan, target tidak dinaikkan lagi.',
+    'belum-jelas-turun': 'Hasil belum jelas. Biarkan, target tidak diturunkan lagi.',
+    abu: 'Biarkan. Iklan ini juga membawa pembeli ke produk lain.',
+    'di-bawah': 'Biarkan. Target sudah serendah saran Shopee.',
+    'toko-turun-target': 'Biarkan. Target belum diturunkan karena untung toko belum naik.',
   };
   if (pesan[b.alasan]) return pesan[b.alasan];
   switch (b.keputusan) {
@@ -2123,6 +2148,7 @@ function kalimatKeputusan(b) {
       ? `Ganti ke GMV Max ROAS, target ${f(b.targetBaru)}.`
       : `Ubah Target ROAS ${f(b.target)} → ${f(b.targetBaru)}.`;
     case 'turunkan': return `Target ${f(b.target)} terlalu tinggi. Ubah Target ROAS ke ${f(b.targetBaru)}.`;
+    case 'tumbuh': return `Ubah Target ROAS ${f(b.target)} → ${f(b.targetBaru)}. Modal tetap.`;
     case 'kurangi': return b.modal !== null
       ? `Turunkan Modal Harian ${rupiahPendek(b.modal)} → ${rupiahPendek(b.modalBaru)}. Target tetap.`
       : 'Beri batas Modal Harian (sekarang tanpa batas). Target tetap.';
@@ -2148,6 +2174,7 @@ function alasanTugas(b) {
     case 'tambah': return 'Iklan untung dan modalnya hampir selalu habis.';
     case 'naikkan': return 'Naikkan sedikit supaya biaya iklan lebih hemat.';
     case 'turunkan': return 'Target terlalu tinggi, iklan jarang tayang.';
+    case 'tumbuh': return `Iklan untung, tapi modal hanya terpakai ${Math.round(b.pakai * 100)}%. Turunkan sedikit supaya lebih sering tayang.`;
     case 'kurangi': return b.rugiBesar
       ? `Rugi ${rupiahPendek(b.rugiBesar.rugi)} dalam ${b.rugiBesar.hari} hari. Belum ada produk pengganti.`
       : 'Masih rugi. Target sudah di batas tertinggi.';
@@ -2274,7 +2301,7 @@ const GRUP_IKLAN = [
 function grupIklan(b, hariIni) {
   if (b.keputusan === 'jeda') return 'hentikan';
   if (b.keputusan === 'ganti') return 'ganti';
-  if (['naikkan', 'turunkan', 'tambah', 'kurangi', 'kembalikan', 'tinjau', 'isi-hpp'].includes(b.keputusan)) return 'ubah';
+  if (['naikkan', 'turunkan', 'tambah', 'tumbuh', 'kurangi', 'kembalikan', 'tinjau', 'isi-hpp'].includes(b.keputusan)) return 'ubah';
   // Belum bisa dinilai karena waktu (iklan baru, belum ada biaya, atau baru diubah) = masa belajar.
   if (b.p.aksi === 'tunggu' && !(b.p.penilaian && b.p.penilaian.alasan === 'data')) return 'belajar';
   if (b.perubahan && geserHari(b.perubahan.tanggal, HARI_TUNGGU_UBAH) > hariIni) return 'belajar';
@@ -2331,7 +2358,11 @@ function isiKartuIklan(b, grup, hariIni) {
       const catatan = {
         'hasil-baik': 'Perubahan terakhir berhasil.',
         'belum-jelas': 'Target tidak dinaikkan lagi dulu.',
-        'sudah-kembali': 'Target sudah dikembalikan. Jangan dinaikkan lagi dulu.',
+        'belum-jelas-turun': 'Target tidak diturunkan lagi dulu.',
+        'sudah-kembali': 'Target sudah dikembalikan. Jangan diubah lagi dulu.',
+        abu: 'Iklan ini juga membawa pembeli ke produk lain.',
+        'di-bawah': 'Target sudah serendah saran Shopee.',
+        'toko-turun-target': 'Target tidak diturunkan dulu.',
         'uji-campur': 'Ada dua perubahan berdekatan. Tunggu dulu.',
         'data-toko': 'Tunggu data lengkap.',
         'data-iklan': 'Tunggu data lengkap.',

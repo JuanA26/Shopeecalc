@@ -151,7 +151,7 @@ test('running-ad ladder: target cap, budget steps on mature days, and attributio
     aturanTerakhir: aturan, hariIniWib: () => '2026-10-10',
     geserHari: (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); },
     bulatkanModal: (rp) => Math.max(0, Math.round(rp / 5000) * 5000), bulatkanTargetBawah: (n) => Math.floor(n * 10 + 1e-9) / 10,
-    LANGKAH_TARGET: 1.2, LANGKAH_MODAL: 1.2, MODAL_HABIS: 0.9, HARI_TUNGGU_UBAH: 15,
+    LANGKAH_TARGET: 1.2, LANGKAH_MODAL: 1.2, MODAL_HABIS: 0.9, HARI_TUNGGU_UBAH: 15, LANGKAH_TUMBUH: 0.85, RUANG_TUMBUH: 1.2,
     batasTargetShopee: (st) => (st.rekomendasi ? Math.floor(st.rekomendasi.tinggi * 1.25 * 10 + 1e-9) / 10 : null),
     metrikBerjalan: (p) => p.berjalan || p, dariApi: () => true, setelanProduk: () => setelan, berakhirSegera: () => null,
     terapkanGanti: () => {}, saranIklanSekarang: () => null, // replacement rule: test/grupIklan.test.js
@@ -173,8 +173,13 @@ test('running-ad ladder: target cap, budget steps on mature days, and attributio
   assert.equal(b.keputusan, 'kurangi'); assert.equal(b.modalBaru, 30000);
   b = run({ aksi: 'abu' }, { target_roas: 12.7, modal_harian: 55000, rekomendasi: rek(10.2) });
   assert.equal(b.keputusan, 'lanjut'); assert.equal(b.alasan, 'di-batas');
-  b = run({ aksi: 'abu' }, { target_roas: 9, modal_harian: 60000, rekomendasi: rek(13.5) });
+  // Below the cap: a losing ad is raised; a maybe-profitable (abu) ad is left alone (user, 01/10: growth).
+  b = run({ aksi: 'rugi' }, { target_roas: 9, modal_harian: 60000, rekomendasi: rek(13.5) });
   assert.equal(b.keputusan, 'naikkan'); assert.equal(b.targetBaru, 10.8);
+  b = run({ aksi: 'abu' }, { target_roas: 9, modal_harian: 60000, rekomendasi: rek(13.5) });
+  assert.equal(b.keputusan, 'lanjut'); assert.equal(b.alasan, 'abu'); assert.equal(b.targetBaru, null);
+  b = run({ aksi: 'abu' }, { mode: 'GMV Max Auto', modal_harian: 60000 });
+  assert.equal(b.keputusan, 'lanjut'); assert.equal(b.alasan, 'abu');
   // Profitable ad that spends ≥ 90% of its budget: +20% budget, unless store profit is falling.
   const penuh = {}; for (let i = 8; i <= 14; i++) {
     const d = new Date('2026-10-10T00:00:00Z'); d.setUTCDate(d.getUTCDate() - i);
@@ -184,6 +189,24 @@ test('running-ad ladder: target cap, budget steps on mature days, and attributio
   assert.equal(b.keputusan, 'tambah'); assert.equal(b.modalBaru, 70000);
   b = run({ aksi: 'untung' }, { target_roas: 9, modal_harian: 60000 }, { perHari: penuh, aturan: { kelas: 'aturan-kurangi' } });
   assert.equal(b.keputusan, 'lanjut'); assert.equal(b.alasan, 'toko-turun');
+  // Profitable ad that spends < 90% with direct ROAS ≥ 1.2 × minimum: target −15% to grow (user, 01/10),
+  // not below Shopee's lowest recommendation or the break-even.
+  const separuh = {}; for (const d of Object.keys(penuh)) separuh[d] = { biaya: 30000 };
+  const untung = (roasLangsung) => ({ aksi: 'untung', roasImpas: 5, berjalan: { roasShopee: 14, roasLangsung } });
+  b = run(untung(7), { target_roas: 13, modal_harian: 60000, rekomendasi: rek(13.5) }, { perHari: separuh });
+  assert.equal(b.keputusan, 'tumbuh'); assert.equal(b.targetBaru, 11.1); assert.equal(b.pakai, 0.5); assert.equal(b.modalBaru, 60000);
+  b = run(untung(7), { target_roas: 9, modal_harian: 60000, rekomendasi: rek(13.5) }, { perHari: separuh });
+  assert.equal(b.keputusan, 'tumbuh'); assert.equal(b.targetBaru, 8); // 7.7 → Shopee's lowest 8
+  b = run(untung(7), { target_roas: 8, modal_harian: 60000, rekomendasi: rek(13.5) }, { perHari: separuh });
+  assert.equal(b.keputusan, 'lanjut'); assert.equal(b.alasan, 'di-bawah');
+  b = run(untung(7), { target_roas: 6, modal_harian: 60000 }, { perHari: separuh }); // no recommendation: break-even 5
+  assert.equal(b.keputusan, 'tumbuh'); assert.equal(b.targetBaru, 5.1);
+  b = run(untung(5.5), { target_roas: 13, modal_harian: 60000, rekomendasi: rek(13.5) }, { perHari: separuh });
+  assert.equal(b.keputusan, 'lanjut'); assert.equal(b.alasan, ''); // too close to break-even
+  b = run(untung(7), { target_roas: 13, modal_harian: 60000, rekomendasi: rek(13.5) }, { perHari: separuh, aturan: { kelas: 'aturan-kurangi' } });
+  assert.equal(b.keputusan, 'lanjut'); assert.equal(b.alasan, 'toko-turun-target');
+  b = run(untung(7), { mode: 'GMV Max Auto', modal_harian: 60000 }, { perHari: separuh });
+  assert.equal(b.keputusan, 'lanjut'); // Auto has no target to lower
   // Exclude change day, collect seven days, then allow seven full days for attribution.
   b = run({ aksi: 'rugi' }, { target_roas: 9, modal_harian: 60000, perubahan: { tanggal: '2026-10-07' } });
   assert.equal(b.keputusan, 'tunggu'); assert.equal(b.bisaDiubahLagi, '2026-10-22');
@@ -199,7 +222,7 @@ test('same decision: the ad with the biggest 7-day loss comes first, not the big
   const baris = vm.runInNewContext(`${src};keputusanBerjalan()`, { sumberIklan: () => null,
     dataIklan: { sumber: 'api', produk, kampanye: [], setelanApi: {} }, aturanTerakhir: null, hariIniWib: () => '2026-10-10',
     geserHari: (iso) => iso, bulatkanModal: (rp) => rp, bulatkanTargetBawah: (n) => Math.floor(n * 10 + 1e-9) / 10,
-    LANGKAH_TARGET: 1.2, LANGKAH_MODAL: 1.2, MODAL_HABIS: 0.9, HARI_TUNGGU_UBAH: 15, batasTargetShopee: () => null,
+    LANGKAH_TARGET: 1.2, LANGKAH_MODAL: 1.2, MODAL_HABIS: 0.9, HARI_TUNGGU_UBAH: 15, LANGKAH_TUMBUH: 0.85, RUANG_TUMBUH: 1.2, batasTargetShopee: () => null,
     metrikBerjalan: (p) => p.berjalan, dariApi: () => true, setelanProduk: () => ({ target_roas: 9, modal_harian: 60000 }),
     berakhirSegera: () => null, terapkanGanti: () => {}, saranIklanSekarang: () => null,
   }).baris;

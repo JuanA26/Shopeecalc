@@ -178,7 +178,7 @@
   }
 
   function terapkanEvaluasiToko(baris, data, dasarLengkap, hariIni) {
-    const ubah = new Set(['naikkan', 'turunkan', 'tambah', 'kurangi']);
+    const ubah = new Set(['naikkan', 'turunkan', 'tambah', 'tumbuh', 'kurangi']);
     // ditahan = the change that was held back.
     const tahan = (b, alasan) => { if (ubah.has(b.keputusan)) b.ditahan = b.keputusan; b.keputusan = 'tunggu'; b.alasan = alasan; b.targetBaru = null; b.modalBaru = b.modal; };
     // Each ad is judged on its own direct sales, so several ads may be changed at once (user, 30/09).
@@ -205,6 +205,9 @@
       } else if (h && naikTarget && ['belum-jelas', 'buruk'].includes(h.status) && b.keputusan === 'naikkan') {
         // A raise without a clear gain is not repeated: higher targets shrink volume.
         b.keputusan = 'lanjut'; b.alasan = 'belum-jelas'; b.targetBaru = null; b.modalBaru = b.modal;
+      } else if (h && hanyaTarget && !naikTarget && ['belum-jelas', 'buruk'].includes(h.status) && b.keputusan === 'tumbuh') {
+        // Same for a growth step (lower target): no clear gain → stop lowering (user, 01/10).
+        b.keputusan = 'lanjut'; b.alasan = 'belum-jelas-turun'; b.targetBaru = null; b.modalBaru = b.modal;
       } else if (ubah.has(b.keputusan) && pernahDikembalikan(data.riwayatSetelan, b.p.idProduk)) {
         tahan(b, 'sudah-kembali');
       } else if (h && h.baru && h.status === 'baik' && b.keputusan === 'lanjut') {

@@ -163,6 +163,24 @@ test('an unclear raise is not repeated; a good result lets the steps continue; s
   assert.ok(rows.every(b => b.keputusan === 'naikkan'));
 });
 
+test('growth step (lower target): unclear → stop lowering; worse → back up; good → may lower again (user, 01/10)', () => {
+  const { data } = fixture();
+  data.riwayatSetelan = [{ ...change, targetLama: 13, targetBaru: 11.1 }];
+  const tumbuh = () => ({ ...rowP(), keputusan: 'tumbuh', target: 11.1, targetBaru: 9.5 });
+  iklan(data, SEBELUM, KECIL);
+  let b = tumbuh(); E.terapkanEvaluasiToko([b], data, true, '2026-09-30');
+  assert.equal(b.keputusan, 'lanjut'); assert.equal(b.alasan, 'belum-jelas-turun'); assert.equal(b.targetBaru, null);
+  iklan(data, SEBELUM, BURUK);
+  b = tumbuh(); E.terapkanEvaluasiToko([b], data, true, '2026-09-30');
+  assert.equal(b.keputusan, 'kembalikan'); assert.equal(b.targetBaru, 13); // 11.1 × 1.2 = 13.3, capped at the old 13
+  iklan(data, SEBELUM, BAIK);
+  b = tumbuh(); E.terapkanEvaluasiToko([b], data, true, '2026-09-30');
+  assert.equal(b.keputusan, 'tumbuh'); assert.equal(b.targetBaru, 9.5);
+  // Incomplete data holds a growth step like any other change.
+  b = tumbuh(); E.terapkanEvaluasiToko([b], data, false, '2026-09-30');
+  assert.equal(b.keputusan, 'tunggu'); assert.equal(b.ditahan, 'tumbuh');
+});
+
 test('budget-only changes reverse the budget; a large store drop holds nothing (brake removed 30/09)', () => {
   const { data } = fixture(-580000); // store after ads: 100 rb → −600 rb a day
   data.riwayatSetelan = [{ ...change, targetLama: 10.8, targetBaru: 10.8, modalLama: 50000, modalBaru: 60000 }];

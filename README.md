@@ -109,8 +109,8 @@ phone: profit, then tasks, then shortcuts.
   The direct change must reach 20 rb/day to count as a clear improvement or decline;
   the broad Shopee figure remains in the owner's details as context, because it can include products with
   different margins. **Lebih baik** keeps the setting and the steps continue; **lebih buruk** returns towards the old target or budget (at most 20%
-  per step); **belum jelas** keeps the setting, and after a target raise that ad's target is not raised
-  again. Missing data is never zero profit.
+  per step); **belum jelas** keeps the setting, and after a target raise (or a growth step down) that ad's
+  target is not moved further in the same direction. Missing data is never zero profit.
 - **Store profit does not hold changes.** It swings about ±400 rb/day between ordinary weeks with demand and
   sale days, far more than one ad setting can move it. The weekly card still stops budget increases when ad
   spend rose over 4 weeks and store profit did not (per ordinary day: busy days, payout > 1.8 × the
@@ -188,8 +188,11 @@ How each ad's change is chosen (the trial checks above take priority over this l
   used only after it held **3 days in a row** (one sale more or less shouldn't flip the advice); until then
   the previous advice stays and Rincian says "Hasil terbaru: … (n dari 3 hari)".
 - **Untung** (direct ≥ minimum) → **Tambah modal** +20% if it spent ≥ 90% of its daily budget on average
-  and weekly store profit isn't falling while ads rise; otherwise leave it.
-- **Belum tentu** (only Shopee's ROAS ≥ minimum) or **Rugi** (both below) → **Naikkan target** by 20%
+  and weekly store profit isn't falling while ads rise. If it spends **less than 90%** (the target holds it
+  back), runs in ROAS mode and its direct ROAS is ≥ 1.2 × the minimum → **Turunkan target** −15% to grow,
+  never below Shopee's lowest recommendation or the break-even; otherwise leave it.
+- **Belum tentu** (only Shopee's ROAS ≥ minimum) → **Biarkan**: the ad may pay through other products, and
+  a higher target would cut its reach. **Rugi** (both below) → **Naikkan target** by 20%
   (Shopee's guidance: at most 20% per change). Auto ads: switch to ROAS mode at Shopee ROAS + 20%.
 - **Target limit** = Shopee's highest recommendation × 1.25 (an advisory delivery ceiling). A raise stops
   at the limit. At or above it: a losing ad → **Kurangi modal** (halve the budget); a "belum tentu" ad

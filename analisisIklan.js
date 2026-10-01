@@ -63,7 +63,7 @@ const KODE_IKLAN_TOKO = 'iklan-toko'; // baris "Iklan Produk Otomatis" / Shop GM
 
 // Baca satu baris CSV yang mungkin berisi field bertanda kutip (koma di dalam nama
 // produk yang dibungkus tanda kutip, tanda kutip ganda "" = satu tanda kutip).
-function parseCsvLine(line) {
+function parseCsvLine(line, pemisah = ',') {
   const hasil = [];
   let field = '';
   let dalamKutip = false;
@@ -75,7 +75,7 @@ function parseCsvLine(line) {
       else { field += c; }
     } else if (c === '"') {
       dalamKutip = true;
-    } else if (c === ',') {
+    } else if (c === pemisah) {
       hasil.push(field);
       field = '';
     } else {

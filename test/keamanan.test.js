@@ -91,6 +91,18 @@ test('security headers, cross-site block, login limit, and login survives a rest
   // A normal account can still write.
   assert.equal((await fetch(`${BASE}/api/hpp/123`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: sid }, body: '{"hpp":5}' })).status, 200);
 
+  // HPP CSV import: a blank cell is skipped (never saved as HPP 0), "Rp 48.000" = 48000, and an
+  // Indonesian-Excel file with ";" works.
+  const impor = async (teks) => {
+    const form = new FormData();
+    form.append('file', new Blob([teks], { type: 'text/csv' }), 'hpp.csv');
+    return (await fetch(`${BASE}/api/hpp/import-csv`, { method: 'POST', headers: { Cookie: sid }, body: form })).json();
+  };
+  assert.deepEqual(await impor('ID Produk,Nama Produk,Harga Modal (HPP)\n123,Kaos,\n456,Rok,"Rp 48.000"\n'), { ok: true, ditambahkan: 1, diperbarui: 0, dilewati: 1 });
+  assert.deepEqual(await impor('ID Produk;Nama Produk;Harga Modal (HPP)\n789;Celana;35000\n'), { ok: true, ditambahkan: 1, diperbarui: 0, dilewati: 0 });
+  const hpp = Object.fromEntries((await (await fetch(`${BASE}/api/hpp`, { headers: { Cookie: sid } })).json()).map((r) => [r.id_produk, r.hpp]));
+  assert.deepEqual([hpp['123'], hpp['456'], hpp['789']], [5, 48000, 35000]);
+
   // After 10 wrong passwords, even the right one is refused for a while.
   for (let i = 0; i < 10; i++) assert.equal((await login('tes', 'salah')).status, 401);
   assert.equal((await login('tes', 'benar123')).status, 429);

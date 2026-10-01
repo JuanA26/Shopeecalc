@@ -157,7 +157,8 @@ On a phone: profit, the tiles in a 2 × 2 grid, then the tasks.
   - Orders whose funds aren't released yet show **"Belum cair"** with an **≈** estimate. The exact figure
     replaces it automatically. Cancelled and unpaid orders are left out.
 - **Atur Harga Modal (HPP):** set the cost price per Product ID (shared by all users). Bulk CSV
-  import/export. The "Belum Diisi" filter lists products without HPP, best sellers first.
+  import/export (comma or `;` CSV; `48000`, `48.000` or `Rp 48.000`; a blank HPP cell is skipped, not saved as 0).
+  The "Belum Diisi" filter lists products without HPP, best sellers first.
 - Yellow rows = no HPP yet (type it straight into the row, then Simpan or Enter). Running-ad products without HPP are listed
   too, even without sales in the period. Click a column header to sort.
 - **Sync:**

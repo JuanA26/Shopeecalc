@@ -29,7 +29,16 @@ function cekError(hasil, namaEndpoint) {
   return (hasil && hasil.response) || {};
 }
 
+// Angka HPP dari sel CSV: "48000", "48.000", "Rp 48.000" → 48000. Sel kosong atau bukan angka → null
+// (dilewati, bukan disimpan sebagai HPP 0: HPP 0 dihitung untung penuh).
+function angkaHpp(teks) {
+  let t = String(teks ?? '').replace(/^\s*rp\.?\s*/i, '').replace(/\s/g, '');
+  if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, ''); // titik ribuan
+  if (!/^\d+(\.\d+)?$/.test(t)) return null;
+  return Number(t);
+}
+
 // Teks aman untuk disisipkan ke HTML balasan server (halaman OAuth).
 const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
-module.exports = { tanggalWib, hariIniWib, geserHari, tanggalValid, potong, cekError, escapeHtml };
+module.exports = { tanggalWib, hariIniWib, geserHari, tanggalValid, potong, cekError, escapeHtml, angkaHpp };

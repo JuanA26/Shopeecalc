@@ -1007,8 +1007,7 @@ async function simpanHpp(idProduk, namaProduk, nilaiMentah) {
     });
     await muatDaftarHpp();
     hitungUlangDanTampilkanUlang();
-    muatDataPenjualanIklan(); // untung per minggu di Analisis Iklan ikut HPP baru
-    muatStok(); // modal di stok, Beli lagi, Cuci gudang
+    muatDataPenjualanIklan(); // untung per minggu di Analisis Iklan + halaman Stok (muatStok) ikut HPP baru
   } catch (err) {
     alert(err.message);
   }
@@ -1297,7 +1296,7 @@ tombolImporCsv.addEventListener('click', async () => {
 
     pesanSuksesCsv.textContent =
       `Selesai: ${body.ditambahkan} produk baru ditambahkan, ${body.diperbarui} diperbarui` +
-      (body.dilewati ? `, ${body.dilewati} baris dilewati (data tidak valid).` : '.');
+      (body.dilewati ? `, ${body.dilewati} baris dilewati (HPP kosong atau bukan angka).` : '.');
     pesanSuksesCsv.classList.remove('tersembunyi');
     inputCsvHpp.value = '';
     perbaruiNamaFileCsv();

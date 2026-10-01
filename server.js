@@ -19,7 +19,7 @@ const { susunEkspor } = require('./eksporData');
 const { perkiraanMingguTerakhir, gagalSetelahTujuhHari, cekHargaMultiPcs } = require('./cekData');
 const { buatXlsx } = require('./xlsx');
 const SesiSqlite = require('./sesiSqlite');
-const { hariIniWib, geserHari, tanggalValid, escapeHtml } = require('./util');
+const { hariIniWib, geserHari, tanggalValid, escapeHtml, angkaHpp } = require('./util');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -271,7 +271,8 @@ app.get('/api/hpp/export-csv', requireLogin, (req, res) => {
 });
 
 // Impor massal dari file CSV dengan format yang sama dengan ekspor di atas (kolom: ID Produk,
-// Nama Produk, Harga Modal (HPP), ...). parseCsvLine() sama dengan pembaca CSV iklan.
+// Nama Produk, Harga Modal (HPP), ...). parseCsvLine() sama dengan pembaca CSV iklan. Excel berbahasa
+// Indonesia menyimpan CSV dengan pemisah ";": dikenali dari baris judul.
 // Satu transaksi: ratusan baris tersimpan sekaligus (cepat), atau tidak sama sekali.
 app.post('/api/hpp/import-csv', requireLogin, upload.single('file'), (req, res) => {
   if (!req.file) {
@@ -284,7 +285,8 @@ app.post('/api/hpp/import-csv', requireLogin, upload.single('file'), (req, res) 
     return res.status(400).json({ error: 'File CSV kosong atau tidak punya baris data.' });
   }
 
-  const header = parseCsvLine(baris[0]).map((h) => h.trim().toLowerCase());
+  const pemisah = parseCsvLine(baris[0]).length < 2 && baris[0].includes(';') ? ';' : ',';
+  const header = parseCsvLine(baris[0], pemisah).map((h) => h.trim().toLowerCase());
   const idxId = header.findIndex((h) => h.includes('id produk'));
   const idxNama = header.findIndex((h) => h.includes('nama produk'));
   const idxHpp = header.findIndex((h) => h.includes('harga modal'));
@@ -303,12 +305,12 @@ app.post('/api/hpp/import-csv', requireLogin, upload.single('file'), (req, res) 
   db.exec('BEGIN');
   try {
     for (let i = 1; i < baris.length; i++) {
-      const kolom = parseCsvLine(baris[i]);
+      const kolom = parseCsvLine(baris[i], pemisah);
       const idProduk = String(kolom[idxId] || '').trim();
       const namaProduk = idxNama !== -1 ? String(kolom[idxNama] || '').trim() : '';
-      const hppNum = Number(kolom[idxHpp]);
+      const hppNum = angkaHpp(kolom[idxHpp]); // kosong → dilewati, HPP lama tetap
 
-      if (!idProduk || !Number.isFinite(hppNum) || hppNum < 0) {
+      if (!idProduk || hppNum === null) {
         dilewati += 1;
         continue;
       }

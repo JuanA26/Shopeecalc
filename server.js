@@ -1,4 +1,12 @@
 require('dotenv').config();
+// Node mencetak "ExperimentalWarning: SQLite ..." tiap start dan log server menghitungnya sebagai error.
+// Buang hanya peringatan itu (harus sebelum node:sqlite dimuat oleh ./db); peringatan lain tetap tampil.
+const emitWarningAsli = process.emitWarning;
+process.emitWarning = function (peringatan, ...args) {
+  const jenis = typeof args[0] === 'string' ? args[0] : args[0] && args[0].type;
+  if (jenis === 'ExperimentalWarning' && /SQLite/i.test(String(peringatan && peringatan.message || peringatan))) return;
+  return emitWarningAsli.call(process, peringatan, ...args);
+};
 const path = require('path');
 const crypto = require('crypto');
 const express = require('express');

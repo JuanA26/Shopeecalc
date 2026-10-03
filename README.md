@@ -1,6 +1,6 @@
 # Kalkulator Margin Shopee (Shopee Margin Calc)
 
-**Live:** https://shopee-margin-calc.onrender.com (server version, the one in use)
+**Live:** https://happyshop-margin-calc.fly.dev (Fly.io; server version, the one in use)
 
 A small private web app for one Shopee shop. It pulls orders, payouts and ad data **automatically from the
 Shopee Open Platform API** (read-only), combines them with the cost price (HPP) you enter per product,
@@ -35,17 +35,18 @@ npm start                                                     # http://localhost
 
 Sales data needs a one-time shop authorization at `/auth/shopee/authorize`.
 
-## 2. Deploy (Render)
+## 2. Deploy (Fly.io)
 
-`render.yaml` sets up everything: New → Blueprint → pick the repo.
+`fly.toml` + `Dockerfile` describe the app: `happyshop-margin-calc`, region `sin`, **one** 512 MB machine and a
+1 GB volume at `/data` (`DATA_DIR`), about $3.85/month. Never scale above 1 machine: SQLite lives on that volume.
 
-- **Plan:** Starter (~$7/month). The free tier has no persistent disk, and the SQLite file
-  (`DATA_DIR`) must be on one or all data is lost on redeploy.
-- **Env vars to fill in:**
-  - `ADMIN_ACCOUNTS`, e.g. `aaron:Pass1,ibu:Pass2`. Accounts are created on start; existing ones are left
-    untouched.
-  - `SHOPEE_PARTNER_ID` / `SHOPEE_PARTNER_KEY` (live keys from the Shopee Open Platform console).
-- After that, every `git push` to `main` redeploys automatically.
+- **Secrets** (`fly secrets set`, never in git): `SESSION_SECRET`, `ADMIN_ACCOUNTS` (e.g. `aaron:Pass1,ibu:Pass2`;
+  accounts are created on start, existing ones are left untouched), `AKUN_BACA_SAJA`, `SHOPEE_PARTNER_ID`,
+  `SHOPEE_PARTNER_KEY` (live keys from the Shopee Open Platform console). `SINKRON_OTOMATIS=off` pauses the sync.
+- **Release:** a `git push` does **not** deploy. From `webapp/` run
+  `fly deploy --ha=false --build-arg GIT_COMMIT=$(git rev-parse HEAD)`, then check `/api/kesehatan`.
+- `.dockerignore` keeps `.env`, `data/` and `node_modules` out of the image.
+- `render.yaml` is the old Render setup, kept only for rollback.
 
 **Access and privacy:**
 - Every route except login requires a session. Only create accounts for people you trust, with long,

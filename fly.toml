@@ -1,0 +1,37 @@
+# Fly.io config. Satu mesin saja (SQLite hidup di satu volume, jangan di-scale lebih dari 1).
+# Rahasia (SESSION_SECRET, ADMIN_ACCOUNTS, AKUN_BACA_SAJA, SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY)
+# diisi lewat `fly secrets set`, bukan di file ini.
+app = "happyshop-margin-calc"
+primary_region = "sin"
+
+[build]
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  DATA_DIR = "/data"
+  SHOPEE_ENV = "production"
+  SHOPEE_REDIRECT_URL = "https://happyshop-margin-calc.fly.dev/auth/shopee/callback"
+
+[[mounts]]
+  source = "data"
+  destination = "/data"
+  initial_size = "1gb"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/api/kesehatan"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

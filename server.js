@@ -23,7 +23,7 @@ const { hariIniWib, geserHari, tanggalValid, escapeHtml, angkaHpp } = require('.
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const VERSI = (process.env.RENDER_GIT_COMMIT || 'lokal').slice(0, 7);
+const VERSI = (process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || 'lokal').slice(0, 7);
 // Akun "baca saja" (mis. untuk agen/Claude): bisa melihat semua, tidak bisa mengubah apa pun.
 // Env AKUN_BACA_SAJA = daftar username dipisah koma; akunnya sendiri dibuat lewat ADMIN_ACCOUNTS.
 const AKUN_BACA_SAJA = new Set(String(process.env.AKUN_BACA_SAJA || '').split(',').map((u) => u.trim()).filter(Boolean));

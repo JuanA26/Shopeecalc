@@ -11,7 +11,7 @@ COPY . .
 # supaya HPP tidak hilang tiap kali di-deploy ulang. Lihat README untuk detail per platform.
 VOLUME ["/app/data"]
 
-# Versi yang tampil di /api/kesehatan (Fly): fly deploy --build-arg GIT_COMMIT=$(git rev-parse HEAD)
+# Versi yang tampil di /api/kesehatan: diisi deploy-site.ps1 lewat build arg (MARGIN_COMMIT di compose juserver)
 ARG GIT_COMMIT=lokal
 ENV GIT_COMMIT=$GIT_COMMIT
 

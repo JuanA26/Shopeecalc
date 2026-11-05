@@ -156,7 +156,8 @@ test('ads sync records Seller Centre target/budget changes and exposes the lates
     if (p.endsWith('/get_product_level_campaign_id_list')) return { response: { campaign_list: [{ campaign_id: 77 }], has_next_page: false } };
     if (p.endsWith('/get_product_level_campaign_setting_info')) return { response: { campaign_list: [{ campaign_id: 77,
       common_info: { item_id_list: [555], ad_name: 'Iklan', campaign_status: 'ongoing', bidding_method: 'auto', campaign_budget: setelan.budget,
-        campaign_duration: { start_time: now - 20 * 86400, end_time: 0 } }, auto_bidding_info: { roas_target: setelan.target } }] } };
+        // Fixed date: this test's window ends 2026-10-03, and a campaign starting after it is left out.
+        campaign_duration: { start_time: Date.UTC(2026, 8, 13) / 1000, end_time: 0 } }, auto_bidding_info: { roas_target: setelan.target } }] } };
     if (p.endsWith('/get_product_recommended_roi_target')) return { response: { upper_bound: { value: 13 }, exact: { value: 10 }, lower_bound: { value: 8 } } };
     if (p.endsWith('/get_product_campaign_daily_performance')) return { response: { campaign_list: [{ campaign_id: 77, metrics_list: [{ date: '01-10-2026', expense: 0, broad_gmv: 0, direct_gmv: 0 }] }] } };
     if (p.endsWith('/get_all_cpc_ads_daily_performance')) return { response: [{ date: '01-10-2026', expense: 0 }] };

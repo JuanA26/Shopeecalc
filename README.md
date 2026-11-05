@@ -1,6 +1,6 @@
 # Kalkulator Margin Shopee (Shopee Margin Calc)
 
-**Live:** https://happyshop-margin-calc.fly.dev (Fly.io; server version, the one in use)
+**Live:** https://margin.noratalab.com (home server juserver; server version, the one in use)
 
 A small private web app for one Shopee shop. It pulls orders, payouts and ad data **automatically from the
 Shopee Open Platform API** (read-only), combines them with the cost price (HPP) you enter per product,
@@ -35,18 +35,23 @@ npm start                                                     # http://localhost
 
 Sales data needs a one-time shop authorization at `/auth/shopee/authorize`.
 
-## 2. Deploy (Fly.io)
+## 2. Deploy (juserver)
 
-`fly.toml` + `Dockerfile` describe the app: `happyshop-margin-calc`, region `sin`, **one** 512 MB machine and a
-1 GB volume at `/data` (`DATA_DIR`), about $3.85/month. Never scale above 1 machine: SQLite lives on that volume.
+The app runs on the home server juserver as Docker Compose service `margin` (container `sites-margin-1`, in
+`~/sites`, built from this `Dockerfile`). A Cloudflare tunnel makes it public; it has no other public port. Run only
+one container: SQLite lives in `~/sites/margin/data`, mounted at `/data` (`DATA_DIR`).
 
-- **Secrets** (`fly secrets set`, never in git): `SESSION_SECRET`, `ADMIN_ACCOUNTS` (e.g. `aaron:Pass1,ibu:Pass2`;
-  accounts are created on start, existing ones are left untouched), `AKUN_BACA_SAJA`, `SHOPEE_PARTNER_ID`,
-  `SHOPEE_PARTNER_KEY` (live keys from the Shopee Open Platform console). `SINKRON_OTOMATIS=off` pauses the sync.
-- **Release:** a `git push` does **not** deploy. From `webapp/` run
-  `fly deploy --ha=false --build-arg GIT_COMMIT=$(git rev-parse HEAD)`, then check `/api/kesehatan`.
+- **Secrets** (`~/sites/margin/.env` on the server, never in git): `SESSION_SECRET`, `ADMIN_ACCOUNTS` (e.g.
+  `aaron:Pass1,ibu:Pass2`; accounts are created on start, existing ones are left untouched), `AKUN_BACA_SAJA`,
+  `SHOPEE_PARTNER_ID`, `SHOPEE_PARTNER_KEY` (live keys from the Shopee Open Platform console).
+  `SINKRON_OTOMATIS=off` pauses the sync. The other settings, including `SHOPEE_REDIRECT_URL`, are in the Compose file.
+- **Release:** a `git push` does **not** deploy. Run `deploy-site.ps1 margin -Restart` from the private
+  `Server Project` folder, then check `/api/kesehatan`. It ships the tracked files as they are in the working tree
+  (untracked files are not sent), rebuilds the image with the commit as `GIT_COMMIT` and waits for the health check.
+- **Proxy:** requests reach the app through one hop (`cloudflared`), so `trust proxy` is `1`. The login limit then
+  sees the visitor's real IP and ignores a faked `X-Forwarded-For`. Change this value if another proxy is added.
 - `.dockerignore` keeps `.env`, `data/` and `node_modules` out of the image.
-- `render.yaml` is the old Render setup, kept only for rollback.
+- `render.yaml` is the retired Render setup and is not used.
 
 **Access and privacy:**
 - Every route except login requires a session. Only create accounts for people you trust, with long,
@@ -317,7 +322,7 @@ webapp/
   public/           Frontend: index.html, app.js, style.css (no build step)
                     evaluasiIklan.js: shared mature-window and store-profit trial calculations
   data/app.db       SQLite database (gitignored; back it up)
-  Dockerfile        For other container hosts
+  Dockerfile        Image built by the juserver deploy
 ```
 
 **Stored on the server:** HPP list, accounts, the Shopee token, and synced orders, payouts, ad metrics and stock.

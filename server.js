@@ -45,7 +45,7 @@ if (!process.env.SESSION_SECRET) {
   );
 }
 
-app.set('trust proxy', 1); // perlu kalau dideploy di belakang reverse proxy/https (Render, Fly.io, dll)
+app.set('trust proxy', 1); // satu hop: cloudflared di juserver. req.ip = entri terakhir X-Forwarded-For (IP pengunjung asli), https dari X-Forwarded-Proto
 
 // Bikin akun-akun login otomatis dari environment variable, kalau di-set dan akunnya
 // belum ada. Berguna waktu deploy ke hosting yang tidak kasih akses shell/terminal

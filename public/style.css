@@ -717,6 +717,9 @@ tbody tr.baris-kurangi td { background: var(--tenggat-muda); }
 .tombol-kode:hover { background: var(--abu-terang); }
 .jumlah-kode { font-size: 0.8rem; padding: 2px 8px; border-radius: 999px; background: var(--kuning-muda); color: var(--teks); }
 .tombol-kode.lengkap .jumlah-kode { background: var(--hijau-muda); color: var(--hijau); }
+.hpp-per-kode-ket { font-size: 0.9rem; color: var(--abu-teks); }
+.kartu-lainnya { border-style: dashed; }
+.kartu-lainnya.terisi { border-style: solid; }
 .hpp-umum-ket { display: block; margin-top: 4px; font-size: 0.8rem; color: var(--abu-teks); text-align: left; }
 #tabelHpp tr.baris-ada-kode > td { vertical-align: top; }
 #tabelHpp tr.baris-panel-kode[hidden] { display: none !important; }
@@ -724,7 +727,7 @@ tbody tr.baris-kurangi td { background: var(--tenggat-muda); }
 .panel-kode { text-align: left; padding: 14px 16px 16px; background: var(--abu-terang); border: 1px solid var(--border); border-radius: 12px; cursor: default; }
 .keterangan-kode { margin: 0 0 12px; font-size: 0.9rem; color: var(--abu-teks); }
 .daftar-kode { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
-.kartu-kode { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; background: #fff; border: 1px solid var(--border); border-radius: 10px; }
+.kartu-kode { white-space: normal; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; background: #fff; border: 1px solid var(--border); border-radius: 10px; }
 .kartu-kode.terisi { border-color: var(--hijau-garis); }
 .kartu-kode-atas { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .kode-nama { font-weight: 700; font-size: 1rem; color: var(--teks-judul); }
@@ -732,11 +735,12 @@ tbody tr.baris-kurangi td { background: var(--tenggat-muda); }
 .kode-status.ok { color: var(--hijau); }
 .kode-status.gagal { color: var(--merah); }
 .kode-info { font-size: 0.85rem; color: var(--abu-teks); }
-.input-hpp-kode {
+.input-hpp-kode, .input-hpp-lainnya {
   width: 100%; min-width: 0; min-height: 44px; margin-top: 4px; padding: 6px 10px; font-size: 1rem; font-family: inherit; text-align: right;
   border: 1px solid var(--border-kuat); border-radius: 8px; background: #fff; -moz-appearance: textfield; appearance: textfield;
 }
-.input-hpp-kode::-webkit-inner-spin-button, .input-hpp-kode::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.input-hpp-kode::-webkit-inner-spin-button, .input-hpp-kode::-webkit-outer-spin-button,
+.input-hpp-lainnya::-webkit-inner-spin-button, .input-hpp-lainnya::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .simpan-hpp-cepat, .simpan-hpp-tabel-baru { flex-shrink: 0; }
 .input-hpp-cepat::-webkit-inner-spin-button, .input-hpp-cepat::-webkit-outer-spin-button,
 .input-hpp-tabel-baru::-webkit-inner-spin-button, .input-hpp-tabel-baru::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }

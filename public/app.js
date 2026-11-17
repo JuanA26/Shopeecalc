@@ -1237,10 +1237,10 @@ function renderTabelHpp() {
               ? `<span title="${escapeHtml(formatRupiah(r.terjualRp))}">${r.terjualPcs} pcs &middot; ${formatRupiahRingkas(r.terjualRp)}</span>`
               : '<span class="teks-redup">-</span>'
           }</td>
-          <td class="kolom-hpp kolom-angka" data-label="${kode ? 'HPP umum' : 'Harga Modal (HPP)'}">${selHpp}${kode ? '<small class="hpp-umum-ket">untuk kode yang kosong</small>' : ''}</td>
+          <td class="kolom-hpp kolom-angka" data-label="Harga Modal (HPP)">${kode ? '<span class="hpp-per-kode-ket">Diisi per kode</span>' : selHpp}</td>
           <td data-label="Terakhir Diubah">${r.updated_at ? escapeHtml(r.updated_at) : '<span class="teks-redup">Belum diisi</span>'}</td>
           <td data-label="Oleh">${escapeHtml(r.updated_by || '-')}</td>
-          <td data-label="">${punyaHpp ? `<button class="tombol tombol-hapus" data-hapus="${escapeHtml(r.id_produk)}">Hapus</button>` : ''}</td>
+          <td data-label="">${punyaHpp && !kode ? `<button class="tombol tombol-hapus" data-hapus="${escapeHtml(r.id_produk)}">Hapus</button>` : ''}</td>
         </tr>${kode ? kode.panel : ''}`;
     })
     .join('');
@@ -1258,10 +1258,14 @@ function renderTabelHpp() {
     input.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       e.preventDefault();
-      const semua = [...input.closest('.panel-kode').querySelectorAll('.input-hpp-kode')];
+      const semua = [...input.closest('.panel-kode').querySelectorAll('input')];
       const berikut = semua[semua.indexOf(input) + 1];
       if (berikut) berikut.focus(); else input.blur();
     });
+  });
+  isiTabelHpp.querySelectorAll('.input-hpp-lainnya').forEach((input) => {
+    input.addEventListener('change', () => simpanHppLainnya(input));
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
   });
   isiTabelHpp.querySelectorAll('[data-buka-kode]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1320,7 +1324,6 @@ function panelHppKode(r) {
   const diisi = daftar.filter((k) => k.hpp !== null).length;
   const tombol = `<button type="button" class="tombol-kode${diisi === daftar.length ? ' lengkap' : ''}" data-buka-kode="${id}" aria-expanded="${buka}">` +
     `<span>Isi HPP per kode</span><span class="jumlah-kode" data-jumlah-kode>${teksJumlahKode(diisi, daftar.length)}</span></button>`;
-  const umum = r.hpp !== null ? `HPP umum (${escapeHtml(formatRupiah(r.hpp))})` : 'HPP umum (belum diisi)';
   const kartu = daftar.map((k) => {
     const info = [k.pcs ? `${k.pcs} terjual` : 'belum terjual', k.pcs ? `harga ${rupiahPendek(k.hargaProduk / k.pcs)}` : '',
       k.stok !== null ? `stok ${k.stok}` : ''].filter(Boolean).join(' · ');
@@ -1328,12 +1331,20 @@ function panelHppKode(r) {
       `<span class="kartu-kode-atas"><span class="kode-nama">${escapeHtml(k.kode)}</span><span class="kode-status ok" aria-live="polite">${
         escapeHtml(teksStatusKode(r.id_produk, k.kode))}</span></span>` +
       `<span class="kode-info">${info}</span>` +
-      `<input type="number" min="0" inputmode="numeric" class="input-hpp-kode" value="${k.hpp ?? ''}" placeholder="${r.hpp !== null ? 'HPP umum' : 'Isi HPP'}"` +
+      `<input type="number" min="0" inputmode="numeric" class="input-hpp-kode" value="${k.hpp ?? ''}" placeholder="${r.hpp !== null ? 'Ikut Lainnya' : 'Isi HPP'}"` +
       ` data-kode-id="${id}" data-kode="${escapeHtml(k.kode)}" data-awal="${k.hpp ?? ''}" aria-label="HPP kode ${escapeHtml(k.kode)}"${akunBacaSaja ? ' disabled' : ''}></label>`;
   }).join('');
+  // "Lainnya" = HPP produk: untuk varian tanpa kode di namanya (mis. "Hitam") dan kode yang dikosongkan.
+  const jual = penjualanPerProduk().get(r.id_produk);
+  const tanpaKode = jual ? jual.pcs - [...jual.perKode.values()].reduce((t, k) => t + k.pcs, 0) : 0;
+  const lainnya = `<label class="kartu-kode kartu-lainnya${r.hpp !== null ? ' terisi' : ''}">` +
+    `<span class="kartu-kode-atas"><span class="kode-nama">Lainnya</span><span class="kode-status ok" aria-live="polite">${escapeHtml(teksStatusKode(r.id_produk, ''))}</span></span>` +
+    `<span class="kode-info">${tanpaKode > 0 ? `${tanpaKode} terjual tanpa kode` : 'varian tanpa kode'} · dipakai juga untuk kode yang kosong</span>` +
+    `<input type="number" min="0" inputmode="numeric" class="input-hpp-lainnya" value="${r.hpp ?? ''}" placeholder="Isi HPP"` +
+    ` data-id="${id}" data-nama="${escapeHtml(r.nama_produk || '')}" data-awal="${r.hpp ?? ''}" aria-label="HPP lainnya"${akunBacaSaja ? ' disabled' : ''}></label>`;
   const panel = `<tr class="baris-panel-kode" data-panel-kode="${id}"${buka ? '' : ' hidden'}><td colspan="7" data-label="">` +
-    `<div class="panel-kode"><p class="keterangan-kode">Ketik HPP tiap kode, lalu Enter. Kode yang kosong memakai ${umum}.</p>` +
-    `<div class="daftar-kode">${kartu}</div></div></td></tr>`;
+    `<div class="panel-kode"><p class="keterangan-kode">Ketik HPP tiap kode, lalu Enter. Kode yang dikosongkan memakai HPP "Lainnya".</p>` +
+    `<div class="daftar-kode">${kartu}${lainnya}</div></div></td></tr>`;
   return { tombol, panel };
 }
 function teksStatusKode(idProduk, kode) {
@@ -1344,6 +1355,31 @@ function teksStatusKode(idProduk, kode) {
 // Simpan satu HPP kode tanpa menggambar ulang tabel (fokus tetap di tempat, bisa lanjut mengetik).
 // Hitung ulang iklan & stok ditunda sebentar supaya mengisi banyak kode tidak memicu banyak muat ulang.
 let tundaMuatUlangHpp = null;
+// HPP produk ("Lainnya") dari panel kode, juga tanpa menggambar ulang tabel.
+async function simpanHppLainnya(input) {
+  const { id: idProduk, nama } = input.dataset;
+  const teks = String(input.value).trim();
+  if (teks === input.dataset.awal) return;
+  const kosong = teks === '';
+  const nilai = Number(teks);
+  if (!kosong && (!Number.isFinite(nilai) || nilai < 0)) { alert('Isi HPP dengan angka yang benar (tidak boleh minus).'); return; }
+  const kartu = input.closest('.kartu-kode');
+  const status = kartu.querySelector('.kode-status');
+  try {
+    if (kosong) await apiFetch(`/api/hpp/${encodeURIComponent(idProduk)}`, { method: 'DELETE' });
+    else await apiFetch(`/api/hpp/${encodeURIComponent(idProduk)}`, { method: 'PUT', body: JSON.stringify({ hpp: nilai, namaProduk: nama }) });
+  } catch (err) { alert(err.message); return; }
+  input.dataset.awal = teks;
+  daftarHpp = daftarHpp.filter((r) => r.id_produk !== idProduk);
+  if (!kosong) daftarHpp.push({ id_produk: idProduk, nama_produk: nama, hpp: nilai, updated_at: '', updated_by: '' });
+  kartu.classList.toggle('terisi', !kosong);
+  status.textContent = kosong ? 'Dihapus' : '✓ Tersimpan';
+  statusKode.set(`${idProduk}|`, { teks: status.textContent, sampai: Date.now() + 5000 });
+  for (const i of input.closest('.panel-kode').querySelectorAll('.input-hpp-kode')) i.placeholder = kosong ? 'Isi HPP' : 'Ikut Lainnya';
+  hitungUlangDanTampilkanUlang();
+  clearTimeout(tundaMuatUlangHpp);
+  tundaMuatUlangHpp = setTimeout(() => { hitungUlangIklan(); muatDataPenjualanIklan(); }, 1500);
+}
 async function simpanHppKode(input) {
   const { kodeId: idProduk, kode } = input.dataset;
   const teks = String(input.value).trim();

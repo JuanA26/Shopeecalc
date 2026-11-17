@@ -61,6 +61,8 @@ one container: SQLite lives in `~/sites/margin/data`, mounted at `/data` (`DATA_
   inline scripts), `X-Frame-Options: DENY` and `nosniff`; data-changing requests from other origins are
   refused.
 - Back up the database (`app.db`): it holds the HPP list and accounts.
+- Scripts and the stylesheet are linked with a content fingerprint (`app.js?v=…`), so a deploy reaches browsers at once
+  despite Cloudflare's 4-hour browser cache.
 
 **Debugging and read-only access** (for the owner or a helper/agent, without sharing a password):
 - `GET /api/kesehatan` — public, no login. Version, last order/ads sync (status, time, error text),
@@ -166,8 +168,9 @@ On a phone: profit, the tiles in a 2 × 2 grid, then the tasks.
   import/export (comma or `;` CSV; `48000`, `48.000` or `Rp 48.000`; a blank HPP cell is skipped, not saved as 0).
   The "Belum Diisi" filter lists products without HPP, best sellers first.
 - **HPP per kode:** one listing often holds several items (variant names like "9669 Grey", "2190.2 Blue", "0510 Coffee").
-  The code is read from the start of the variant name; a product with 2+ codes gets a "HPP per kode" dropdown under its
-  name (pcs sold, price, stock per code). A code's HPP beats the product HPP for its variants; empty = product HPP;
+  The code is read from the start of the variant name; a product with 2+ codes gets an "Isi HPP per kode" button that
+  opens a full-width panel with one card per code (pcs sold, price, stock, HPP box; Enter saves and jumps to the next code).
+  The product's own box is the "HPP umum". A code's HPP beats the HPP umum for its variants; empty = HPP umum;
   variants without a code ("Hitam") always use the product HPP. Profit per order, stock modal, Beli lagi and the
   Excel use each variant's HPP; ad analysis uses the HPP weighted by the codes actually sold. The CSV has a `Kode`
   column (blank = product HPP).

@@ -41,6 +41,15 @@ test('security headers, cross-site block, login limit, and login survives a rest
   assert.match(halaman.headers.get('content-security-policy'), /script-src 'self'/);
   assert.equal(halaman.headers.get('x-frame-options'), 'DENY');
   assert.equal(halaman.headers.get('x-content-type-options'), 'nosniff');
+  // Every local script/stylesheet carries a content fingerprint, so a deploy is never mixed with a cached old app.js.
+  const html = await halaman.text();
+  const crypto = require('node:crypto');
+  const sidik = (f) => crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, '..', 'public', f))).digest('hex').slice(0, 10);
+  assert.ok(html.includes(`src="app.js?v=${sidik('app.js')}"`));
+  assert.ok(html.includes(`href="style.css?v=${sidik('style.css')}"`));
+  assert.ok(!/src="[\w.-]+\.js"/.test(html)); // none left unversioned
+  assert.equal(halaman.headers.get('cache-control'), 'no-cache');
+  assert.equal((await fetch(`${BASE}/app.js?v=${sidik('app.js')}`)).status, 200);
 
   // A request that changes data from another site is refused before it reaches the route.
   assert.equal((await login('tes', 'benar123', { Origin: 'https://situs-lain.example' })).status, 403);

@@ -7,6 +7,7 @@ process.emitWarning = function (peringatan, ...args) {
   if (jenis === 'ExperimentalWarning' && /SQLite/i.test(String(peringatan && peringatan.message || peringatan))) return;
   return emitWarningAsli.call(process, peringatan, ...args);
 };
+const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
@@ -115,7 +116,26 @@ app.use((req, res, next) => {
 // Batas dinaikkan dari 100 kb bawaan: /api/iklan/hitung-ulang mengirim balik semua baris
 // kampanye (ratusan baris × ~0,5 kb) supaya tidak perlu unggah ulang file.
 app.use(express.json({ limit: '2mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+// Halaman utama dengan ?v=<sidik isi file> di tiap script/stylesheet lokal. Cloudflare menyimpan JS/CSS
+// di browser 4 jam; tanpa ini, setelah deploy browser bisa memakai app.js lama dengan halaman baru.
+// File yang berubah → alamat baru → langsung diambil ulang. Dihitung per permintaan (murah, selalu benar).
+const DIR_PUBLIK = path.join(__dirname, 'public');
+function indexBerversi() {
+  const html = fs.readFileSync(path.join(DIR_PUBLIK, 'index.html'), 'utf8');
+  return html.replace(/(<(?:script|link)\b[^>]*?\b(?:src|href)=")([\w.-]+\.(?:js|css))(")/g, (asli, depan, file, belakang) => {
+    try {
+      const sidik = crypto.createHash('sha256').update(fs.readFileSync(path.join(DIR_PUBLIK, file))).digest('hex').slice(0, 10);
+      return `${depan}${file}?v=${sidik}${belakang}`;
+    } catch (_) {
+      return asli; // file tidak ada: biarkan seperti semula
+    }
+  });
+}
+app.get(['/', '/index.html'], (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.type('html').send(indexBerversi());
+});
+app.use(express.static(DIR_PUBLIK));
 
 app.use(
   session({

@@ -160,18 +160,42 @@ async function sinkronStok({ db, panggil, shopId, sekarang = Math.floor(Date.now
 // Satu baris per produk untuk halaman Stok dan sheet Excel `Stok`, dengan alasan dihitung atau tidak:
 // 'habis' (stok 0) · 'tidak-wajar' (satu varian ≥ BATAS_STOK_TIDAK_WAJAR, dicek dulu) · 'tanpa-hpp' ·
 // 'dihitung'. modal hanya untuk yang dihitung. terjual30: Map idProduk → pcs terjual 30 hari.
-function daftarStok(baris, petaHpp, terjual30 = new Map()) {
+// modalKode (opsional): Map idProduk → { modal, stok, lengkap } dari stok per varian × HPP kode barang
+// (modalPerKode), hanya untuk produk yang punya HPP kode. hpp produk itu = rata-rata tertimbang stok.
+function daftarStok(baris, petaHpp, terjual30 = new Map(), modalKode = new Map()) {
   return baris.map((b) => {
-    const hpp = petaHpp.has(b.id_produk) ? petaHpp.get(b.id_produk) : null;
+    let hpp = petaHpp.has(b.id_produk) ? petaHpp.get(b.id_produk) : null;
+    let modalVarian = null;
+    const mk = modalKode.get(b.id_produk);
+    if (mk && mk.stok > 0) {
+      hpp = mk.lengkap ? mk.modal / mk.stok : null; // ada varian berstok tanpa HPP → modal belum diketahui
+      modalVarian = mk.lengkap ? mk.modal : null;
+    }
     const dihitung = !(b.stok > 0) ? 'habis' : b.stok_maks_varian >= BATAS_STOK_TIDAK_WAJAR ? 'tidak-wajar' : !(hpp > 0) ? 'tanpa-hpp' : 'dihitung';
     const laku = terjual30.get(b.id_produk) || 0;
     return {
       idProduk: b.id_produk, nama: b.nama_produk || '', status: b.status, stok: b.stok, jumlahVarian: b.jumlah_varian ?? null,
-      stokMaksVarian: b.stok_maks_varian, hpp, dihitung, modal: dihitung === 'dihitung' ? b.stok * hpp : null,
+      stokMaksVarian: b.stok_maks_varian, hpp, hppPerKode: !!mk, dihitung,
+      modal: dihitung === 'dihitung' ? (modalVarian ?? b.stok * hpp) : null,
       terjual30: laku, cukupHari: laku && b.stok > 0 ? Math.round(b.stok / (laku / 30)) : null, diambilTs: b.diambil_ts ?? null,
       hargaMin: b.harga_min ?? null, hargaMaks: b.harga_maks ?? null, dibuatTs: b.dibuat_ts ?? null,
     };
   }).sort((a, b) => (b.modal ?? -1) - (a.modal ?? -1) || b.stok - a.stok);
+}
+
+// Modal per produk dari stok tiap varian × HPP varian (HPP kode barang, kalau tidak ada HPP produk),
+// hanya untuk produk yang punya HPP kode. lengkap = semua varian berstok punya HPP.
+function modalPerKode(varianStok, peta) {
+  const hasil = new Map();
+  for (const v of varianStok) {
+    if (!peta.kode.has(v.id_produk) || !(v.stok > 0)) continue;
+    const r = hasil.get(v.id_produk) || { modal: 0, stok: 0, lengkap: true };
+    const hpp = peta.hppVarian(v.id_produk, v.nama_varian);
+    if (hpp > 0) r.modal += v.stok * hpp; else r.lengkap = false;
+    r.stok += v.stok;
+    hasil.set(v.id_produk, r);
+  }
+  return hasil;
 }
 
 // Pcs terjual per produk sejak tanggal `dari` (baris dari bacaItemPesanan; retur tidak dihitung).
@@ -203,4 +227,4 @@ function ringkasStok(daftar) {
   return hasil;
 }
 
-module.exports = { sinkronStok, daftarStok, ringkasStok, hitungTerjual, jumlahStok, BATAS_STOK_TIDAK_WAJAR, STATUS_PRODUK };
+module.exports = { sinkronStok, daftarStok, modalPerKode, ringkasStok, hitungTerjual, jumlahStok, BATAS_STOK_TIDAK_WAJAR, STATUS_PRODUK };

@@ -165,6 +165,12 @@ On a phone: profit, the tiles in a 2 × 2 grid, then the tasks.
 - **Atur Harga Modal (HPP):** set the cost price per Product ID (shared by all users). Bulk CSV
   import/export (comma or `;` CSV; `48000`, `48.000` or `Rp 48.000`; a blank HPP cell is skipped, not saved as 0).
   The "Belum Diisi" filter lists products without HPP, best sellers first.
+- **HPP per kode:** one listing often holds several items (variant names like "9669 Grey", "2190.2 Blue", "0510 Coffee").
+  The code is read from the start of the variant name; a product with 2+ codes gets a "HPP per kode" dropdown under its
+  name (pcs sold, price, stock per code). A code's HPP beats the product HPP for its variants; empty = product HPP;
+  variants without a code ("Hitam") always use the product HPP. Profit per order, stock modal, Beli lagi and the
+  Excel use each variant's HPP; ad analysis uses the HPP weighted by the codes actually sold. The CSV has a `Kode`
+  column (blank = product HPP).
 - Yellow rows = no HPP yet (type it straight into the row, then Simpan or Enter). Running-ad products without HPP are listed
   too, even without sales in the period. Click a column header to sort.
 - **Sync:**

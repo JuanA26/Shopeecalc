@@ -6,6 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { hitungAnalisisIklan } = require('../analisisIklan');
 const { tingkatCairTerukur, susunBarisPesanan } = require('../sinkronShopee');
+const { bacaPetaHpp, kodeVarian } = require('../hppKode');
 
 const campaign = (extra = {}) => ({
   kodeProduk: 'p', namaIklan: 'Fixture', status: 'Berjalan',
@@ -105,7 +106,8 @@ test('payout allocation conserves money, including a full-return deduction', () 
   assert.equal(rows.reduce((sum, r) => sum + r.totalPenghasilan, 0), -12000);
   assert.equal(rows[0].dikembalikan, true);
   const calc = vm.runInNewContext(`(${sourceFunction('server.js', 'hitungMargin')})`, {
-    db: { prepare: () => ({ all: () => [{ id_produk: 'sale', hpp: 50000 }] }) },
+    db: { prepare: (sql) => ({ all: () => (sql.includes('hpp_kode') ? [] : [{ id_produk: 'sale', hpp: 50000 }]) }) },
+    bacaPetaHpp, kodeVarian,
   });
   const result = calc([...rows, { idProduk: 'sale', noPesanan: 'paid', jumlah: 2,
     hargaProduk: 200000, totalPenghasilan: 156000, dikembalikan: false }]);

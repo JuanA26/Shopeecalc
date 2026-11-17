@@ -101,10 +101,11 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
   // ---- Produk ----
   const hppRows = db.prepare('SELECT id_produk, nama_produk, hpp, updated_at FROM product_hpp ORDER BY nama_produk').all();
   const hppMap = new Map(hppRows.map((r) => [r.id_produk, r]));
+  const hppKodeAda = new Set(db.prepare('SELECT DISTINCT id_produk FROM hpp_kode').all().map((r) => r.id_produk));
   const produk = new Map();
   const ambilProduk = (id, nama) => {
     let p = produk.get(id);
-    if (!p) { p = { id, nama: nama || '', pcs: 0, omzet: 0, penghasilan: 0, untung: 0, pcsHpp: 0, pcsRetur: 0, pertama: '', terakhir: '', biayaIklan: 0, omzetIklan: 0, omzetLangsung: 0, terjualLangsung: 0 }; produk.set(id, p); }
+    if (!p) { p = { id, nama: nama || '', pcs: 0, omzet: 0, penghasilan: 0, untung: 0, pcsHpp: 0, hppTotal: 0, pcsRetur: 0, pertama: '', terakhir: '', biayaIklan: 0, omzetIklan: 0, omzetLangsung: 0, terjualLangsung: 0 }; produk.set(id, p); }
     if (!p.nama && nama) p.nama = nama;
     return p;
   };
@@ -113,7 +114,7 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
     const d = String(it.waktuPesanan || '').slice(0, 10);
     if (it.dikembalikan) { p.pcsRetur += it.jumlah || 0; continue; }
     p.pcs += it.jumlah || 0; p.omzet += it.hargaProduk || 0; p.penghasilan += it.totalPenghasilan || 0;
-    if (it.untung !== null) { p.untung += it.untung; p.pcsHpp += it.jumlah || 0; }
+    if (it.untung !== null) { p.untung += it.untung; p.pcsHpp += it.jumlah || 0; p.hppTotal += it.hppTotal || 0; }
     if (d && (!p.pertama || d < p.pertama)) p.pertama = d;
     if (d > p.terakhir) p.terakhir = d;
   }
@@ -126,8 +127,11 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
   const berjalan = new Set(kampanye.filter((k) => k.status === 'ongoing').map((k) => k.id_produk));
   const sheetProduk = [...produk.values()].sort((a, b) => b.omzet - a.omzet).map((p) => {
     const h = hppMap.get(p.id);
-    return [p.id, p.nama, h ? h.hpp : null, p.pcs, bulat(p.omzet), bulat(p.penghasilan), h ? bulat(p.untung) : null,
-      h ? bulat(bagi(p.untung, p.penghasilan), 4) : null, p.pcsRetur, p.pertama, p.terakhir, bulat(p.biayaIklan), bulat(p.omzetIklan),
+    const semuaHpp = p.pcsHpp === p.pcs && p.pcs > 0; // tiap baris punya HPP (produk atau kode barang)
+    // HPP per pcs: HPP produk; listing dengan HPP kode = rata-rata dari kode yang terjual.
+    const hppPcs = semuaHpp && hppKodeAda.has(p.id) ? bulat(p.hppTotal / p.pcs) : h ? h.hpp : null;
+    return [p.id, p.nama, hppPcs, p.pcs, bulat(p.omzet), bulat(p.penghasilan), semuaHpp ? bulat(p.untung) : null,
+      semuaHpp ? bulat(bagi(p.untung, p.penghasilan), 4) : null, p.pcsRetur, p.pertama, p.terakhir, bulat(p.biayaIklan), bulat(p.omzetIklan),
       bulat(p.omzetLangsung), bulat(p.terjualLangsung), bulat(bagi(p.omzetLangsung, p.biayaIklan), 2), berjalan.has(p.id) ? 'ya' : ''];
   });
 
@@ -191,8 +195,8 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
   const stokProduk = stokLengkap.produk;
   const { beliLagi, cuciGudang } = stokLengkap;
   const sheetBeli = [...beliLagi.beli.map((b) => ['beli', b]), ...beliLagi.jangan.map((b) => [`jangan: ${b.jangan.alasan}`, b])]
-    .flatMap(([saran, b]) => b.varian.map((v) => [saran, b.idProduk, b.nama, v.nama, v.stok, v.laku30, v.sisaHari, v.beli, b.hpp,
-      b.hpp > 0 ? v.beli * b.hpp : null, b.terjual30, b.untungMinggu]));
+    .flatMap(([saran, b]) => b.varian.map((v) => [saran, b.idProduk, b.nama, v.nama, v.stok, v.laku30, v.sisaHari, v.beli, v.hpp,
+      v.hpp > 0 ? v.beli * v.hpp : null, b.terjual30, b.untungMinggu]));
   const sheetCuci = cuciGudang.produk.map((p) => [p.idProduk, p.nama, p.status, p.stok, p.hpp, p.modal, p.hargaMin, p.hargaMaks, p.sejak, p.hari,
     p.pernahLaku ? 'ya' : 'tidak', p.tahap, p.impas, p.saran, p.sudahTurun ? 'ya' : '', p.uangKembali]);
   const waktuWib = (ts) => (ts ? new Date((Number(ts) + 7 * 3600) * 1000).toISOString().slice(0, 16).replace('T', ' ') : '');
@@ -204,7 +208,7 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
   // ---- Status & README ----
   const cair = new Set(items.filter((i) => !i.perkiraan).map((i) => i.noPesanan)).size;
   const belumCair = new Set(items.filter((i) => i.perkiraan).map((i) => i.noPesanan)).size;
-  const tanpaHpp = [...produk.values()].filter((p) => !hppMap.has(p.id) && p.pcs > 0).length;
+  const tanpaHpp = [...produk.values()].filter((p) => p.pcs > 0 && p.pcsHpp < p.pcs).length; // ada baris tanpa HPP (produk/kode)
   const sheetStatus = [
     ['dibuat', new Date().toISOString()], ['hari_ini_wib', hariIni], ['versi_aplikasi', versi || 'lokal'],
     ['data_pesanan_dari', String(awal).slice(0, 10)], ['data_pesanan_sampai', hariIni],
@@ -229,13 +233,13 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
     ['Privasi', 'Tidak ada token, kata sandi, atau data pembeli. No. pesanan hanya untuk mencocokkan dengan Seller Centre.'],
     ['Status', 'Status sinkron, cakupan data, versi aplikasi, pengaturan.'],
     ['Bulanan / Mingguan / Harian', 'Untung toko per periode. untung_diketahui = penghasilan − HPP (hanya barang ber-HPP). untung_perkiraan = untung_diketahui + penghasilan tanpa HPP × margin barang ber-HPP periode itu + saldo_retur. untung_setelah_iklan = untung_perkiraan − biaya_iklan_toko, hanya kalau data iklan lengkap setiap hari. Minggu = Senin–Minggu.'],
-    ['Pesanan_Item', 'Satu baris per barang per pesanan. penghasilan = bagian dana cair (escrow) untuk barang itu. perkiraan = ya → dana belum cair, penghasilan diperkirakan dari rasio pencairan toko. dikembalikan = ya → barang diretur; HPP tidak dibebankan (stok dianggap kembali), penghasilan = saldo retur.'],
+    ['Pesanan_Item', 'Satu baris per barang per pesanan. penghasilan = bagian dana cair (escrow) untuk barang itu. perkiraan = ya → dana belum cair, penghasilan diperkirakan dari rasio pencairan toko. dikembalikan = ya → barang diretur; HPP tidak dibebankan (stok dianggap kembali), penghasilan = saldo retur. kode = kode barang dari awal nama varian (kosong kalau tidak ada); hpp_per_pcs = HPP kode itu kalau diisi, kalau tidak HPP produk.'],
     ['Produk', 'Total per produk seluruh periode + biaya dan omzet iklan produk itu.'],
-    ['HPP', 'Harga modal per pcs yang diisi di aplikasi. Produk tanpa baris di sini belum punya HPP.'],
+    ['HPP', 'Harga modal per pcs yang diisi di aplikasi. kode kosong = HPP produk; kode terisi = HPP satu kode barang di listing itu (mis. 9669), mengalahkan HPP produk untuk varian yang namanya diawali kode itu. Produk tanpa baris di sini belum punya HPP.'],
     ['Iklan_Kampanye / Iklan_Harian', 'Kampanye GMV Max dari Shopee Ads API. omzet = atribusi luas Shopee (termasuk produk lain, 7 hari setelah klik, termasuk pesanan batal). omzet_langsung = hanya produk yang diiklankan. Angka hari terakhir masih bisa naik sampai 7 hari.'],
     ['Iklan_Toko_Harian', 'Total iklan seluruh toko per hari. selisih = iklan di luar kampanye produk (iklan toko).'],
     ['Riwayat_Setelan', 'Setiap perubahan Target ROAS / Modal Harian yang terlihat saat sinkron. Sebelum = 7 hari sebelum tanggal perubahan, sesudah = 7 hari setelahnya (hari perubahan dilewati). untung_toko_per_hari = untung perkiraan semua produk − biaya iklan toko (rata-rata 7 hari; kosong kalau ada hari tanpa data). matang = sudah lewat 15 hari (atribusi lengkap). perubahan_lain_berdekatan > 0 berarti hasil bercampur (aplikasi menghitung beberapa perubahan satu iklan di hari yang sama sebagai satu perubahan; sheet ini tetap mencatat semuanya). Ini observasi, bukan bukti sebab-akibat.'],
-    ['Stok', `Stok terkini per produk dari Shopee (semua status, juga yang habis), sama dengan halaman Stok. stok_pcs = semua varian, termasuk stok yang dipesan untuk promo; barang yang sudah dipesan pembeli sudah keluar. tampil_di_toko = status NORMAL; selain itu diarsipkan (UNLIST), diblokir (BANNED) atau sedang ditinjau (REVIEWING). modal = stok_pcs × hpp_per_pcs, hanya kalau dihitung = ya. Tidak dihitung: belum ada HPP, atau satu varian punya ≥ ${BATAS_STOK_TIDAK_WAJAR} pcs (kemungkinan angka asal seperti 999). terjual_30_hari = pcs terjual 30 hari terakhir (tanpa retur, batal tidak ikut). stok_cukup_hari = stok_pcs ÷ rata-rata terjual per hari; kosong kalau tidak terjual. stok_dibaca = kapan stok varian terakhir dibaca (WIB).`],
+    ['Stok', `Stok terkini per produk dari Shopee (semua status, juga yang habis), sama dengan halaman Stok. stok_pcs = semua varian, termasuk stok yang dipesan untuk promo; barang yang sudah dipesan pembeli sudah keluar. tampil_di_toko = status NORMAL; selain itu diarsipkan (UNLIST), diblokir (BANNED) atau sedang ditinjau (REVIEWING). modal = stok_pcs × hpp_per_pcs, hanya kalau dihitung = ya. Produk dengan HPP kode barang: modal = Σ stok varian × HPP kodenya, hpp_per_pcs = rata-rata tertimbang stok. Tidak dihitung: belum ada HPP, atau satu varian punya ≥ ${BATAS_STOK_TIDAK_WAJAR} pcs (kemungkinan angka asal seperti 999). terjual_30_hari = pcs terjual 30 hari terakhir (tanpa retur, batal tidak ikut). stok_cukup_hari = stok_pcs ÷ rata-rata terjual per hari; kosong kalau tidak terjual. stok_dibaca = kapan stok varian terakhir dibaca (WIB).`],
     ['Beli_Lagi', `Sama dengan "Beli lagi" di halaman Stok, satu baris per varian. Produk aktif yang terjual ≥ ${A.MIN_PCS_PRODUK} pcs dalam 30 hari; varian yang terjual ≥ ${A.MIN_PCS_VARIAN} pcs dan stoknya habis dalam < ${A.BATAS_HARI_BELI} hari (barang datang ± ${A.LAMA_KIRIM_HARI} hari setelah dipesan). beli_pcs = rata-rata terjual per hari × ${A.LAMA_KIRIM_HARI + A.CUKUP_HARI} hari − stok (cukup ${A.CUKUP_HARI} hari setelah barang datang). saran "jangan: rugi" = untung 30 hari ≤ 0; "jangan: retur" = ≥ ${Math.round(A.BATAS_RETUR * 100)}% pcs diretur dalam 60 hari (≥ ${A.MIN_RETUR_PCS} pcs). untung_per_minggu = (dana cair − HPP) 30 hari ÷ 30 × 7.`],
     ['Cuci_Gudang', `Sama dengan "Cuci gudang" di halaman Stok. Produk dengan stok yang tidak laku ≥ ${A.TAHAP_1_HARI} hari. tidak_laku_sejak = paling akhir dari: pesanan terakhir (bukan batal/belum bayar), tanggal produk dibuat, awal data pesanan (data_pesanan_untuk_tidak_laku_dari di Status). Tahap 1 (≥ ${A.TAHAP_1_HARI} hari): harga_saran = harga impas = HPP ÷ rasio pencairan toko, dibulatkan ke atas per Rp 1.000. Tahap 2 (≥ ${A.TAHAP_2_HARI} hari): HPP × ${1 - A.POTONG_TAHAP_2} ÷ rasio pencairan. sudah_turun = harga termahal sekarang ≤ harga_saran. uang_kembali = stok × harga × rasio pencairan (perkiraan dana cair kalau semua laku).`],
     ['Keputusan_Sekarang', 'Saran aplikasi untuk tiap iklan yang sedang berjalan saat file diunduh (sama dengan halaman Analisis Iklan). Kosong kalau data iklan belum termuat di halaman.'],
@@ -265,7 +269,11 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
       'modal_beli', 'produk_terjual_30_hari', 'untung_per_minggu'], baris: sheetBeli },
     { nama: 'Cuci_Gudang', kolom: ['id_produk', 'nama_produk', 'status_shopee', 'stok_pcs', 'hpp_per_pcs', 'modal', 'harga_termurah', 'harga_termahal',
       'tidak_laku_sejak', 'hari_tidak_laku', 'pernah_laku', 'tahap', 'harga_impas', 'harga_saran', 'sudah_turun', 'uang_kembali'], baris: sheetCuci },
-    { nama: 'HPP', kolom: ['id_produk', 'nama_produk', 'hpp_per_pcs', 'diubah'], baris: hppRows.map((r) => [r.id_produk, r.nama_produk, r.hpp, r.updated_at]) },
+    { nama: 'HPP', kolom: ['id_produk', 'nama_produk', 'kode', 'hpp_per_pcs', 'diubah'], baris: [
+      ...hppRows.map((r) => [r.id_produk, r.nama_produk, '', r.hpp, r.updated_at]),
+      ...db.prepare('SELECT id_produk, kode, hpp, updated_at FROM hpp_kode ORDER BY id_produk, kode').all()
+        .map((r) => [r.id_produk, (hppMap.get(r.id_produk) || {}).nama_produk || '', r.kode, r.hpp, r.updated_at]),
+    ] },
     { nama: 'Iklan_Kampanye', kolom: ['campaign_id', 'id_produk', 'nama_iklan', 'status', 'mode', 'target_roas', 'modal_harian', 'mulai', 'selesai',
       'rekomendasi_rendah', 'rekomendasi_tengah', 'rekomendasi_tinggi', 'biaya', 'omzet_shopee', 'omzet_langsung', 'pcs_shopee', 'pcs_langsung',
       'klik', 'dilihat', 'roas_shopee', 'roas_langsung', 'hari_ada_data', 'data_pertama', 'data_terakhir'], baris: sheetKampanye },
@@ -273,9 +281,9 @@ function susunEkspor(db, shopId, { margin, rasioPerkiraan, bacaItemPesanan, hari
       'pcs_langsung', 'roas_shopee', 'roas_langsung'], baris: sheetIklanHarian },
     { nama: 'Iklan_Toko_Harian', kolom: ['tanggal', 'dilihat', 'klik', 'biaya', 'omzet_shopee', 'omzet_langsung', 'pcs_shopee', 'pcs_langsung',
       'biaya_kampanye_produk', 'selisih_iklan_toko'], baris: sheetIklanToko },
-    { nama: 'Pesanan_Item', kolom: ['tanggal_pesanan', 'no_pesanan', 'id_produk', 'nama_produk', 'variasi', 'pcs', 'harga_produk', 'penghasilan', 'hpp_per_pcs',
+    { nama: 'Pesanan_Item', kolom: ['tanggal_pesanan', 'no_pesanan', 'id_produk', 'nama_produk', 'variasi', 'kode', 'pcs', 'harga_produk', 'penghasilan', 'hpp_per_pcs',
       'hpp_total', 'untung', 'margin_persen', 'dikembalikan', 'jumlah_pengembalian', 'perkiraan', 'tanggal_dana_cair', 'status'],
-    baris: items.map((it) => [String(it.waktuPesanan || '').slice(0, 10), it.noPesanan, it.idProduk, it.namaProduk, it.namaModel, it.jumlah,
+    baris: items.map((it) => [String(it.waktuPesanan || '').slice(0, 10), it.noPesanan, it.idProduk, it.namaProduk, it.namaModel, it.kode || '', it.jumlah,
       bulat(it.hargaProduk), bulat(it.totalPenghasilan), it.hpp, bulat(it.hppTotal), bulat(it.untung), bulat(it.marginPersen, 2),
       it.dikembalikan ? 'ya' : '', bulat(it.jumlahPengembalian), it.perkiraan ? 'ya' : '', it.tanggalDilepaskan || '', it.statusPesanan || ''])
       .sort((a, b) => a[0].localeCompare(b[0]) || String(a[1]).localeCompare(String(b[1]))) },

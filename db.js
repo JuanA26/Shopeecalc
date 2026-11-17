@@ -27,6 +27,17 @@ db.exec(`
     updated_by TEXT
   );
 
+  -- HPP per kode barang di dalam satu listing (public/kodeVarian.js: "9669 Grey" → 9669). Mengalahkan
+  -- HPP produk untuk varian dengan kode itu; varian tanpa kode / kode lain tetap memakai HPP produk.
+  CREATE TABLE IF NOT EXISTS hpp_kode (
+    id_produk TEXT NOT NULL,
+    kode TEXT NOT NULL,
+    hpp REAL NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_by TEXT,
+    PRIMARY KEY (id_produk, kode)
+  );
+
   -- Setelan iklan yang sedang dipasang orang tua di Seller Centre (Target ROAS & Modal
   -- Harian) per produk. TIDAK ada di file ekspor Shopee, jadi diketik sekali di halaman
   -- Analisis Iklan supaya aplikasi bisa membandingkan "sekarang" vs "minimal/saran".

@@ -304,7 +304,9 @@ function batasDibayarKampanye(k, perHari, tanggalLaporanIso, tanggalRilisTerakhi
 //   rasioPencairan: angka 0–1, atau null → pakai default
 //   produkIncome  : (opsional) Map/objek idProduk → { harga, rasio, pcs, perHari } dari file
 //                   Income yang sedang diunggah — harga & rasio pencairan produk itu sendiri,
-//                   plus perHari { 'YYYY-MM-DD': { pcs, harga } } untuk batas pesanan dibayar.
+//                   plus perHari { 'YYYY-MM-DD': { pcs, harga } } untuk batas pesanan dibayar, dan
+//                   hpp (opsional) = HPP rata-rata tertimbang pcs dari baris yang sama (beda kalau
+//                   listing punya HPP per kode barang); kalau ada, mengalahkan HPP produk di hppMap.
 //   opsi          : { tingkatCair, tingkatCairPerProduk, tanggalLaporanIso, tanggalRilisTerakhir }
 //                   tingkatCairPerProduk (opsional) = { idProduk: 0–1 } diukur dari status pesanan
 //                   Shopee (sinkronShopee.js: tingkatCairTerukur); produk yang tidak ada di sana
@@ -394,7 +396,9 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
   for (const id of new Set([...perProduk.keys(), ...incomeMap.keys(), ...hppMap.keys()])) {
     const p = perProduk.get(id);
     const infoHpp = p && p.tokoLevel ? null : hppMap.get(id);
-    ekonomiProduk[id] = hitungEkonomiProduk({ hpp: infoHpp && infoHpp.hpp, income: incomeMap.get(id), iklan: p,
+    const income = incomeMap.get(id);
+    const hppIncome = !(p && p.tokoLevel) && income && Number.isFinite(income.hpp) && income.hpp >= 0 ? income.hpp : null;
+    ekonomiProduk[id] = hitungEkonomiProduk({ hpp: hppIncome ?? (infoHpp && infoHpp.hpp), income, iklan: p,
       rasioPencairan, tingkatCair: opsi.tingkatCair, tingkatCairPerProduk: cairPerProduk[id],
       sumberTingkatCair: opsi.sumberTingkatCair });
   }
@@ -428,7 +432,7 @@ function hitungAnalisisIklan(kampanye, hppMap, rasioPencairan, produkIncome, ops
     if (p.biaya === 0 && p.terjual === 0 && !p.sedangBerjalan) continue;
 
     const infoHpp = p.tokoLevel ? null : hppMap.get(p.idProduk);
-    const hpp = infoHpp && Number.isFinite(infoHpp.hpp) ? infoHpp.hpp : null;
+    const hpp = ekonomiProduk[p.idProduk].hpp; // HPP produk, atau rata-rata HPP kode barang dari penjualan
     p.namaProduk = p.tokoLevel ? 'Iklan Toko (GMV Max) — ' + p.namaIklan : (infoHpp && infoHpp.namaProduk) || p.namaIklan;
     const ekonomi = ekonomiProduk[p.idProduk];
     Object.assign(p, ekonomi);

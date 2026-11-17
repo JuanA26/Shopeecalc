@@ -26,6 +26,7 @@ const { hitungStokLengkap, ATURAN_STOK } = require('./stokSaran');
 const { susunEkspor } = require('./eksporData');
 const { perkiraanMingguTerakhir, gagalSetelahTujuhHari, cekHargaMultiPcs } = require('./cekData');
 const { buatXlsx } = require('./xlsx');
+const { bacaPetaHpp, kodeVarian } = require('./hppKode');
 const SesiSqlite = require('./sesiSqlite');
 const { hariIniWib, geserHari, tanggalValid, escapeHtml, angkaHpp } = require('./util');
 
@@ -251,6 +252,45 @@ app.delete('/api/hpp/:idProduk', requireLogin, (req, res) => {
   res.json({ ok: true });
 });
 
+// HPP per kode barang di dalam satu listing (hppKode.js). GET juga mengirim kode yang ada di stok
+// sekarang (stok_varian), supaya kode yang belum laku di periode ini tetap bisa diisi.
+const simpanHppKode = db.prepare(
+  `INSERT INTO hpp_kode (id_produk, kode, hpp, updated_at, updated_by) VALUES (?, ?, ?, datetime('now'), ?)
+   ON CONFLICT(id_produk, kode) DO UPDATE SET hpp = excluded.hpp, updated_at = excluded.updated_at, updated_by = excluded.updated_by`
+);
+// Kode dari URL/CSV dinormalkan dengan aturan yang sama dengan nama varian; selain itu ditolak.
+const kodeBersih = (teks) => {
+  const k = kodeVarian(teks);
+  return k && k === String(teks || '').trim().toUpperCase() ? k : null;
+};
+
+app.get('/api/hpp-kode', requireLogin, (req, res) => {
+  const kode = db.prepare('SELECT * FROM hpp_kode ORDER BY id_produk, kode').all();
+  const stok = {};
+  for (const v of db.prepare('SELECT id_produk, nama_varian, stok FROM stok_varian').all()) {
+    const k = kodeVarian(v.nama_varian);
+    if (!k) continue;
+    const p = stok[v.id_produk] || (stok[v.id_produk] = {});
+    p[k] = (p[k] || 0) + (v.stok || 0);
+  }
+  res.json({ kode, stok });
+});
+
+app.put('/api/hpp-kode/:idProduk/:kode', requireLogin, (req, res) => {
+  const idProduk = String(req.params.idProduk || '').trim();
+  const kode = kodeBersih(req.params.kode);
+  const hppNum = Number((req.body || {}).hpp);
+  if (!idProduk || !kode) return res.status(400).json({ error: 'ID Produk dan kode wajib diisi.' });
+  if (!Number.isFinite(hppNum) || hppNum < 0) return res.status(400).json({ error: 'Nilai HPP harus berupa angka dan tidak boleh negatif.' });
+  simpanHppKode.run(idProduk, kode, hppNum, req.session.username);
+  res.json(db.prepare('SELECT * FROM hpp_kode WHERE id_produk = ? AND kode = ?').get(idProduk, kode));
+});
+
+app.delete('/api/hpp-kode/:idProduk/:kode', requireLogin, (req, res) => {
+  db.prepare('DELETE FROM hpp_kode WHERE id_produk = ? AND kode = ?').run(String(req.params.idProduk || '').trim(), String(req.params.kode || '').trim().toUpperCase());
+  res.json({ ok: true });
+});
+
 // Bungkus satu nilai jadi field CSV yang aman (tanda kutip kalau perlu, sesuai
 // format CSV standar) — dipakai saat mengekspor.
 function csvField(nilai) {
@@ -265,11 +305,16 @@ function csvField(nilai) {
 // dipindah/diperiksa di luar aplikasi (mis. dibuka di Excel).
 app.get('/api/hpp/export-csv', requireLogin, (req, res) => {
   const rows = db.prepare('SELECT * FROM product_hpp ORDER BY id_produk').all();
+  const nama = new Map(rows.map((r) => [r.id_produk, r.nama_produk || '']));
+  const perKode = db.prepare('SELECT * FROM hpp_kode ORDER BY id_produk, kode').all();
 
-  const header = ['ID Produk', 'Nama Produk', 'Harga Modal (HPP)', 'Terakhir Diubah'];
-  const baris = rows.map((r) =>
-    [r.id_produk, r.nama_produk || '', r.hpp, r.updated_at].map(csvField).join(',')
-  );
+  // Kolom Kode kosong = HPP produk (semua varian tanpa HPP kode sendiri).
+  const header = ['ID Produk', 'Nama Produk', 'Kode', 'Harga Modal (HPP)', 'Terakhir Diubah'];
+  const baris = [
+    ...rows.map((r) => [r.id_produk, r.nama_produk || '', '', r.hpp, r.updated_at]),
+    ...perKode.map((r) => [r.id_produk, nama.get(r.id_produk) || '', r.kode, r.hpp, r.updated_at]),
+  ].sort((a, b) => String(a[0]).localeCompare(String(b[0])) || String(a[2]).localeCompare(String(b[2])))
+    .map((r) => r.map(csvField).join(','));
   const csv = '﻿' + [header.join(','), ...baris].join('\r\n') + '\r\n';
 
   const tanggal = new Date().toISOString().slice(0, 10);
@@ -298,6 +343,7 @@ app.post('/api/hpp/import-csv', requireLogin, upload.single('file'), (req, res) 
   const idxId = header.findIndex((h) => h.includes('id produk'));
   const idxNama = header.findIndex((h) => h.includes('nama produk'));
   const idxHpp = header.findIndex((h) => h.includes('harga modal'));
+  const idxKode = header.findIndex((h) => h === 'kode'); // opsional (file lama tanpa kolom ini tetap bisa)
 
   if (idxId === -1 || idxHpp === -1) {
     return res.status(400).json({
@@ -306,6 +352,7 @@ app.post('/api/hpp/import-csv', requireLogin, upload.single('file'), (req, res) 
   }
 
   const sudahAda = db.prepare('SELECT 1 FROM product_hpp WHERE id_produk = ?');
+  const sudahAdaKode = db.prepare('SELECT 1 FROM hpp_kode WHERE id_produk = ? AND kode = ?');
   let ditambahkan = 0;
   let diperbarui = 0;
   let dilewati = 0;
@@ -323,6 +370,14 @@ app.post('/api/hpp/import-csv', requireLogin, upload.single('file'), (req, res) 
         continue;
       }
 
+      const kodeMentah = idxKode !== -1 ? String(kolom[idxKode] || '').trim() : '';
+      if (kodeMentah) {
+        const kode = kodeBersih(kodeMentah);
+        if (!kode) { dilewati += 1; continue; }
+        if (sudahAdaKode.get(idProduk, kode)) diperbarui += 1; else ditambahkan += 1;
+        simpanHppKode.run(idProduk, kode, hppNum, req.session.username);
+        continue;
+      }
       if (sudahAda.get(idProduk)) diperbarui += 1; else ditambahkan += 1;
       simpanHpp.run(idProduk, namaProduk, hppNum, req.session.username);
     }
@@ -340,8 +395,7 @@ app.post('/api/hpp/import-csv', requireLogin, upload.single('file'), (req, res) 
 // untung/margin. Baris perkiraan (dana belum cair) ikut dihitung, tapi totalnya juga
 // dilaporkan terpisah supaya UI bisa bilang berapa bagian yang masih perkiraan.
 function hitungMargin(items, infoTambahan) {
-  const hppRows = db.prepare('SELECT id_produk, hpp FROM product_hpp').all();
-  const hppMap = new Map(hppRows.map((r) => [r.id_produk, r.hpp]));
+  const peta = bacaPetaHpp(db); // HPP kode barang dulu (nama varian), lalu HPP produk
 
   let totalPenghasilan = 0;
   let totalHpp = 0;
@@ -358,8 +412,9 @@ function hitungMargin(items, infoTambahan) {
   const pesananPerkiraan = new Set();
 
   const hasil = items.map((item) => {
-    const hpp = hppMap.has(item.idProduk) ? hppMap.get(item.idProduk) : null;
+    const hpp = peta.hppVarian(item.idProduk, item.namaModel);
     const punyaHpp = hpp !== null;
+    item = { ...item, kode: kodeVarian(item.namaModel) };
 
     totalPenghasilan += item.totalPenghasilan;
     if (item.perkiraan) { penghasilanPerkiraan += item.totalPenghasilan; pesananPerkiraan.add(item.noPesanan); }
@@ -602,13 +657,13 @@ app.get('/api/log', requireLogin, (req, res) => res.json(logServer.terbaru(Numbe
 const BUKAN_PENJUALAN_SQL = [...STATUS_BUKAN_PENJUALAN].map((x) => `'${x}'`).join(', ');
 function produkTanpaHppTerjual(shopId, dari, sampai) {
   const items = bacaItemPesanan(db, shopId, dari, sampai, rasioPencairanToko(db, shopId) || RASIO_PENCAIRAN_DEFAULT);
-  const adaHpp = new Set(db.prepare('SELECT id_produk FROM product_hpp').all().map((r) => r.id_produk));
+  const peta = bacaPetaHpp(db);
   const tanpa = new Set();
   let total = 0, kosong = 0;
   for (const it of items) {
     if (it.dikembalikan) continue;
     total += it.totalPenghasilan || 0;
-    if (!adaHpp.has(it.idProduk)) { tanpa.add(it.idProduk); kosong += it.totalPenghasilan || 0; }
+    if (peta.hppVarian(it.idProduk, it.namaModel) === null) { tanpa.add(it.idProduk); kosong += it.totalPenghasilan || 0; }
   }
   return { dari, sampai, produk: tanpa.size, penghasilan: kosong, bagian: total ? kosong / total : null };
 }

@@ -71,6 +71,18 @@ let dataHasilUpload = null; // { items, ringkasan } — periode yang dipilih di 
 let dataPenjualanIklan = null;
 const sumberIklan = () => dataPenjualanIklan || dataHasilUpload;
 let daftarHpp = [];         // dari GET /api/hpp
+let hppKode = { kode: [], stok: {} }; // dari GET /api/hpp-kode: HPP per kode barang + kode yang ada di stok
+// HPP satu baris pesanan, sama dengan server (hppKode.js): HPP kode barang dulu, lalu HPP produk.
+function petaHppBaris() {
+  const produk = new Map(daftarHpp.map((r) => [r.id_produk, r.hpp]));
+  const perKode = new Map(hppKode.kode.map((r) => [`${r.id_produk}|${r.kode}`, r.hpp]));
+  return (idProduk, namaModel) => {
+    const k = KodeVarian.kodeVarian(namaModel);
+    if (k && perKode.has(`${idProduk}|${k}`)) return perKode.get(`${idProduk}|${k}`);
+    return produk.has(idProduk) ? produk.get(idProduk) : null;
+  };
+}
+const adaHppKode = (idProduk) => hppKode.kode.some((r) => r.id_produk === idProduk);
 let sortKolom = null;       // nama kolom yang sedang diurutkan di tabel Data, mis. "marginPersen"
 let sortArah = 1;           // 1 = naik (A-Z / kecil-besar), -1 = turun
 
@@ -1016,14 +1028,14 @@ async function simpanHpp(idProduk, namaProduk, nilaiMentah) {
 // Setelah HPP baru disimpan, hitung ulang untung/margin di data yang sedang tampil (tanpa upload ulang)
 function hitungUlangDanTampilkanUlang() {
   if (!dataHasilUpload) return;
-  const hppMap = new Map(daftarHpp.map((r) => [r.id_produk, r.hpp]));
+  const hppBaris = petaHppBaris();
 
   let totalPenghasilan = 0, totalHpp = 0, totalUntung = 0, penghasilanDenganHpp = 0;
   const produkBelumAdaHpp = new Set(), pesananDikembalikan = new Set(); // jumlah berbeda, sama seperti server
 
   dataHasilUpload.items = dataHasilUpload.items.map((it) => {
-    const punyaHpp = hppMap.has(it.idProduk);
-    const hpp = punyaHpp ? hppMap.get(it.idProduk) : null;
+    const hpp = hppBaris(it.idProduk, it.namaModel);
+    const punyaHpp = hpp !== null;
 
     totalPenghasilan += it.totalPenghasilan;
 
@@ -1085,7 +1097,7 @@ perbaruiIndikatorUrutHeader();
 
 // ====== Tab HPP ======
 async function muatDaftarHpp() {
-  daftarHpp = await apiFetch('/api/hpp');
+  [daftarHpp, hppKode] = await Promise.all([apiFetch('/api/hpp'), apiFetch('/api/hpp-kode')]);
   renderTabelHpp();
   hitungUlangIklan();
 }
@@ -1093,23 +1105,34 @@ async function muatDaftarHpp() {
 // Total penjualan per produk dari data penjualan yang sedang dimuat (pcs & penghasilan, tanpa
 // baris yang dikembalikan). Dipakai untuk mengurutkan daftar "Belum Diisi" supaya produk yang
 // paling banyak menghasilkan uang ada di atas. Dihitung sekali per data.
-let penjualanPerProdukCache = { sumber: null, peta: new Map() };
+let penjualanPerProdukCache = { items: null, peta: new Map() };
 function penjualanPerProduk(sumber = dataHasilUpload) {
   if (!sumber) return new Map();
-  if (penjualanPerProdukCache.sumber === sumber) return penjualanPerProdukCache.peta;
+  // Kunci = array items: hitungUlangDanTampilkanUlang() menggantinya (HPP baru) tanpa mengganti objek sumber.
+  if (penjualanPerProdukCache.items === sumber.items) return penjualanPerProdukCache.peta;
   const peta = new Map();
   for (const it of sumber.items) {
     if (it.dikembalikan) continue;
-    const t = peta.get(it.idProduk) || { pcs: 0, penghasilan: 0, hargaProduk: 0, pcsCair: 0, penghasilanCair: 0, hargaCair: 0 };
+    const t = peta.get(it.idProduk) || { pcs: 0, penghasilan: 0, hargaProduk: 0, pcsCair: 0, penghasilanCair: 0, hargaCair: 0,
+      perKode: new Map(), hppCair: 0, pcsHppCair: 0 };
     t.pcs += it.jumlah || 1;
+    const kode = KodeVarian.kodeVarian(it.namaModel);
+    if (kode) {
+      const k = t.perKode.get(kode) || { pcs: 0, hargaProduk: 0 };
+      k.pcs += it.jumlah || 1; k.hargaProduk += it.hargaProduk || 0;
+      t.perKode.set(kode, k);
+    }
     t.penghasilan += it.totalPenghasilan || 0;
     t.hargaProduk += it.hargaProduk || 0; // harga jual total baris (sudah dikali pcs untuk baris multi-pcs)
     // Angka pasti (dana sudah cair) — dipakai Analisis Iklan; baris perkiraan dihitung dari
     // rasio toko, jadi tidak boleh ikut menentukan rasio per produk.
-    if (!it.perkiraan) { t.pcsCair += it.jumlah || 1; t.penghasilanCair += it.totalPenghasilan || 0; t.hargaCair += it.hargaProduk || 0; }
+    if (!it.perkiraan) {
+      t.pcsCair += it.jumlah || 1; t.penghasilanCair += it.totalPenghasilan || 0; t.hargaCair += it.hargaProduk || 0;
+      if (it.hpp !== null && it.hpp !== undefined) { t.hppCair += it.hpp * (it.jumlah || 1); t.pcsHppCair += it.jumlah || 1; }
+    }
     peta.set(it.idProduk, t);
   }
-  penjualanPerProdukCache = { sumber, peta };
+  penjualanPerProdukCache = { items: sumber.items, peta };
   return peta;
 }
 
@@ -1142,7 +1165,7 @@ function gabunganProdukUntukTabelHpp() {
 
   const tempel = (r) => {
     const p = penjualan.get(r.id_produk);
-    return { ...r, terjualPcs: p ? p.pcs : 0, terjualRp: p ? p.penghasilan : 0 };
+    return { ...r, terjualPcs: p ? p.pcs : 0, terjualRp: p ? p.penghasilan : 0, adaKode: adaHppKode(r.id_produk) };
   };
 
   // Produk yang belum ada HPP ditaruh di atas supaya langsung kelihatan perlu diisi —
@@ -1156,7 +1179,7 @@ function gabunganProdukUntukTabelHpp() {
 // atau semua produk sudah punya HPP.
 function renderRingkasanBelumHpp(semua) {
   const el = document.getElementById('ringkasanBelumHpp2');
-  const belum = semua.filter((r) => r.hpp === null && r.terjualRp > 0);
+  const belum = semua.filter((r) => r.hpp === null && !r.adaKode && r.terjualRp > 0);
   if (!dataHasilUpload || !belum.length) { el.classList.add('tersembunyi'); return; }
   const totalRp = belum.reduce((t, r) => t + r.terjualRp, 0);
   el.innerHTML =
@@ -1176,8 +1199,8 @@ function renderTabelHpp() {
     ? semua
     : semua.filter((r) => [r.id_produk, r.nama_produk].some((v) => String(v).toLowerCase().includes(kataKunci)));
 
-  if (filterHpp === 'belum') filtered = filtered.filter((r) => r.hpp === null);
-  if (filterHpp === 'sudah') filtered = filtered.filter((r) => r.hpp !== null);
+  if (filterHpp === 'belum') filtered = filtered.filter((r) => r.hpp === null && !r.adaKode);
+  if (filterHpp === 'sudah') filtered = filtered.filter((r) => r.hpp !== null || r.adaKode);
 
   if (!filtered.length) {
     isiTabelHpp.innerHTML = `<tr><td colspan="7" class="teks-redup">Belum ada produk. Tambahkan di atas, atau unggah file dulu di tab "Unggah &amp; Lihat Data".</td></tr>`;
@@ -1195,9 +1218,9 @@ function renderTabelHpp() {
            </div>`;
 
       return `
-        <tr class="${punyaHpp ? '' : 'baris-peringatan'}">
+        <tr class="${punyaHpp || r.adaKode ? '' : 'baris-peringatan'}">
           <td class="kolom-id" data-label="ID Produk">${escapeHtml(r.id_produk)}</td>
-          <td class="kolom-nama" data-label="Nama Produk" title="${escapeHtml(r.nama_produk || '')}">${r.nama_produk ? escapeHtml(potongNama(r.nama_produk)) : '-'}</td>
+          <td class="kolom-nama" data-label="Nama Produk" title="${escapeHtml(r.nama_produk || '')}">${r.nama_produk ? escapeHtml(potongNama(r.nama_produk)) : '-'}${detailHppKode(r)}</td>
           <td class="kolom-angka kolom-terjual" data-label="Terjual (periode ini)">${
             r.terjualPcs
               ? `<span title="${escapeHtml(formatRupiah(r.terjualRp))}">${r.terjualPcs} pcs &middot; ${formatRupiahRingkas(r.terjualRp)}</span>`
@@ -1218,6 +1241,14 @@ function renderTabelHpp() {
 
   // Baris yang belum punya HPP: Simpan atau Enter, lewat simpanHppLangkah() di bawah.
 
+  // HPP per kode barang: simpan saat pindah fokus/Enter; dikosongkan = kembali ke HPP produk.
+  isiTabelHpp.querySelectorAll('.input-hpp-kode').forEach((input) => {
+    input.addEventListener('change', () => simpanHppKode(input.dataset.kodeId, input.dataset.kode, input.value));
+  });
+  isiTabelHpp.querySelectorAll('details[data-kode-id]').forEach((d) => {
+    d.addEventListener('toggle', () => { if (d.open) kodeTerbuka.add(d.dataset.kodeId); else kodeTerbuka.delete(d.dataset.kodeId); });
+  });
+
   isiTabelHpp.querySelectorAll('[data-hapus]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       if (!confirm('Hapus harga modal produk ini?')) return;
@@ -1230,6 +1261,53 @@ function renderTabelHpp() {
       }
     });
   });
+}
+
+// Kode barang satu produk untuk isian HPP per kode: yang terjual di periode Kalkulator, yang ada di stok
+// sekarang, dan yang sudah punya HPP. Urut paling laku dulu.
+function kodeUntukProduk(idProduk) {
+  const peta = new Map();
+  const ambil = (kode) => peta.get(kode) || peta.set(kode, { kode, pcs: 0, hargaProduk: 0, stok: null, hpp: null }).get(kode);
+  const jual = penjualanPerProduk().get(idProduk);
+  for (const [kode, k] of (jual && jual.perKode) || []) Object.assign(ambil(kode), { pcs: k.pcs, hargaProduk: k.hargaProduk });
+  for (const [kode, stok] of Object.entries(hppKode.stok[idProduk] || {})) ambil(kode).stok = stok;
+  for (const r of hppKode.kode) if (r.id_produk === idProduk) ambil(r.kode).hpp = r.hpp;
+  return [...peta.values()].sort((a, b) => b.pcs - a.pcs || (b.stok || 0) - (a.stok || 0) || a.kode.localeCompare(b.kode));
+}
+
+const kodeTerbuka = new Set(); // dropdown "HPP per kode" yang sedang terbuka, tetap terbuka setelah simpan
+function detailHppKode(r) {
+  const daftar = kodeUntukProduk(r.id_produk);
+  if (daftar.length < 2 && !daftar.some((k) => k.hpp !== null)) return '';
+  const diisi = daftar.filter((k) => k.hpp !== null).length;
+  const id = escapeHtml(r.id_produk);
+  const baris = daftar.map((k) => {
+    const info = [k.pcs ? `${k.pcs} pcs` : '', k.pcs ? rupiahPendek(k.hargaProduk / k.pcs) : '', k.stok !== null ? `stok ${k.stok}` : '']
+      .filter(Boolean).join(' · ');
+    return `<label class="baris-kode"><span class="kode-nama">${escapeHtml(k.kode)}</span><span class="kode-info">${info || 'belum laku'}</span>` +
+      `<input type="number" min="0" class="input-hpp-kode" value="${k.hpp ?? ''}" placeholder="${r.hpp !== null ? escapeHtml(String(r.hpp)) : 'Isi HPP'}"` +
+      ` data-kode-id="${id}" data-kode="${escapeHtml(k.kode)}" aria-label="HPP kode ${escapeHtml(k.kode)}"></label>`;
+  }).join('');
+  return `<details class="details-dalam detail-kode" data-kode-id="${id}"${kodeTerbuka.has(r.id_produk) ? ' open' : ''}>` +
+    `<summary>HPP per kode: ${diisi} dari ${daftar.length} diisi</summary>` +
+    `<p class="keterangan-kode">Kosong berarti pakai HPP produk${r.hpp !== null ? ` (${escapeHtml(formatRupiah(r.hpp))})` : ''}.</p>` +
+    `<div class="daftar-kode">${baris}</div></details>`;
+}
+
+async function simpanHppKode(idProduk, kode, nilaiMentah) {
+  const url = `/api/hpp-kode/${encodeURIComponent(idProduk)}/${encodeURIComponent(kode)}`;
+  const kosong = String(nilaiMentah).trim() === '';
+  const nilai = Number(nilaiMentah);
+  if (!kosong && (!Number.isFinite(nilai) || nilai < 0)) { alert('Isi HPP dengan angka yang benar (tidak boleh minus).'); return; }
+  try {
+    if (kosong) await apiFetch(url, { method: 'DELETE' });
+    else await apiFetch(url, { method: 'PUT', body: JSON.stringify({ hpp: nilai }) });
+    await muatDaftarHpp();
+    hitungUlangDanTampilkanUlang();
+    muatDataPenjualanIklan();
+  } catch (err) {
+    alert(err.message);
+  }
 }
 
 inputCariHpp.addEventListener('input', renderTabelHpp);
@@ -1421,6 +1499,9 @@ function produkIncomeSaatIni() {
     // Server hanya memakai harga/rasio kalau pcs ≥ 3; perHari dipakai untuk batas pesanan
     // iklan yang dibayar (analisisIklan.js: batasDibayarKampanye).
     hasil[id] = { harga: t.hargaCair / t.pcsCair, rasio: t.penghasilanCair / t.hargaCair, pcs: t.pcsCair, perHari: {} };
+    // Listing dengan HPP per kode barang: HPP rata-rata dari baris yang sama dengan harga (campuran kode
+    // yang benar-benar terjual). Hanya kalau semua baris punya HPP; selain itu server memakai HPP produk.
+    if (adaHppKode(id) && t.pcsHppCair === t.pcsCair) hasil[id].hpp = t.hppCair / t.pcsCair;
   }
   for (const it of sumberIklan().items) {
     if (it.dikembalikan || it.perkiraan || !hasil[it.idProduk]) continue;
@@ -3056,7 +3137,7 @@ function renderTabelStok() {
   document.getElementById('isiTabelStok').innerHTML = tampil.map((p) => {
     const info = [p.jumlahVarian > 1 ? `${p.jumlahVarian} varian` : '', STATUS_PRODUK_TAMPIL[p.status] || '', `ID ${p.idProduk}`].filter(Boolean).join(' · ');
     const stok = teksPcs(p.stok) + (p.dihitung === 'tidak-wajar' ? `<small class="stok-tanda">${teksPcs(p.stokMaksVarian)} di satu varian</small>` : '');
-    const hpp = p.hpp > 0 ? formatRupiah(p.hpp)
+    const hpp = p.hpp > 0 ? formatRupiah(Math.round(p.hpp)) + (p.hppPerKode ? '<small>rata-rata per kode</small>' : '')
       : p.stok > 0 && !akunBacaSaja
         ? kotakHppTabel(p.idProduk, p.nama)
         : '-';

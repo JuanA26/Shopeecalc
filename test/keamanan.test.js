@@ -103,6 +103,26 @@ test('security headers, cross-site block, login limit, and login survives a rest
   const hpp = Object.fromEntries((await (await fetch(`${BASE}/api/hpp`, { headers: { Cookie: sid } })).json()).map((r) => [r.id_produk, r.hpp]));
   assert.deepEqual([hpp['123'], hpp['456'], hpp['789']], [5, 48000, 35000]);
 
+  // HPP per item code: read-only blocked, bad code refused, "/" in a code survives the URL, and the CSV
+  // carries a Kode column both ways (blank Kode = product HPP; old files without the column still work).
+  assert.equal((await sebagai('/api/hpp-kode/123/510', { method: 'PUT', body: '{"hpp":5}' })).status, 403);
+  const kodePut = (id, kode, body) => fetch(`${BASE}/api/hpp-kode/${id}/${encodeURIComponent(kode)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: sid }, body });
+  assert.equal((await kodePut('123', '0510', '{"hpp":125000}')).status, 200);
+  assert.equal((await kodePut('123', 'L01/N01', '{"hpp":90000}')).status, 200);
+  assert.equal((await kodePut('123', 'Hitam', '{"hpp":1}')).status, 400);
+  assert.equal((await kodePut('123', '510', '{"hpp":-1}')).status, 400);
+  assert.deepEqual(await impor('ID Produk,Nama Produk,Kode,Harga Modal (HPP)\n123,Jacket,510,140000\n123,Jacket,Hitam,1\n123,Jacket,,6\n'),
+    { ok: true, ditambahkan: 1, diperbarui: 1, dilewati: 1 });
+  const kode = (await (await fetch(`${BASE}/api/hpp-kode`, { headers: { Cookie: sid } })).json()).kode.map((r) => [r.kode, r.hpp]);
+  assert.deepEqual(kode, [['0510', 125000], ['510', 140000], ['L01/N01', 90000]]);
+  const csv = await (await fetch(`${BASE}/api/hpp/export-csv`, { headers: { Cookie: sid } })).text();
+  assert.match(csv, /ID Produk,Nama Produk,Kode,Harga Modal \(HPP\)/);
+  assert.match(csv, /\n123,Jacket,,6,/);
+  assert.match(csv, /\n123,Jacket,0510,125000,/);
+  assert.equal((await fetch(`${BASE}/api/hpp-kode/123/0510`, { method: 'DELETE', headers: { Cookie: sid } })).status, 200);
+  assert.equal((await (await fetch(`${BASE}/api/hpp-kode`, { headers: { Cookie: sid } })).json()).kode.length, 2);
+
   // After 10 wrong passwords, even the right one is refused for a while.
   for (let i = 0; i < 10; i++) assert.equal((await login('tes', 'salah')).status, 401);
   assert.equal((await login('tes', 'benar123')).status, 429);

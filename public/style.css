@@ -705,6 +705,18 @@ tbody tr.baris-kurangi td { background: var(--tenggat-muda); }
   border: 1px solid #fdb022; border-radius: 8px; background: #fff;
 }
 .input-hpp-tabel { max-width: 140px; text-align: right; border-color: var(--border-kuat); }
+/* HPP per kode barang (tab HPP, di bawah nama produk) */
+.detail-kode { cursor: default; color: var(--teks); }
+.detail-kode > summary { color: var(--teks-judul); }
+.keterangan-kode { margin: 6px 0 4px; font-size: 0.9rem; color: var(--abu-teks); }
+.daftar-kode { display: grid; gap: 4px; }
+.baris-kode { display: grid; grid-template-columns: minmax(64px, auto) 1fr 120px; align-items: center; gap: 8px; min-height: 44px; }
+.kode-nama { font-weight: 600; color: var(--teks-judul); }
+.kode-info { font-size: 0.85rem; color: var(--abu-teks); }
+.input-hpp-kode {
+  width: 100%; min-width: 0; min-height: 40px; padding: 5px 8px; font-size: 0.95rem; font-family: inherit; text-align: right;
+  border: 1px solid var(--border-kuat); border-radius: 8px; background: #fff;
+}
 .simpan-hpp-cepat, .simpan-hpp-tabel-baru { flex-shrink: 0; }
 .input-hpp-cepat::-webkit-inner-spin-button, .input-hpp-cepat::-webkit-outer-spin-button,
 .input-hpp-tabel-baru::-webkit-inner-spin-button, .input-hpp-tabel-baru::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
